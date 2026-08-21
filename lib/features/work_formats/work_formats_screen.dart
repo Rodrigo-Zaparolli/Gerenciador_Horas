@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 
+// Tela principal para gerenciamento e cadastro de modelos de projetos e etapas
 class WorkFormatsScreen extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelectTab;
@@ -19,16 +21,22 @@ class WorkFormatsScreen extends StatefulWidget {
 }
 
 class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
+  // Instância do serviço do Firebase para comunicação com o banco de dados
   final FirebaseService _firebaseService = FirebaseService();
+
+  // Lista local para armazenar os modelos de projetos carregados
   List<WorkFormat> _workFormats = [];
+
+  // Controla o estado de carregamento inicial da tela
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadWorkFormats();
+    _loadWorkFormats(); // Carrega os dados assim que a tela é iniciada
   }
 
+  // Função assíncrona para buscar os modelos cadastrados no Firebase
   Future<void> _loadWorkFormats() async {
     setState(() => _isLoading = true);
     try {
@@ -41,36 +49,44 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao carregar modelos: $e')),
+          SnackBar(
+            content: Text('Erro ao carregar modelos: $e'),
+            backgroundColor: CoresApp.erro,
+          ),
         );
       }
     }
   }
 
+  // Função assíncrona para excluir um modelo de projeto do Firebase pelo ID
   Future<void> _deleteFormat(String id) async {
     try {
       await _firebaseService.deleteWorkFormat(id);
-      await _loadWorkFormats();
+      await _loadWorkFormats(); // Atualiza a lista após a exclusão
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao excluir modelo: $e')),
+          SnackBar(
+            content: Text('Erro ao excluir modelo: $e'),
+            backgroundColor: CoresApp.erro,
+          ),
         );
       }
     }
   }
 
+  // Abre o diálogo interativo para criar ou editar um modelo de projeto e suas etapas
   void _openFormatDetailDialog({WorkFormat? format}) {
     final isEditing = format != null;
     final idController = TextEditingController(text: format?.id ?? '');
     final nameController = TextEditingController(text: format?.name ?? '');
 
-    // Controladores para inclusão manual do número e do nome da etapa simultaneamente
     final stepOrderController = TextEditingController();
     final stepNameController = TextEditingController();
 
     final List<Map<String, String>> currentStepsWithOrder = [];
 
+    // Mapeia as etapas existentes caso seja uma edição
     if (format?.steps != null) {
       for (int i = 0; i < format!.steps.length; i++) {
         final stepData = format.steps[i];
@@ -88,17 +104,18 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
       }
     }
 
-    // Sugere o próximo número automaticamente ao abrir ou se baseia no total
     if (stepOrderController.text.isEmpty) {
       stepOrderController.text = '${currentStepsWithOrder.length + 1}';
     }
 
+    // Exibe o modal/diálogo de cadastro ou edição moderno
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Função interna para adicionar uma nova etapa à lista temporária
             void addStep() {
               final orderText = stepOrderController.text.trim();
               final nameText = stepNameController.text.trim();
@@ -112,7 +129,6 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     'name': nameText,
                   });
                   stepNameController.clear();
-                  // Prepara o próximo número sugerido de forma inteligente
                   final nextVal =
                       (double.tryParse(orderText.replaceAll(',', '.')) ??
                               currentStepsWithOrder.length.toDouble()) +
@@ -124,12 +140,14 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
               }
             }
 
+            // Função interna para remover uma etapa pelo índice
             void removeStep(int index) {
               setDialogState(() {
                 currentStepsWithOrder.removeAt(index);
               });
             }
 
+            // Função interna para abrir sub-diálogo de edição de uma etapa específica
             void editStep(int index) {
               final currentEntry = currentStepsWithOrder[index];
               final editController =
@@ -141,13 +159,18 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                 context: context,
                 builder: (context) {
                   return AlertDialog(
-                    backgroundColor: const Color(0xFF1E1E2C),
+                    backgroundColor: CoresTelas.fundoModalSecundario,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
+                      side: const BorderSide(color: CoresApp.borda, width: 1),
                     ),
                     title: const Text(
-                      'Editar Etapa e Número',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      'Editar Etapa e Posição',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     content: SizedBox(
                       width: 350,
@@ -156,40 +179,54 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         children: [
                           TextField(
                             controller: orderController,
-                            style: const TextStyle(color: Colors.white),
+                            style:
+                                const TextStyle(color: CoresApp.textoPrincipal),
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true),
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
                                   RegExp(r'^\d*[.,]?\d{0,5}'))
                             ],
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Número / Posição (Ex: 01, 3)',
-                              labelStyle: TextStyle(
-                                  color: Colors.white70, fontSize: 12),
+                              labelStyle: const TextStyle(
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 12),
+                              filled: true,
+                              fillColor: CoresTelas.campoFormulario,
                               enabledBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: Colors.white30),
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide:
+                                    const BorderSide(color: CoresApp.borda),
                               ),
                               focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
                                 borderSide:
-                                    BorderSide(color: Color(0xFF00B4D8)),
+                                    const BorderSide(color: CoresApp.primaria),
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
                           TextField(
                             controller: editController,
-                            style: const TextStyle(color: Colors.white),
+                            style:
+                                const TextStyle(color: CoresApp.textoPrincipal),
                             autofocus: true,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Descrição da Etapa',
-                              labelStyle: TextStyle(color: Colors.white70),
+                              labelStyle: const TextStyle(
+                                  color: CoresApp.textoSecundario),
+                              filled: true,
+                              fillColor: CoresTelas.campoFormulario,
                               enabledBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: Colors.white30),
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide:
+                                    const BorderSide(color: CoresApp.borda),
                               ),
                               focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
                                 borderSide:
-                                    BorderSide(color: Color(0xFF00B4D8)),
+                                    const BorderSide(color: CoresApp.primaria),
                               ),
                             ),
                           ),
@@ -200,11 +237,14 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Cancelar',
-                            style: TextStyle(color: Colors.white60)),
+                            style: TextStyle(color: CoresApp.textoSecundario)),
                       ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00B4D8),
+                          backgroundColor: CoresApp.primaria,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         onPressed: () {
                           final newText = editController.text.trim();
@@ -221,7 +261,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                           }
                         },
                         child: const Text('Salvar',
-                            style: TextStyle(color: Colors.white)),
+                            style: TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ],
                   );
@@ -230,54 +272,76 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             }
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF2B2B3D),
+              backgroundColor: CoresTelas.fundoModal,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: CoresApp.borda, width: 1),
               ),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    isEditing
-                        ? 'Detalhes do Modelo / Trabalhos'
-                        : 'Novo Modelo de Projeto',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: CoresApp.primaria.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.layers_outlined,
+                            color: CoresApp.primaria, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        isEditing
+                            ? 'Editar Modelo de Projeto'
+                            : 'Novo Modelo de Projeto',
+                        style: const TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white60),
+                    icon: const Icon(Icons.close,
+                        color: CoresApp.textoSecundario),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
               content: SizedBox(
-                width: 580,
+                width: 600,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Campos ID e Nome
                       Row(
                         children: [
                           SizedBox(
-                            width: 100,
+                            width: 110,
                             child: TextField(
                               controller: idController,
-                              enabled: true,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
+                              style: const TextStyle(
+                                  color: CoresApp.textoPrincipal),
+                              decoration: InputDecoration(
                                 labelText: 'ID',
-                                labelStyle: TextStyle(color: Colors.white70),
+                                labelStyle: const TextStyle(
+                                    color: CoresApp.textoSecundario),
+                                filled: true,
+                                fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.white30),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide:
+                                      const BorderSide(color: CoresApp.borda),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0xFF00B4D8),
-                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                      color: CoresApp.primaria),
                                 ),
                               ),
                             ),
@@ -286,17 +350,23 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                           Expanded(
                             child: TextField(
                               controller: nameController,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
+                              style: const TextStyle(
+                                  color: CoresApp.textoPrincipal),
+                              decoration: InputDecoration(
                                 labelText: 'Nome do Tipo de Projeto',
-                                labelStyle: TextStyle(color: Colors.white70),
+                                labelStyle: const TextStyle(
+                                    color: CoresApp.textoSecundario),
+                                filled: true,
+                                fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.white30),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide:
+                                      const BorderSide(color: CoresApp.borda),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0xFF00B4D8),
-                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                      color: CoresApp.primaria),
                                 ),
                               ),
                             ),
@@ -304,13 +374,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
+
+                      // Título Etapas
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'Trabalhos Internos (Etapas):',
+                            'Trabalhos Internos (Etapas)',
                             style: TextStyle(
-                              color: Color(0xFF00B4D8),
+                              color: CoresApp.textoPrincipal,
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
                             ),
@@ -321,13 +393,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E1E2C),
+                              color: CoresApp.primaria.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: CoresApp.primaria.withOpacity(0.3)),
                             ),
                             child: Text(
                               'Total: ${currentStepsWithOrder.length}',
                               style: const TextStyle(
-                                color: Colors.white70,
+                                color: CoresApp.primaria,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -336,14 +410,16 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // Linha de cadastro com campo de Número e Nome lado a lado
+
+                      // Inserção de Etapas
                       Row(
                         children: [
                           SizedBox(
-                            width: 80,
+                            width: 85,
                             child: TextField(
                               controller: stepOrderController,
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                  color: CoresApp.textoPrincipal),
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
@@ -351,17 +427,23 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                 FilteringTextInputFormatter.allow(
                                     RegExp(r'^\d*[.,]?\d{0,5}'))
                               ],
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Nº',
-                                labelStyle: TextStyle(
-                                    color: Colors.white70, fontSize: 12),
+                                labelStyle: const TextStyle(
+                                    color: CoresApp.textoSecundario,
+                                    fontSize: 12),
                                 isDense: true,
+                                filled: true,
+                                fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.white24),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide:
+                                      const BorderSide(color: CoresApp.borda),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderSide:
-                                      BorderSide(color: Color(0xFF00B4D8)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                      color: CoresApp.primaria),
                                 ),
                               ),
                             ),
@@ -370,21 +452,26 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                           Expanded(
                             child: TextField(
                               controller: stepNameController,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
+                              style: const TextStyle(
+                                  color: CoresApp.textoPrincipal),
+                              decoration: InputDecoration(
                                 hintText: 'Descrição da Etapa (ex: Contato)',
-                                hintStyle: TextStyle(
-                                  color: Colors.white38,
+                                hintStyle: const TextStyle(
+                                  color: CoresApp.textoFraco,
                                   fontSize: 13,
                                 ),
                                 isDense: true,
+                                filled: true,
+                                fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.white24),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide:
+                                      const BorderSide(color: CoresApp.borda),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0xFF00B4D8),
-                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                      color: CoresApp.primaria),
                                 ),
                               ),
                               onSubmitted: (_) => addStep(),
@@ -393,32 +480,39 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                           const SizedBox(width: 8),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF00B4D8),
+                              backgroundColor: CoresApp.primaria,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
+                                horizontal: 16,
                                 vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
                             onPressed: addStep,
                             icon: const Icon(
                               Icons.add,
                               size: 18,
-                              color: Colors.white,
+                              color: CoresApp.textoPrincipal,
                             ),
                             label: const Text(
                               'Incluir',
-                              style: TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                  color: CoresApp.textoPrincipal,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      // Lista de etapas cadastradas no modal
                       Container(
                         constraints: const BoxConstraints(maxHeight: 250),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E1E2C),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white10),
+                          color: CoresApp.fundoSecundario,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: CoresApp.borda),
                         ),
                         child: currentStepsWithOrder.isEmpty
                             ? const Center(
@@ -426,7 +520,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                   padding: EdgeInsets.all(24.0),
                                   child: Text(
                                     'Nenhum trabalho cadastrado para este tipo.',
-                                    style: TextStyle(color: Colors.white38),
+                                    style:
+                                        TextStyle(color: CoresApp.textoFraco),
                                   ),
                                 ),
                               )
@@ -434,61 +529,57 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                 shrinkWrap: true,
                                 itemCount: currentStepsWithOrder.length,
                                 separatorBuilder: (_, __) => const Divider(
-                                  color: Colors.white10,
+                                  color: CoresApp.bordaSuave,
                                   height: 1,
                                 ),
                                 itemBuilder: (context, index) {
                                   final entry = currentStepsWithOrder[index];
-
-                                  return InkWell(
+                                  return ListTile(
                                     key: ValueKey('${entry['name']}-$index'),
                                     onTap: () => editStep(index),
-                                    child: ListTile(
-                                      leading: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF00B4D8),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          entry['order'] ?? '',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
+                                    leading: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: CoresApp.primaria,
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
-                                      title: Text(
-                                        entry['name'] ?? '',
+                                      child: Text(
+                                        entry['order'] ?? '',
                                         style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.edit,
-                                              color: Colors.white70,
-                                              size: 18,
-                                            ),
-                                            onPressed: () => editStep(index),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              color: Colors.redAccent,
-                                              size: 20,
-                                            ),
-                                            onPressed: () => removeStep(index),
-                                          ),
-                                        ],
+                                    ),
+                                    title: Text(
+                                      entry['name'] ?? '',
+                                      style: const TextStyle(
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 13,
                                       ),
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.edit_outlined,
+                                            color: CoresApp.textoSecundario,
+                                            size: 18,
+                                          ),
+                                          onPressed: () => editStep(index),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            color: CoresApp.erro,
+                                            size: 18,
+                                          ),
+                                          onPressed: () => removeStep(index),
+                                        ),
+                                      ],
                                     ),
                                   );
                                 },
@@ -503,12 +594,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                   onPressed: () => Navigator.pop(context),
                   child: const Text(
                     'Cancelar',
-                    style: TextStyle(color: Colors.white60),
+                    style: TextStyle(color: CoresApp.textoSecundario),
                   ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00B4D8),
+                    backgroundColor: CoresApp.primaria,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   onPressed: () async {
                     if (idController.text.trim().isEmpty ||
@@ -537,7 +631,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao salvar: $e')),
+                          SnackBar(
+                            content: Text('Erro ao salvar: $e'),
+                            backgroundColor: CoresApp.erro,
+                          ),
                         );
                       }
                     }
@@ -545,7 +642,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                   child: const Text(
                     'Salvar alterações',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: CoresApp.textoPrincipal,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -561,9 +658,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E2C),
+      backgroundColor: CoresDashboard.fundo,
+      // Altura ajustada para 60 para corresponder perfeitamente ao Cabecalho
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(50),
+        preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
@@ -572,182 +670,291 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           userName: '',
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Cadastro de Trabalho (Modelos de Projetos)',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+      // Corpo principal envolto em um Container com gradiente suave de fundo
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0B0F19),
+              Color(0xFF0F172A),
+            ],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Cabeçalho da página com visual moderno
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: CoresApp.primaria,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Cadastro de Trabalho (Modelos de Projetos)',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: CoresApp.textoPrincipal,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00B4D8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CoresApp.primaria,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 16,
+                      ),
+                      elevation: 4,
+                      shadowColor: CoresApp.primaria.withOpacity(0.4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                    onPressed: () => _openFormatDetailDialog(),
+                    icon: const Icon(Icons.add_rounded,
+                        color: CoresApp.textoPrincipal),
+                    label: const Text(
+                      'Novo Modelo',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  onPressed: () => _openFormatDetailDialog(),
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text(
-                    'Novo Modelo',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: Container(
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Container principal da tabela com efeito de card elevado e borda suave
+              Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2B2B3D),
-                  borderRadius: BorderRadius.circular(12),
+                  color: CoresDashboard.card,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: CoresApp.borda, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Cabeçalho refinado das colunas da tabela
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
-                        vertical: 14,
+                        vertical: 16,
                       ),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1B4965),
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(12),
+                      decoration: BoxDecoration(
+                        color: CoresDashboard.cabecalhoTabela,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(16),
+                        ),
+                        border: const Border(
+                          bottom: BorderSide(color: CoresApp.borda, width: 1),
                         ),
                       ),
                       child: const Row(
                         children: [
                           SizedBox(
-                            width: 80,
+                            width: 100,
                             child: Text(
-                              'ID Modelo',
+                              'ID MODELO',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: CoresApp.textoSecundario,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
                               ),
                             ),
                           ),
                           SizedBox(
                             width: 120,
                             child: Text(
-                              'Nº Trabalhos',
+                              'Nº TRABALHOS',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: CoresApp.textoSecundario,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
                               ),
                             ),
                           ),
                           Expanded(
                             child: Text(
-                              'Tipos de Projetos',
+                              'TIPOS DE PROJETOS',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: CoresApp.textoSecundario,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
                               ),
                             ),
                           ),
                           SizedBox(
-                            width: 100,
+                            width: 110,
                             child: Text(
-                              'Ações',
+                              'AÇÕES',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white,
+                                color: CoresApp.textoSecundario,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Expanded(
-                      child: _isLoading
-                          ? const Center(
+
+                    // Conteúdo da Tabela
+                    _isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(50.0),
+                            child: Center(
                               child: CircularProgressIndicator(
-                                color: Color(0xFF00B4D8),
+                                color: CoresApp.primaria,
                               ),
-                            )
-                          : _workFormats.isEmpty
-                              ? const Center(
+                            ),
+                          )
+                        : _workFormats.isEmpty
+                            ? const Padding(
+                                padding: EdgeInsets.all(50.0),
+                                child: Center(
                                   child: Text(
-                                    'Nenhum modelo cadastrado.',
-                                    style: TextStyle(color: Colors.white54),
+                                    'Nenhum modelo cadastrado no momento.',
+                                    style: TextStyle(
+                                      color: CoresApp.textoSecundario,
+                                      fontSize: 14,
+                                    ),
                                   ),
-                                )
-                              : ListView.separated(
-                                  itemCount: _workFormats.length,
-                                  separatorBuilder: (_, __) => const Divider(
-                                    color: Colors.white10,
-                                    height: 1,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final item = _workFormats[index];
-                                    return InkWell(
+                                ),
+                              )
+                            : ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _workFormats.length,
+                                separatorBuilder: (_, __) => const Divider(
+                                  color: CoresApp.bordaSuave,
+                                  height: 1,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final item = _workFormats[index];
+                                  return Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
                                       onTap: () => _openFormatDetailDialog(
                                         format: item,
                                       ),
+                                      hoverColor: CoresDashboard.cardHover,
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 24,
-                                          vertical: 14,
+                                          vertical: 2,
                                         ),
                                         child: Row(
                                           children: [
                                             SizedBox(
-                                              width: 80,
-                                              child: Text(
-                                                item.id,
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontWeight: FontWeight.bold,
+                                              width: 100,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      CoresApp.fundoSecundario,
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                      color: CoresApp.borda),
+                                                ),
+                                                child: Text(
+                                                  item.id,
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 12,
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                             SizedBox(
                                               width: 120,
-                                              child: Text(
-                                                '${item.workCount}',
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                ),
+                                              child: Row(
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: CoresApp.primaria
+                                                          .withOpacity(0.1),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              12),
+                                                    ),
+                                                    child: Text(
+                                                      '${item.workCount}',
+                                                      style: const TextStyle(
+                                                        color:
+                                                            CoresApp.primaria,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                             Expanded(
                                               child: Text(
                                                 item.name,
                                                 style: const TextStyle(
-                                                  color: Colors.white,
+                                                  color:
+                                                      CoresApp.textoPrincipal,
                                                   fontWeight: FontWeight.w500,
+                                                  fontSize: 14,
                                                 ),
                                               ),
                                             ),
                                             SizedBox(
-                                              width: 100,
+                                              width: 110,
                                               child: Row(
                                                 mainAxisAlignment:
                                                     MainAxisAlignment.center,
                                                 children: [
                                                   IconButton(
+                                                    tooltip: 'Editar',
                                                     icon: const Icon(
-                                                      Icons.edit,
-                                                      color: Colors.white70,
-                                                      size: 20,
+                                                      Icons.edit_outlined,
+                                                      color: CoresApp
+                                                          .textoSecundario,
+                                                      size: 18,
                                                     ),
                                                     onPressed: () =>
                                                         _openFormatDetailDialog(
@@ -755,10 +962,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                                     ),
                                                   ),
                                                   IconButton(
+                                                    tooltip: 'Excluir',
                                                     icon: const Icon(
-                                                      Icons.delete,
-                                                      color: Colors.redAccent,
-                                                      size: 20,
+                                                      Icons.delete_outline,
+                                                      color: CoresApp.erro,
+                                                      size: 18,
                                                     ),
                                                     onPressed: () =>
                                                         _deleteFormat(item.id),
@@ -769,15 +977,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                           ],
                                         ),
                                       ),
-                                    );
-                                  },
-                                ),
-                    ),
+                                    ),
+                                  );
+                                },
+                              ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

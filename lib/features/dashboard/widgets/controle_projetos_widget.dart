@@ -7,6 +7,17 @@ class ControleProjetosWidget extends StatefulWidget {
   final bool ordenarPrioridade;
   final bool somenteAtivos;
   final bool filtroAtivo;
+
+  // Parâmetro para o tipo de serviço selecionado
+  final String tipoServicoSelecionado;
+
+  // Lista dinâmica vinda do cadastro de trabalho (WorkFormatsScreen)
+  final List<String> tiposServicoOpcoes;
+
+  // Parâmetros para o período (Data Inicial e Data Fim)
+  final DateTime? dataInicio;
+  final DateTime? dataFim;
+
   final Set<String>? expandedProjectIds;
 
   final VoidCallback onNewProject;
@@ -22,12 +33,21 @@ class ControleProjetosWidget extends StatefulWidget {
   final ValueChanged<bool?> onOrdenarPrioridadeChanged;
   final ValueChanged<bool?> onSomenteAtivosChanged;
 
+  // Callbacks
+  final ValueChanged<String?> onTipoServicoChanged;
+  final ValueChanged<DateTime?> onDataInicioChanged;
+  final ValueChanged<DateTime?> onDataFimChanged;
+
   const ControleProjetosWidget({
     super.key,
     required this.agrupar,
     required this.ordenarPrioridade,
     required this.somenteAtivos,
     required this.filtroAtivo,
+    required this.tipoServicoSelecionado,
+    required this.tiposServicoOpcoes,
+    this.dataInicio,
+    this.dataFim,
     this.expandedProjectIds,
     required this.onNewProject,
     required this.onSynchronize,
@@ -40,36 +60,29 @@ class ControleProjetosWidget extends StatefulWidget {
     required this.onAgruparChanged,
     required this.onOrdenarPrioridadeChanged,
     required this.onSomenteAtivosChanged,
+    required this.onTipoServicoChanged,
+    required this.onDataInicioChanged,
+    required this.onDataFimChanged,
+    required String filtroProjetos,
+    required Null Function(String? value) onFiltroProjetosChanged,
   });
 
   @override
   State<ControleProjetosWidget> createState() => _ControleProjetosWidgetState();
-
-  void somenteAtivosChanged(bool bool) {}
 }
 
 class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
   late Timer _timer;
   late DateTime _now;
 
-  // Lista de tipos de horas solicitada
-  final List<String> _tiposHsOpcoes = const [
-    'Todos os Tipos',
-    'Horas Cobradas',
-    'Horas Investimento',
-    'Horas Não Cobradas',
-    'Horas Internas',
-    'Outras',
-    'Horas Não Informadas',
-  ];
-
-  String _tipoSelecionado = 'Todos os Tipos';
+  // Armazena localmente para garantir resposta visual imediata no clique
+  late String _tipoServicoLocal;
 
   @override
   void initState() {
     super.initState();
-
     _now = DateTime.now();
+    _tipoServicoLocal = widget.tipoServicoSelecionado;
 
     _timer = Timer.periodic(
       const Duration(seconds: 1),
@@ -81,6 +94,16 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         }
       },
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant ControleProjetosWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.tipoServicoSelecionado != _tipoServicoLocal) {
+      setState(() {
+        _tipoServicoLocal = widget.tipoServicoSelecionado;
+      });
+    }
   }
 
   @override
@@ -101,17 +124,56 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         '${date.second.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _selecionarData(BuildContext context, bool isInicio) async {
+    final DateTime initialDate =
+        (isInicio ? widget.dataInicio : widget.dataFim) ?? DateTime.now();
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFF35D27F),
+              onPrimary: Colors.black,
+              surface: Color(0xFF1B1B2A),
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: const Color(0xFF1B1B2A),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      if (isInicio) {
+        widget.onDataInicioChanged(picked);
+      } else {
+        widget.onDataFimChanged(picked);
+      }
+      widget.onFilter();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final List<String> listaServicos = [
+      'Todos os Serviços',
+      ...widget.tiposServicoOpcoes.where((item) => item != 'Todos os Serviços')
+    ];
+
+    if (!listaServicos.contains(_tipoServicoLocal)) {
+      _tipoServicoLocal = listaServicos.first;
+    }
+
     return Container(
       width: double.infinity,
       height: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        10,
-        8,
-        10,
-        6,
-      ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
       decoration: BoxDecoration(
         color: const Color(0xFF1B1B2A),
         borderRadius: BorderRadius.circular(14),
@@ -128,9 +190,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
           Container(
             height: 34,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 9,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: BoxDecoration(
               color: const Color(0xFF101019),
               borderRadius: BorderRadius.circular(8),
@@ -185,53 +245,51 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           const SizedBox(height: 6),
 
           // ========================================================
-          // TÍTULO
+          // TÍTULO + LIMPAR
           // ========================================================
-          const Text(
-            'Filtrar Projetos',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              height: 1,
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          // ========================================================
-          // PROJETOS ATIVOS
-          // ========================================================
-          _dropdown<String>(
-            value:
-                widget.somenteAtivos ? 'Projetos Ativos' : 'Todos os Projetos',
-            items: const [
-              DropdownMenuItem(
-                value: 'Projetos Ativos',
-                child: Text('Projetos Ativos'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Filtrar Projetos',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
               ),
-              DropdownMenuItem(
-                value: 'Todos os Projetos',
-                child: Text('Todos os Projetos'),
-              ),
+              if (widget.filtroAtivo)
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _tipoServicoLocal = 'Todos os Serviços';
+                    });
+                    widget.onTipoServicoChanged('Todos os Serviços');
+                    widget.onDataInicioChanged(null);
+                    widget.onDataFimChanged(null);
+                    widget.onFilter();
+                  },
+                  child: const Text(
+                    'Limpar',
+                    style: TextStyle(
+                      color: Color(0xFF35D27F),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
-            onChanged: (value) {
-              widget.onSomenteAtivosChanged(
-                value == 'Projetos Ativos',
-              );
-            },
           ),
 
           const SizedBox(height: 4),
 
           // ========================================================
-          // TIPO DE HORAS (ATUALIZADO)
+          // FILTRO: TIPO DE SERVIÇO
           // ========================================================
           _dropdown<String>(
-            value: _tiposHsOpcoes.contains(_tipoSelecionado)
-                ? _tipoSelecionado
-                : 'Todos os Tipos',
-            items: _tiposHsOpcoes.map((tipo) {
+            value: _tipoServicoLocal,
+            items: listaServicos.map((tipo) {
               return DropdownMenuItem<String>(
                 value: tipo,
                 child: Text(
@@ -243,11 +301,39 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
             onChanged: (value) {
               if (value != null) {
                 setState(() {
-                  _tipoSelecionado = value;
+                  _tipoServicoLocal = value;
                 });
+                widget.onTipoServicoChanged(value);
                 widget.onFilter();
               }
             },
+          ),
+
+          const SizedBox(height: 4),
+
+          // ========================================================
+          // FILTRO POR PERÍODO
+          // ========================================================
+          Row(
+            children: [
+              Expanded(
+                child: _dataField(
+                  label: widget.dataInicio != null
+                      ? _formatDate(widget.dataInicio!)
+                      : 'Data Inicial',
+                  onTap: () => _selecionarData(context, true),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _dataField(
+                  label: widget.dataFim != null
+                      ? _formatDate(widget.dataFim!)
+                      : 'Data Final',
+                  onTap: () => _selecionarData(context, false),
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 6),
@@ -323,9 +409,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
   }) {
     return Container(
       height: 30,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 7,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7),
       decoration: BoxDecoration(
         color: const Color(0xFF101019),
         borderRadius: BorderRadius.circular(8),
@@ -352,6 +436,46 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           ),
           items: items,
           onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+
+  Widget _dataField({required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFF101019),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.16),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFE5E5EA),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.calendar_today_outlined,
+              color: Color(0xFFBDBDC7),
+              size: 14,
+            ),
+          ],
         ),
       ),
     );

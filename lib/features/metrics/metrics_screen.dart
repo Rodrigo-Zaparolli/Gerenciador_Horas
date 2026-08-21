@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
@@ -6,12 +7,14 @@ class MetricsScreen extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelectTab;
   final TimeLogStore timeLogStore;
+  final String userName; // Adicionado para carregar o nome no perfil
 
   const MetricsScreen({
     super.key,
     required this.selectedIndex,
     required this.onSelectTab,
     required this.timeLogStore,
+    required this.userName,
   });
 
   @override
@@ -46,22 +49,22 @@ class _MetricsScreenState extends State<MetricsScreen> {
   late List<TextEditingController> _outrasControllers;
   late List<TextEditingController> _naoInformadasControllers;
 
-  Color _metaColor = const Color(0xFF9C27B0);
-  Color _realizadoColor = const Color(0xFF2C6E91);
+  Color _metaColor = CoresApp.secundaria;
+  Color _realizadoColor = CoresDashboard.graficoProjetos;
 
   final List<Color> _paletaCores = const [
-    Color(0xFF00B4D8),
-    Color(0xFF2C6E91),
-    Color(0xFF4CAF50),
-    Color(0xFFFF9800),
-    Color(0xFFE91E63),
-    Color(0xFF9C27B0),
-    Color(0xFF3F51B5),
-    Color(0xFFFFC107),
-    Color(0xFF009688),
-    Color(0xFFFF5722),
-    Color(0xFF673AB7),
-    Color(0xFF8BC34A),
+    CoresApp.primaria,
+    CoresApp.secundaria,
+    CoresApp.sucesso,
+    CoresApp.aviso,
+    CoresApp.erro,
+    CoresDashboard.graficoHoras,
+    CoresDashboard.graficoProjetos,
+    CoresDashboard.graficoConcluidos,
+    CoresDashboard.graficoAtrasados,
+    CoresDashboard.graficoAndamento,
+    CoresApp.destaqueAmarelo,
+    CoresApp.destaqueVerde,
   ];
 
   @override
@@ -196,7 +199,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
             match = true;
           }
         } else {
-          // Comparações flexíveis cobrando variações com 'h', 'hs' ou 'horas'
           if (normTarget.contains('cobradas') && !normTarget.contains('nao')) {
             if (normLog.contains('cobradas') && !normLog.contains('nao')) {
               match = true;
@@ -288,15 +290,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E2C),
+      backgroundColor: CoresDashboard.fundo,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(50),
+        preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
           searchQuery: '',
           onSearchChanged: (val) {},
-          userName: '',
+          userName: widget.userName, // Repassando o nome do usuário aqui
         ),
       ),
       body: SingleChildScrollView(
@@ -307,7 +309,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF2B2B3D),
+                color: CoresDashboard.card,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -316,12 +318,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Meta vs Horas Realizadas (2026)',
                         style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white),
+                            color: CoresApp.textoPrincipal),
                       ),
                       Row(
                         children: [
@@ -332,64 +334,64 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 8),
                   SizedBox(
-                    height: 260,
+                    height: 180,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         const double maxValor = 200.0;
                         final double availableHeight =
-                            constraints.maxHeight - 50;
+                            constraints.maxHeight - 30;
 
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Expanded(
-                              flex: 18,
+                              flex: 16,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Text('Cor da Meta:',
+                                  Text('Cor da Meta:',
                                       style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 2),
                                   Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
+                                    spacing: 4,
+                                    runSpacing: 4,
                                     children: _paletaCores.map((color) {
                                       final isSelected = _metaColor == color;
                                       return GestureDetector(
                                         onTap: () =>
                                             setState(() => _metaColor = color),
                                         child: Container(
-                                          width: 22,
-                                          height: 22,
+                                          width: 17,
+                                          height: 17,
                                           decoration: BoxDecoration(
                                             color: color,
                                             shape: BoxShape.circle,
                                             border: isSelected
                                                 ? Border.all(
                                                     color: Colors.white,
-                                                    width: 2.5)
+                                                    width: 2)
                                                 : null,
                                           ),
                                         ),
                                       );
                                     }).toList(),
                                   ),
-                                  const SizedBox(height: 12),
-                                  const Text('Cor do Realizado:',
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 6),
+                                  Text('Cor do Realizado:',
+                                      style: TextStyle(
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 2),
                                   Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
+                                    spacing: 4,
+                                    runSpacing: 4,
                                     children: _paletaCores.map((color) {
                                       final isSelected =
                                           _realizadoColor == color;
@@ -397,15 +399,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                         onTap: () => setState(
                                             () => _realizadoColor = color),
                                         child: Container(
-                                          width: 22,
-                                          height: 22,
+                                          width: 17,
+                                          height: 17,
                                           decoration: BoxDecoration(
                                             color: color,
                                             shape: BoxShape.circle,
                                             border: isSelected
                                                 ? Border.all(
                                                     color: Colors.white,
-                                                    width: 2.5)
+                                                    width: 2)
                                                 : null,
                                           ),
                                         ),
@@ -415,7 +417,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 ],
                               ),
                             ),
-                            const Expanded(flex: 10, child: SizedBox()),
+                            const Expanded(flex: 8, child: SizedBox()),
                             ...List.generate(12, (index) {
                               final metaVal = _parseTimeToDouble(
                                   _metaControllers[index].text);
@@ -450,14 +452,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                                 Text(
                                                     _metaControllers[index]
                                                         .text,
-                                                    style: const TextStyle(
-                                                        fontSize: 10,
+                                                    style: TextStyle(
+                                                        fontSize: 9,
                                                         fontWeight:
                                                             FontWeight.bold,
-                                                        color: Colors.white)),
-                                              const SizedBox(height: 4),
+                                                        color: CoresApp
+                                                            .textoPrincipal)),
+                                              const SizedBox(height: 2),
                                               Container(
-                                                  width: 22,
+                                                  width: 18,
                                                   height: metaH > 0 ? metaH : 3,
                                                   decoration: BoxDecoration(
                                                       color: _metaColor,
@@ -476,14 +479,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                             children: [
                                               if (realizadoVal > 0)
                                                 Text(realizadoText,
-                                                    style: const TextStyle(
-                                                        fontSize: 10,
+                                                    style: TextStyle(
+                                                        fontSize: 9,
                                                         fontWeight:
                                                             FontWeight.bold,
-                                                        color: Colors.white70)),
-                                              const SizedBox(height: 4),
+                                                        color: CoresApp
+                                                            .textoSecundario)),
+                                              const SizedBox(height: 2),
                                               Container(
-                                                  width: 22,
+                                                  width: 18,
                                                   height: realizadoH > 0
                                                       ? realizadoH
                                                       : 3,
@@ -499,13 +503,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 4),
                                       Text(_meses[index],
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 11,
+                                          style: TextStyle(
+                                              color: CoresApp.textoSecundario,
+                                              fontSize: 10,
                                               fontWeight: FontWeight.w500)),
                                     ],
                                   ),
@@ -554,7 +558,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 border: TableBorder.all(color: Colors.black12, width: 1),
                 children: [
                   TableRow(
-                    decoration: const BoxDecoration(color: Color(0xFF1B4965)),
+                    decoration:
+                        BoxDecoration(color: CoresDashboard.cabecalhoTabela),
                     children: [
                       _buildCellText('Data Início Ano',
                           isHeader: true, color: Colors.white),
@@ -567,7 +572,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     ],
                   ),
                   TableRow(
-                    decoration: const BoxDecoration(color: Color(0xFF1B4965)),
+                    decoration:
+                        BoxDecoration(color: CoresDashboard.cabecalhoTabela),
                     children: [
                       _buildCellInput(_dataInicioController,
                           bgColor: const Color(0xFFFFF2CC), onChanged: (_) {
@@ -763,8 +769,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 8),
         Text(label,
-            style: const TextStyle(
-                color: Colors.white70,
+            style: TextStyle(
+                color: CoresApp.textoSecundario,
                 fontSize: 13,
                 fontWeight: FontWeight.w500)),
       ],

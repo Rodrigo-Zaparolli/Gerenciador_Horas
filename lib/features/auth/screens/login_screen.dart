@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -35,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor, preencha o e-mail e a senha.'),
-          backgroundColor: Color(0xFFB71C1C),
+          backgroundColor: CoresApp.erro,
         ),
       );
       return;
@@ -50,8 +51,6 @@ class _LoginScreenState extends State<LoginScreen> {
         email: email,
         password: password,
       );
-
-      // Removido o widget.onLoginSuccess() daqui para evitar conflito com o StreamBuilder do main.dart
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         String errorMessage = 'Erro ao fazer login.';
@@ -69,8 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: const Color(0xFFB71C1C),
+            content: Text(errorMessage,
+                style: const TextStyle(color: CoresApp.textoPrincipal)),
+            backgroundColor: CoresApp.erro,
           ),
         );
       }
@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SnackBar(
           content:
               Text('Por favor, digite seu e-mail no campo acima primeiro.'),
-          backgroundColor: Color(0xFFB71C1C),
+          backgroundColor: CoresApp.erro,
         ),
       );
       return;
@@ -103,8 +103,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'E-mail de redefinição enviado! Verifique sua caixa de entrada.'),
-            backgroundColor: Colors.green,
+                'E-mail de redefinição enviado! Verifique sua caixa de entrada e spam.'),
+            backgroundColor: CoresApp.sucesso,
           ),
         );
       }
@@ -112,8 +112,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao enviar e-mail: ${e.message}'),
-            backgroundColor: const Color(0xFFB71C1C),
+            content: Text('Erro ao enviar e-mail: ${e.message}',
+                style: const TextStyle(color: CoresApp.textoPrincipal)),
+            backgroundColor: CoresApp.erro,
           ),
         );
       }
@@ -123,21 +124,21 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF12121B),
+      backgroundColor: CoresApp.fundo,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 420),
-            padding: const EdgeInsets.all(32.0),
+            padding: const EdgeInsets.fromLTRB(36.0, 20.0, 36.0, 36.0),
             decoration: BoxDecoration(
-              color: const Color(0xFF161622),
+              color: CoresApp.superficie,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              border: Border.all(color: CoresApp.borda, width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
-                  blurRadius: 20,
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
               ],
@@ -146,64 +147,67 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Logo grande preenchendo o espaço superior perfeitamente
                 Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.cyanAccent.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                      border:
-                          Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
-                    ),
-                    child: const Icon(
-                      Icons.lock_outline_rounded,
-                      color: Colors.cyanAccent,
-                      size: 40,
+                  child: SizedBox(
+                    height: 200,
+                    width: double.infinity,
+                    child: Image.asset(
+                      'assets/images/Logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.access_time_rounded,
+                          color: CoresApp.primaria,
+                          size: 48,
+                        );
+                      },
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
                 const Text(
                   'Bem-vindo de volta',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: CoresApp.textoPrincipal,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 const Text(
                   'Faça login para continuar',
                   style: TextStyle(
-                    color: Colors.white54,
+                    color: CoresApp.textoSecundario,
                     fontSize: 13,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
                 // Campo de E-mail
                 TextField(
                   controller: _emailController,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: const TextStyle(
+                      color: CoresApp.textoPrincipal, fontSize: 14),
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     labelText: 'E-mail',
-                    labelStyle:
-                        const TextStyle(color: Colors.white70, fontSize: 13),
+                    labelStyle: const TextStyle(
+                        color: CoresApp.textoSecundario, fontSize: 13),
                     prefixIcon: const Icon(Icons.email_outlined,
-                        color: Colors.cyanAccent, size: 20),
+                        color: CoresApp.primaria, size: 20),
                     filled: true,
-                    fillColor: const Color(0xFF1A1A2E),
-                    border: OutlineInputBorder(
+                    fillColor: CoresTelas.campoFormulario,
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: CoresApp.borda),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          const BorderSide(color: Colors.cyanAccent, width: 1),
+                      borderSide: const BorderSide(
+                          color: CoresApp.primaria, width: 1.2),
                     ),
                   ),
                 ),
@@ -212,20 +216,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Campo de Senha
                 TextField(
                   controller: _passwordController,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: const TextStyle(
+                      color: CoresApp.textoPrincipal, fontSize: 14),
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     labelText: 'Senha',
-                    labelStyle:
-                        const TextStyle(color: Colors.white70, fontSize: 13),
+                    labelStyle: const TextStyle(
+                        color: CoresApp.textoSecundario, fontSize: 13),
                     prefixIcon: const Icon(Icons.lock_outline,
-                        color: Colors.cyanAccent, size: 20),
+                        color: CoresApp.primaria, size: 20),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword
                             ? Icons.visibility_off
                             : Icons.visibility,
-                        color: Colors.white54,
+                        color: CoresApp.textoFraco,
                         size: 20,
                       ),
                       onPressed: () {
@@ -235,40 +240,46 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF1A1A2E),
-                    border: OutlineInputBorder(
+                    fillColor: CoresTelas.campoFormulario,
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: CoresApp.borda),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          const BorderSide(color: Colors.cyanAccent, width: 1),
+                      borderSide: const BorderSide(
+                          color: CoresApp.primaria, width: 1.2),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
 
                 // Botão Esqueci a senha
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: _resetPassword,
+                    style: TextButton.styleFrom(
+                      foregroundColor: CoresApp.primaria,
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     child: const Text(
                       'Esqueceu a senha?',
-                      style: TextStyle(color: Colors.cyanAccent, fontSize: 13),
+                      style: TextStyle(color: CoresApp.primaria, fontSize: 13),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
                 // Botão de Entrar
                 SizedBox(
                   height: 48,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.cyanAccent,
-                      foregroundColor: Colors.black,
+                      backgroundColor: CoresApp.primaria,
+                      foregroundColor: CoresApp.fundo,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -281,7 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.black,
+                              color: CoresApp.fundo,
                             ),
                           )
                         : const Text(
@@ -293,7 +304,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 // Botão para ir para a Tela de Cadastro
                 Row(
@@ -301,7 +312,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const Text(
                       'Não tem uma conta?',
-                      style: TextStyle(color: Colors.white54, fontSize: 13),
+                      style: TextStyle(
+                          color: CoresApp.textoSecundario, fontSize: 13),
                     ),
                     TextButton(
                       onPressed: () {
@@ -310,8 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           MaterialPageRoute(
                             builder: (context) => RegisterScreen(
                               onRegisterSuccess: () {
-                                Navigator.pop(
-                                    context); // Apenas fecha a tela de registro
+                                Navigator.pop(context);
                               },
                             ),
                           ),
@@ -320,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text(
                         'Cadastre-se',
                         style: TextStyle(
-                          color: Colors.cyanAccent,
+                          color: CoresApp.primaria,
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
                         ),

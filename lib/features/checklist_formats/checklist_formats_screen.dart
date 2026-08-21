@@ -593,7 +593,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
     return Scaffold(
       backgroundColor: CoresTelas.fundoPrincipal,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(50),
+        preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
@@ -650,6 +650,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                 child: Column(
                   children: [
                     Container(
+                      // [AJUSTE UI]: Altere o padding vertical do cabeçalho da tabela se desejar ajustar a altura dele
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 14),
                       decoration: BoxDecoration(
@@ -713,8 +714,9 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                       onTap: () =>
                                           _openFormatDetailDialog(format: item),
                                       child: Padding(
+                                        // [AJUSTE UI]: Reduza ou aumente o padding vertical (ex: de 10 a 14) para diminuir/aumentar a altura das linhas da tabela
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 24, vertical: 14),
+                                            horizontal: 24, vertical: 10),
                                         child: Row(
                                           children: [
                                             SizedBox(
@@ -749,21 +751,33 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                                     MainAxisAlignment.center,
                                                 children: [
                                                   IconButton(
+                                                    // [AJUSTE UI]: Ajuste o tamanho visual e constraints dos botões de ação da linha se necessário
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                            minWidth: 32,
+                                                            minHeight: 32),
+                                                    padding: EdgeInsets.zero,
                                                     icon: Icon(
                                                         Icons.edit_outlined,
                                                         color: CoresApp
                                                             .textoSecundario,
-                                                        size: 20),
+                                                        size: 18),
                                                     onPressed: () =>
                                                         _openFormatDetailDialog(
                                                             format: item),
                                                   ),
+                                                  const SizedBox(width: 4),
                                                   IconButton(
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                            minWidth: 32,
+                                                            minHeight: 32),
+                                                    padding: EdgeInsets.zero,
                                                     icon: Icon(
                                                         Icons
                                                             .delete_outline_rounded,
                                                         color: CoresApp.erro,
-                                                        size: 20),
+                                                        size: 18),
                                                     onPressed: () =>
                                                         _deleteFormat(item.id),
                                                   ),

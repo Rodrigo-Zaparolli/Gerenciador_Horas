@@ -721,4 +721,6 @@ class FirebaseService {
     await _projectsRef.doc(id).delete();
     await _completedProjectsRef.doc(id).delete();
   }
+
+  Future<void> deleteTimeLog(String s) async {}
 }

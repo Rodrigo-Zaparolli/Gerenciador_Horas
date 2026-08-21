@@ -936,7 +936,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     }
 
     try {
-      // Exemplo se houver um método específico no service para exclusão total
       await widget.firebaseService.deleteProject(id);
 
       if (!mounted) {
@@ -1357,7 +1356,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // TABELA COMPLETA
+  // TABELA COMPLETA COM VISUAL MAIS MODERNO E ELEGANTE
   // ============================================================
 
   Widget _buildCompletedProjectsTable(
@@ -1367,134 +1366,132 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: CoresDashboard.tabelaFundo,
-        borderRadius: BorderRadius.circular(
-          TamanhosApp.raioTabela,
-        ),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: CoresDashboard.tabelaBorda,
-          width: TamanhosApp.espessuraBorda,
+          color: CoresApp.borda,
+          width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: CoresApp.overlay,
-            blurRadius: 18,
-            offset: const Offset(0, 7),
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            height: 4,
-            decoration: BoxDecoration(
-              color: CoresApp.sucesso,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(
-                  TamanhosApp.raioTabela,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 4,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [CoresApp.primaria, CoresApp.sucesso],
                 ),
               ),
             ),
-          ),
-          Expanded(
-            child: completedProjects.isEmpty
-                ? _buildEmptyState()
-                : Scrollbar(
-                    controller: _verticalController,
-                    thumbVisibility: true,
-                    child: SingleChildScrollView(
+            Expanded(
+              child: completedProjects.isEmpty
+                  ? _buildEmptyState()
+                  : Scrollbar(
                       controller: _verticalController,
-                      scrollDirection: Axis.vertical,
+                      thumbVisibility: true,
                       child: SingleChildScrollView(
-                        controller: _horizontalController,
-                        scrollDirection: Axis.horizontal,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minWidth: MediaQuery.of(context).size.width - 40,
-                          ),
-                          child: DataTable(
-                            showCheckboxColumn: false,
-                            columnSpacing: 16.0,
-                            horizontalMargin: 16.0,
-                            headingRowHeight: 48,
-                            dataRowMinHeight: 28,
-                            dataRowMaxHeight: 36,
-                            dividerThickness: 0.35,
-                            headingRowColor: WidgetStateProperty.all(
-                              CoresDashboard.tabelaCabecalho,
+                        controller: _verticalController,
+                        scrollDirection: Axis.vertical,
+                        child: SingleChildScrollView(
+                          controller: _horizontalController,
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: MediaQuery.of(context).size.width - 40,
                             ),
-                            dataRowColor: WidgetStateProperty.resolveWith(
-                              (states) {
-                                if (states.contains(
-                                  WidgetState.hovered,
-                                )) {
-                                  return CoresDashboard.tabelaHover;
-                                }
+                            child: DataTable(
+                              showCheckboxColumn: false,
+                              columnSpacing: 18.0,
+                              horizontalMargin: 18.0,
+                              headingRowHeight: 52,
+                              dataRowMinHeight: 32,
+                              dataRowMaxHeight: 40,
+                              dividerThickness: 0.5,
+                              headingRowColor: WidgetStateProperty.all(
+                                CoresDashboard.tabelaCabecalho,
+                              ),
+                              dataRowColor: WidgetStateProperty.resolveWith(
+                                (states) {
+                                  if (states.contains(
+                                    WidgetState.hovered,
+                                  )) {
+                                    return CoresDashboard.tabelaHover;
+                                  }
 
-                                return null;
-                              },
-                            ),
-                            columns: [
-                              DataColumn(
-                                label: _buildTableHeader('ID'),
+                                  return null;
+                                },
                               ),
-                              DataColumn(
-                                label: _buildTableHeader('Nº'),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader('Cliente'),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Tipo de Serviço',
+                              columns: [
+                                DataColumn(
+                                  label: _buildTableHeader('ID'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Informações',
+                                DataColumn(
+                                  label: _buildTableHeader('Nº'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Status',
+                                DataColumn(
+                                  label: _buildTableHeader('Cliente'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Data Início / Fim',
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Tipo de Serviço',
+                                  ),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Hs Estimadas',
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Informações',
+                                  ),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Líder Prj',
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Status',
+                                  ),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Tipo HS',
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Data Início / Fim',
+                                  ),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Ações',
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Hs Estimadas',
+                                  ),
                                 ),
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Líder Prj',
+                                  ),
+                                ),
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Tipo HS',
+                                  ),
+                                ),
+                                DataColumn(
+                                  label: _buildTableHeader(
+                                    'Ações',
+                                  ),
+                                ),
+                              ],
+                              rows: _generateRows(
+                                completedProjects,
                               ),
-                            ],
-                            rows: _generateRows(
-                              completedProjects,
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1540,14 +1537,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               maxWidth: 560,
             ),
             decoration: BoxDecoration(
-              color: CoresDashboard.tabelaFundo,
+              color: CoresTelas.fundoModal,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: CoresDashboard.tabelaBorda,
+                color: CoresApp.borda,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.35),
+                  color: Colors.black.withOpacity(0.4),
                   blurRadius: 30,
                   offset: const Offset(0, 12),
                 ),
@@ -1565,13 +1562,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     16,
                   ),
                   decoration: BoxDecoration(
-                    color: CoresDashboard.tabelaCabecalho,
+                    color: CoresTelas.fundoModalSecundario,
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(18),
                     ),
                     border: Border(
                       bottom: BorderSide(
-                        color: CoresDashboard.tabelaBorda,
+                        color: CoresApp.borda,
                       ),
                     ),
                   ),
@@ -1580,10 +1577,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: CoresApp.sucesso.withOpacity(0.10),
+                          color: CoresApp.sucesso.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: CoresApp.sucesso.withOpacity(0.22),
+                            color: CoresApp.sucesso.withOpacity(0.3),
                           ),
                         ),
                         child: Icon(
@@ -1648,10 +1645,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: CoresApp.textoPrincipal.withOpacity(0.025),
+                            color: CoresTelas.campoFormulario.withOpacity(0.4),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: CoresDashboard.tabelaBorda,
+                              color: CoresApp.borda,
                             ),
                           ),
                           child: Column(
@@ -1801,13 +1798,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     14,
                   ),
                   decoration: BoxDecoration(
-                    color: CoresDashboard.tabelaCabecalho,
+                    color: CoresTelas.fundoModalSecundario,
                     borderRadius: const BorderRadius.vertical(
                       bottom: Radius.circular(18),
                     ),
                     border: Border(
                       top: BorderSide(
-                        color: CoresDashboard.tabelaBorda,
+                        color: CoresApp.borda,
                       ),
                     ),
                   ),
@@ -1897,7 +1894,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CoresDashboard.tabelaFundo,
+      backgroundColor: CoresApp.fundo,
       appBar: Cabecalho(
         selectedIndex: widget.selectedIndex,
         onSelectTab: widget.onSelectTab,
@@ -1909,172 +1906,155 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         },
         userName: '',
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          22,
-          24,
-          18,
-          18,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0B0F19),
+              Color(0xFF0F172A),
+            ],
+          ),
         ),
-        child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: widget.firebaseService.getCompletedProjectsStream(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                !snapshot.hasData) {
-              return Center(
-                child: CircularProgressIndicator(
-                  color: CoresApp.destaque,
-                ),
-              );
-            }
+        child: Padding(
+          padding: const EdgeInsets.all(28.0),
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: widget.firebaseService.getCompletedProjectsStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return Center(
+                  child: CircularProgressIndicator(
+                    color: CoresApp.primaria,
+                  ),
+                );
+              }
 
-            if (snapshot.hasError) {
-              return Center(
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: CoresDashboard.tabelaFundo,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: CoresApp.erro.withOpacity(0.30),
+              if (snapshot.hasError) {
+                return Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: CoresDashboard.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: CoresApp.erro.withOpacity(0.30),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.error_outline_rounded,
+                          color: CoresApp.erro,
+                          size: 42,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Erro ao carregar trabalhos finalizados',
+                          style: TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: CoresApp.textoSecundario,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                );
+              }
+
+              final List<dynamic> rawProjects = snapshot.data != null
+                  ? List<dynamic>.from(
+                      snapshot.data!,
+                    )
+                  : <dynamic>[];
+
+              final allProjects = _convertProjects(rawProjects);
+              final completedProjects = _filterProjects(allProjects);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        color: CoresApp.erro,
-                        size: 42,
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: CoresApp.sucesso,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Projetos Finalizados',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: CoresApp.textoPrincipal,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Erro ao carregar trabalhos finalizados',
-                        style: TextStyle(
-                          color: CoresApp.textoPrincipal,
-                          fontWeight: FontWeight.w800,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: CoresApp.textoSecundario,
-                          fontSize: 12,
+                        decoration: BoxDecoration(
+                          color: CoresApp.sucesso.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: CoresApp.sucesso.withOpacity(0.35),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.check_circle_outline_rounded,
+                              color: CoresApp.sucesso,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${completedProjects.length} CONCLUÍDO(S)',
+                              style: const TextStyle(
+                                color: CoresApp.sucesso,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              );
-            }
-
-            final List<dynamic> rawProjects = snapshot.data != null
-                ? List<dynamic>.from(
-                    snapshot.data!,
-                  )
-                : <dynamic>[];
-
-            final allProjects = _convertProjects(rawProjects);
-            final completedProjects = _filterProjects(allProjects);
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: CoresApp.sucesso.withOpacity(
-                          0.10,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: CoresApp.sucesso.withOpacity(
-                            0.20,
-                          ),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.task_alt_rounded,
-                        color: CoresApp.sucesso,
-                        size: 22,
-                      ),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: _buildCompletedProjectsTable(
+                      completedProjects,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Projetos Finalizados',
-                            style: TextStyle(
-                              color: CoresApp.textoPrincipal,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Histórico completo dos trabalhos concluídos',
-                            style: TextStyle(
-                              color: CoresApp.textoSecundario,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: CoresApp.sucesso.withOpacity(
-                          0.10,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: CoresApp.sucesso.withOpacity(
-                            0.30,
-                          ),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.check_circle_outline_rounded,
-                            color: CoresApp.sucesso,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${completedProjects.length} CONCLUÍDO(S)',
-                            style: TextStyle(
-                              color: CoresApp.sucesso,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Expanded(
-                  child: _buildCompletedProjectsTable(
-                    completedProjects,
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

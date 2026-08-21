@@ -1,16 +1,21 @@
 enum TimerState { stopped, running, paused }
 
 class TimeLog {
-  String id; // Changed from 'final String id;' to allow setters
+  String id;
   final String targetId;
-  final DateTime date;
+  DateTime
+      date; // Corrigido para não ser final, permitindo atribuições e uso de setters
   String startTime;
   String endTime;
   String durationFormatted;
+  int durationMinutes;
   bool isRegistered;
   String? projectName;
   String? taskName;
   String? typeHs;
+  dynamic hours;
+  String? description;
+  String? projectId;
 
   TimeLog({
     required this.id,
@@ -19,19 +24,19 @@ class TimeLog {
     required this.startTime,
     required this.endTime,
     required this.durationFormatted,
+    this.durationMinutes = 0,
     required this.isRegistered,
     this.projectName,
     this.taskName,
     this.typeHs,
-    required hours,
-    required description,
+    this.hours,
+    this.description,
+    this.projectId,
   });
 
-  get hours => null;
-
-  get description => null;
-
-  get projectId => null;
+  set setDurationMinutes(int minutes) {
+    durationMinutes = minutes;
+  }
 }
 
 class FilterOptions {

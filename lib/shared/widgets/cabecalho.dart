@@ -1,11 +1,19 @@
+// ignore_for_file: unnecessary_cast
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:gerenciador_horas/core/theme/cores_app.dart';
 
 class Cabecalho extends StatelessWidget implements PreferredSizeWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelectTab;
   final String searchQuery;
   final ValueChanged<String> onSearchChanged;
+  final String userName;
+  final ImageProvider?
+      fotoPerfilProvider; // Imagem pronta vinda da tela principal
+  final bool carregandoFoto; // Status de carregamento vindo da tela principal
+  final VoidCallback? onAlterarFoto; // Função para abrir o seletor de foto
 
   const Cabecalho({
     super.key,
@@ -13,214 +21,255 @@ class Cabecalho extends StatelessWidget implements PreferredSizeWidget {
     required this.onSelectTab,
     required this.searchQuery,
     required this.onSearchChanged,
-    required String userName,
+    required this.userName,
+    this.fotoPerfilProvider,
+    this.carregandoFoto = false,
+    this.onAlterarFoto,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(50);
+  Size get preferredSize => const Size.fromHeight(60);
 
   String _getUserName() {
     final User? user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return 'Usuário';
-    }
+    if (user == null) return userName.isNotEmpty ? userName : 'Usuário';
 
     final String displayName = user.displayName?.trim() ?? '';
-    if (displayName.isNotEmpty) {
-      return displayName;
-    }
+    if (displayName.isNotEmpty) return displayName;
 
     final String email = user.email?.trim() ?? '';
-    if (email.isNotEmpty) {
-      return email;
-    }
+    if (email.isNotEmpty) return email;
 
-    return 'Usuário';
+    return userName.isNotEmpty ? userName : 'Usuário';
   }
 
   @override
   Widget build(BuildContext context) {
-    final String userName = _getUserName();
+    final String nomeUsuario = _getUserName();
     final bool isProjectsSelected = selectedIndex == 0;
 
-    return AppBar(
-      backgroundColor: const Color(0xFF252538),
-      toolbarHeight: 50,
-      titleSpacing: 24,
-      title: Row(
-        children: [
-          // Título com comportamento visual idêntico às abas (sublinhado e mudança de cor)
-          InkWell(
-            onTap: () => onSelectTab(0),
-            child: Container(
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Text(
-                    'Gestão de Horas e Projetos',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: isProjectsSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isProjectsSelected ? Colors.white : Colors.white60,
-                    ),
-                  ),
-                  if (isProjectsSelected)
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        height: 3,
-                        decoration: const BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+    return Container(
+      height: 60,
+      decoration: BoxDecoration(
+        color: CoresDashboard.fundoSecundario,
+        border: Border(
+          bottom: BorderSide(
+            color: CoresDashboard.tabelaBorda,
+            width: 1,
           ),
-          const SizedBox(width: 24),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildTopTabItem(
-                    index: 1,
-                    label: 'Cadastro de Trabalho',
-                    icon: Icons.work_outline,
-                  ),
-                  _buildTopTabItem(
-                    index: 2,
-                    label: 'Métricas',
-                    icon: Icons.bar_chart_rounded,
-                  ),
-                  _buildTopTabItem(
-                    index: 3,
-                    label: 'Proj. Finalizados',
-                    icon: Icons.check_circle_outline,
-                  ),
-                  _buildTopTabItem(
-                    index: 4,
-                    label: 'Orientações',
-                    icon: Icons.help_outline_rounded,
-                  ),
-                  _buildTopTabItem(
-                    index: 5,
-                    label: 'Histórico',
-                    icon: Icons.warning_rounded,
-                  ),
-                  _buildTopTabItem(
-                    index: 6,
-                    label: 'Check List',
-                    icon: Icons.checklist_rounded,
-                  ),
-                  _buildTopTabItem(
-                    index: 7,
-                    label: 'Solicitações',
-                    icon: Icons.folder_open_rounded,
-                  ),
-                ],
-              ),
-            ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 180,
-                height: 34,
-                child: TextField(
-                  onChanged: onSearchChanged,
-                  controller: TextEditingController(
-                    text: searchQuery,
+      child: AppBar(
+        backgroundColor: Colors.transparent,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 60,
+        titleSpacing: 20,
+        title: Row(
+          children: [
+            InkWell(
+              onTap: () => onSelectTab(0),
+              borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
+              child: SizedBox(
+                height: 60,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        height: 100,
+                        width: 180,
+                        child: Image.asset(
+                          'assets/images/Logo_H.png',
+                          fit: BoxFit.fill,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Text(
+                              'Gestão de Horas e Projetos',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isProjectsSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: isProjectsSelected
+                                    ? CoresApp.textoPrincipal
+                                    : CoresApp.textoSecundario,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      if (isProjectsSelected)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: CoresApp.primaria,
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Pesquisar...',
-                    hintStyle: const TextStyle(
-                      color: Colors.white38,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTopTabItem(
+                        index: 1,
+                        label: 'Cadastro de Trabalho',
+                        icon: Icons.add_circle_outline_rounded),
+                    _buildTopTabItem(
+                        index: 2,
+                        label: 'Métricas',
+                        icon: Icons.bar_chart_rounded),
+                    _buildTopTabItem(
+                        index: 3,
+                        label: 'Projetos Finalizados',
+                        icon: Icons.task_alt_rounded),
+                    _buildTopTabItem(
+                        index: 4,
+                        label: 'Orientações',
+                        icon: Icons.help_outline_rounded),
+                    _buildTopTabItem(
+                        index: 5,
+                        label: 'Tarefas Executadas',
+                        icon: Icons.warning_amber_rounded),
+                    _buildTopTabItem(
+                        index: 6,
+                        label: 'Check List',
+                        icon: Icons.checklist_rounded),
+                    _buildTopTabItem(
+                        index: 7,
+                        label: 'Solicitações',
+                        icon: Icons.folder_open_rounded),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 180,
+                  height: 36,
+                  child: TextField(
+                    onChanged: onSearchChanged,
+                    controller: TextEditingController(
+                      text: searchQuery,
+                    ),
+                    style: const TextStyle(
+                      color: CoresApp.textoPrincipal,
                       fontSize: 12,
                     ),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      color: Colors.white38,
-                      size: 16,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 0,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFF1A1A2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                    decoration: InputDecoration(
+                      hintText: 'Pesquisar...',
+                      hintStyle: const TextStyle(
+                        color: CoresApp.textoFraco,
+                        fontSize: 12,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: CoresApp.textoSecundario,
+                        size: 16,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 0,
+                      ),
+                      filled: true,
+                      fillColor: CoresTelas.campoFormulario,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(TamanhosApp.raioBotao),
+                        borderSide: const BorderSide(color: CoresApp.borda),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(TamanhosApp.raioBotao),
+                        borderSide: const BorderSide(color: CoresApp.primaria),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Container(
-                width: 1,
-                height: 24,
-                color: Colors.white12,
-              ),
-              const SizedBox(width: 14),
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.blue.withOpacity(0.25),
+                const SizedBox(width: 16),
+                Container(
+                  width: 1,
+                  height: 24,
+                  color: CoresDashboard.tabelaDivisor,
+                ),
+                const SizedBox(width: 14),
+                Tooltip(
+                  message: 'Clique para alterar a foto de perfil',
+                  child: InkWell(
+                    onTap: onAlterarFoto,
+                    borderRadius: BorderRadius.circular(16),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: CoresApp.primaria.withOpacity(0.15),
+                      backgroundImage: fotoPerfilProvider,
+                      child: (carregandoFoto)
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: CoresApp.primaria,
+                              ),
+                            )
+                          : (fotoPerfilProvider == null)
+                              ? const Icon(
+                                  Icons.person_outline_rounded,
+                                  color: CoresApp.primaria,
+                                  size: 18,
+                                )
+                              : null,
+                    ),
                   ),
                 ),
-                child: const Icon(
-                  Icons.person_outline,
-                  color: Colors.white70,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 180,
-                ),
-                child: Text(
-                  userName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 150,
+                  ),
+                  child: Text(
+                    nomeUsuario,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: CoresApp.textoPrincipal,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
-      elevation: 0,
+        ],
+        elevation: 0,
+      ),
     );
   }
 
@@ -233,11 +282,11 @@ class Cabecalho extends StatelessWidget implements PreferredSizeWidget {
 
     return InkWell(
       onTap: () => onSelectTab(index),
+      borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
       child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 11,
-        ),
+        height: 60,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -247,16 +296,18 @@ class Cabecalho extends StatelessWidget implements PreferredSizeWidget {
                 Icon(
                   icon,
                   size: 18,
-                  color: isSelected ? Colors.blue : Colors.white60,
+                  color:
+                      isSelected ? CoresApp.primaria : CoresApp.textoSecundario,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
                   label,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white60,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 13,
+                    color: isSelected
+                        ? CoresApp.textoPrincipal
+                        : CoresApp.textoSecundario,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -268,8 +319,8 @@ class Cabecalho extends StatelessWidget implements PreferredSizeWidget {
                 right: 0,
                 child: Container(
                   height: 3,
-                  decoration: const BoxDecoration(
-                    color: Colors.blue,
+                  decoration: BoxDecoration(
+                    color: CoresApp.primaria,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(2),
                     ),

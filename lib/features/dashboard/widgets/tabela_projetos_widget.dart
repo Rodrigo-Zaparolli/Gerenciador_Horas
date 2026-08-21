@@ -129,6 +129,7 @@ class TabelaProjetosWidget extends StatefulWidget {
 
 class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   final Map<String, TextEditingController> _inlineControllers = {};
+  final Map<String, TextEditingController> _logCommentControllers = {};
 
   final List<String> _tiposHsOpcoes = const [
     'Hs Cobradas',
@@ -142,6 +143,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   @override
   void dispose() {
     for (var controller in _inlineControllers.values) {
+      controller.dispose();
+    }
+    for (var controller in _logCommentControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -158,6 +162,21 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
       }
     }
     return _inlineControllers[project.id]!;
+  }
+
+  TextEditingController _getLogCommentController(TimeLog log) {
+    final key =
+        '${log.targetId}_${log.date.toIso8601String()}_${log.startTime}';
+    if (!_logCommentControllers.containsKey(key)) {
+      _logCommentControllers[key] =
+          TextEditingController(text: log.description ?? '');
+    } else {
+      final controller = _logCommentControllers[key]!;
+      if (controller.text != (log.description ?? '')) {
+        controller.text = log.description ?? '';
+      }
+    }
+    return _logCommentControllers[key]!;
   }
 
   Color _getStageColor(String status) {
@@ -827,6 +846,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     final serviceTypeController =
         TextEditingController(text: project.serviceType);
     final hourTypeController = TextEditingController(text: project.hourType);
+    // Adicionado o controller para o campo descritivo/observação dentro do modal
+    final observacaoController =
+        TextEditingController(text: project.observacao ?? '');
 
     List<TaskModel> tempSubTasks = project.subTasks != null
         ? project.subTasks!
@@ -1033,6 +1055,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 12),
+                            // Campo Descritivo (Observação) inserido junto ao modal
+                            TextField(
+                              controller: observacaoController,
+                              style: TextStyle(
+                                  color: CoresApp.textoPrincipal, fontSize: 13),
+                              decoration: _dialogInputDecoration(
+                                label: 'Informações Úteis / Descritivo',
+                                icon: Icons.description_rounded,
+                              ),
+                              maxLines: 2,
                             ),
                             const SizedBox(height: 12),
                             Row(
@@ -1604,6 +1638,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               project.subTasks = tempSubTasks;
                               project.estimatedHours =
                                   estimatedHoursController.text.trim();
+                              // Atribuindo o valor do campo descritivo/observação atualizado no modal
+                              project.observacao =
+                                  observacaoController.text.trim();
 
                               if (tempSubTasks.isNotEmpty) {
                                 tempSubTasks.sort((a, b) =>
@@ -1923,6 +1960,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             if (log.isRegistered) continue;
 
             rows.add(_buildSavedRecordRow(
+              project: project,
               id: project.id,
               id2: sub.subId,
               client: project.client,
@@ -2066,6 +2104,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   }
 
   DataRow _buildSavedRecordRow({
+    required ProjectModel project,
     required String id,
     required String id2,
     required String client,
@@ -2076,7 +2115,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     required String targetId,
   }) {
     final dateFormatted = _formatDate(log.date);
-
     final bool showCadastrarHere = !log.isRegistered;
 
     return DataRow(
@@ -2086,7 +2124,73 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
         DataCell(_buildCellText(id2, color: CoresApp.textoSecundario)),
         DataCell(_buildCellText(client, color: CoresApp.textoSecundario)),
         DataCell(_buildCellText(serviceType, color: CoresApp.textoSecundario)),
-        const DataCell(SizedBox.shrink()),
+        DataCell(
+          SizedBox(
+            height: 30,
+            child: TextField(
+              controller: _getLogCommentController(log),
+              style: TextStyle(
+                color: CoresApp.textoPrincipal,
+                fontSize: TamanhosApp.tabelaFonte,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Comentário do registro...',
+                hintStyle: TextStyle(
+                  color: CoresApp.textoSecundario.withOpacity(0.5),
+                  fontSize: 11,
+                ),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                filled: true,
+                fillColor: CoresTelas.campoFormulario.withOpacity(0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(
+                    color: CoresApp.bordaSuave,
+                    width: TamanhosApp.espessuraBorda,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(
+                    color: CoresApp.bordaSuave,
+                    width: TamanhosApp.espessuraBorda,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(
+                    color: CoresApp.destaque,
+                    width: TamanhosApp.espessuraBorda,
+                  ),
+                ),
+              ),
+              onSubmitted: (value) async {
+                log.description = value.trim();
+                try {
+                  await widget.firebaseService.salvarProjeto(project);
+                  widget.onEditLog(log);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                          'Comentário do registro salvo com sucesso!'),
+                      backgroundColor: CoresApp.sucesso,
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erro ao salvar comentário: $e'),
+                      backgroundColor: CoresApp.erro,
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        ),
         DataCell(Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(

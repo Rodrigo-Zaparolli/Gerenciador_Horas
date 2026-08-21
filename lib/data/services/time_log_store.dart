@@ -521,4 +521,8 @@ class TimeLogStore extends ChangeNotifier {
 
     super.dispose();
   }
+
+  void deleteLog(String s) {}
+
+  void loadLogs() {}
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
@@ -76,7 +77,6 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
       setState(() {
         if (dadosRemotos.isEmpty) {
-          // Cria padrões caso não tenha nada salvo
           _adicionarBlocoComDetalhes(
               id: '1',
               titulo: 'Orientação #1',
@@ -104,15 +104,12 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               alturaTexto: item['alturaTexto'] ?? 120.0,
             );
 
-            // Ouve alterações no texto para salvar automaticamente
             model.controller.addListener(() => _salvarBloco(model));
-
             _orientacoes.add(model);
           }
         }
       });
     } catch (_) {
-      // Tratar falha de carregamento silenciosamente se necessário
     } finally {
       setState(() => _isLoading = false);
     }
@@ -188,10 +185,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF1E1E2C),
+      return Scaffold(
+        backgroundColor: CoresApp.fundo,
         body:
-            Center(child: CircularProgressIndicator(color: Color(0xFF00B4D8))),
+            Center(child: CircularProgressIndicator(color: CoresApp.primaria)),
       );
     }
 
@@ -200,9 +197,9 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E2C),
+      backgroundColor: CoresApp.fundo,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(50),
+        preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
@@ -222,9 +219,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                 const Text(
                   'Orientações do Dia a Dia',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: CoresApp.textoPrincipal,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 Row(
@@ -262,16 +260,19 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                               });
                             },
                             style: const TextStyle(
-                                color: Colors.white, fontSize: 14),
+                                color: CoresApp.textoPrincipal, fontSize: 14),
                             decoration: InputDecoration(
-                              hintText: 'Pesquisar pelo nome da orientação...',
-                              hintStyle: const TextStyle(color: Colors.white38),
+                              hintText: 'Pesquisar orientação...',
+                              hintStyle: const TextStyle(
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 13),
                               prefixIcon: const Icon(Icons.search,
-                                  color: Colors.white38, size: 20),
+                                  color: CoresApp.textoSecundario, size: 18),
                               suffixIcon: _pesquisaController.text.isNotEmpty
                                   ? IconButton(
                                       icon: const Icon(Icons.clear,
-                                          color: Colors.white38, size: 16),
+                                          color: CoresApp.textoSecundario,
+                                          size: 16),
                                       onPressed: () {
                                         setState(() {
                                           _pesquisaController.clear();
@@ -283,24 +284,24 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                   : null,
                               isDense: true,
                               contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 10, horizontal: 12),
+                                  vertical: 12, horizontal: 12),
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(10),
                                 borderSide:
-                                    const BorderSide(color: Colors.white24),
+                                    const BorderSide(color: CoresApp.borda),
                               ),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(10),
                                 borderSide:
-                                    const BorderSide(color: Colors.white24),
+                                    const BorderSide(color: CoresApp.borda),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(10),
                                 borderSide:
-                                    const BorderSide(color: Color(0xFF00B4D8)),
+                                    const BorderSide(color: CoresApp.primaria),
                               ),
                               filled: true,
-                              fillColor: const Color(0xFF2B2B3D),
+                              fillColor: CoresApp.superficie,
                             ),
                           );
                         },
@@ -308,15 +309,22 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                           return Align(
                             alignment: Alignment.topLeft,
                             child: Material(
-                              elevation: 4.0,
-                              color: const Color(0xFF2B2B3D),
-                              borderRadius: BorderRadius.circular(8),
+                              elevation: 8.0,
+                              color: Colors.transparent,
                               child: Container(
                                 width: 280,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF2B2B3D),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.white12),
+                                  color: CoresApp.superficie,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: CoresApp.borda, width: 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.4),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
                                 child: ListView.builder(
                                   padding: EdgeInsets.zero,
@@ -333,7 +341,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                         child: Text(
                                           option,
                                           style: const TextStyle(
-                                              color: Colors.white,
+                                              color: CoresApp.textoPrincipal,
                                               fontSize: 14),
                                         ),
                                       ),
@@ -349,15 +357,16 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                     const SizedBox(width: 12),
                     ElevatedButton.icon(
                       onPressed: _adicionarBloco,
-                      icon: const Icon(Icons.add, size: 18),
+                      icon: const Icon(Icons.add_rounded, size: 18),
                       label: const Text('Nova Orientação'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2C6E91),
-                        foregroundColor: Colors.white,
+                        backgroundColor: CoresApp.primaria,
+                        foregroundColor: CoresApp.textoPrincipal,
+                        elevation: 0,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
+                            horizontal: 16, vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
@@ -373,7 +382,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                   const Center(
                     child: Text(
                       'Nenhuma orientação encontrada.',
-                      style: TextStyle(color: Colors.white54, fontSize: 14),
+                      style: TextStyle(
+                          color: CoresApp.textoSecundario, fontSize: 14),
                     ),
                   ),
                 for (var item in orientacoesFiltradas)
@@ -390,14 +400,15 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                       child: Container(
                         width: item.largura,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2B2B3D),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white12),
+                          color: CoresApp.superficie,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: CoresApp.borda.withOpacity(0.6), width: 1),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
+                              color: Colors.black.withOpacity(0.4),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
                             ),
                           ],
                         ),
@@ -419,7 +430,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                                       item.tituloController,
                                                   autofocus: true,
                                                   style: const TextStyle(
-                                                    color: Color(0xFF00B4D8),
+                                                    color: CoresApp.destaque,
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 14,
                                                   ),
@@ -428,13 +439,12 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                                     isDense: true,
                                                     contentPadding:
                                                         EdgeInsets.symmetric(
-                                                            vertical: 4,
-                                                            horizontal: 8),
+                                                            vertical: 8,
+                                                            horizontal: 10),
                                                     border:
                                                         OutlineInputBorder(),
                                                     filled: true,
-                                                    fillColor:
-                                                        Color(0xFF1E1E2C),
+                                                    fillColor: CoresApp.fundo,
                                                   ),
                                                   onSubmitted: (value) {
                                                     setState(() {
@@ -453,7 +463,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                               IconButton(
                                                 icon: const Icon(Icons.check,
                                                     size: 16,
-                                                    color: Color(0xFF00B4D8)),
+                                                    color: CoresApp.sucesso),
                                                 onPressed: () {
                                                   setState(() {
                                                     if (item
@@ -491,7 +501,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                                   child: Text(
                                                     item.titulo,
                                                     style: const TextStyle(
-                                                      color: Color(0xFF00B4D8),
+                                                      color: CoresApp.destaque,
                                                       fontWeight:
                                                           FontWeight.bold,
                                                       fontSize: 14,
@@ -501,9 +511,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
-                                                const Icon(Icons.edit,
+                                                const Icon(Icons.edit_rounded,
                                                     size: 14,
-                                                    color: Colors.white38),
+                                                    color: CoresApp
+                                                        .textoSecundario),
                                               ],
                                             ),
                                           ),
@@ -512,9 +523,9 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                   IconButton(
                                     icon: Icon(
                                       item.expandido
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      color: Colors.white70,
+                                          ? Icons.expand_less_rounded
+                                          : Icons.expand_more_rounded,
+                                      color: CoresApp.textoPrincipal,
                                       size: 20,
                                     ),
                                     onPressed: () {
@@ -531,8 +542,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                   ),
                                   const SizedBox(width: 12),
                                   IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        color: Colors.redAccent, size: 20),
+                                    icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: CoresApp.erro,
+                                        size: 20),
                                     onPressed: () => _removerBloco(item),
                                     tooltip: 'Excluir bloco',
                                     padding: EdgeInsets.zero,
@@ -549,26 +562,27 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                     maxLines: null,
                                     expands: true,
                                     style: const TextStyle(
-                                        color: Colors.white, fontSize: 14),
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 14),
                                     decoration: const InputDecoration(
                                       hintText:
                                           'Digite aqui as regras, links ou orientações...',
-                                      hintStyle:
-                                          TextStyle(color: Colors.white38),
+                                      hintStyle: TextStyle(
+                                          color: CoresApp.textoSecundario),
                                       border: OutlineInputBorder(
                                         borderSide:
-                                            BorderSide(color: Colors.white24),
+                                            BorderSide(color: CoresApp.borda),
                                       ),
                                       enabledBorder: OutlineInputBorder(
                                         borderSide:
-                                            BorderSide(color: Colors.white24),
+                                            BorderSide(color: CoresApp.borda),
                                       ),
                                       focusedBorder: OutlineInputBorder(
                                         borderSide: BorderSide(
-                                            color: Color(0xFF00B4D8)),
+                                            color: CoresApp.primaria),
                                       ),
                                       filled: true,
-                                      fillColor: Color(0xFF1E1E2C),
+                                      fillColor: CoresApp.fundo,
                                       contentPadding: EdgeInsets.all(12),
                                     ),
                                   ),
@@ -595,8 +609,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                         child: Container(
                                           padding: const EdgeInsets.all(4),
                                           child: const Icon(
-                                            Icons.signal_cellular_alt,
-                                            color: Colors.white38,
+                                            Icons.signal_cellular_alt_rounded,
+                                            color: CoresApp.textoSecundario,
                                             size: 16,
                                           ),
                                         ),

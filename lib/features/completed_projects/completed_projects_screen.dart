@@ -16,6 +16,7 @@ class CompletedProjectsScreen extends StatefulWidget {
     required this.firebaseService,
     required this.selectedIndex,
     required this.onSelectTab,
+    required String userName,
   });
 
   @override

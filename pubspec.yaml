@@ -38,3 +38,8 @@ flutter:
     - assets/images/cadastro_trabalho.png
     - assets/images/metricas.png
     - assets/images/projetos_finalizados.png
+    - assets/images/fundo.png
+    - assets/images/solicitacoes.png
+    - assets/images/tarefas_executadas.png
+    - assets/images/orientacoes.png
+    - assets/images/check_list.png

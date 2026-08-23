@@ -15,6 +15,7 @@ class ChecklistFormatsScreen extends StatefulWidget {
     required this.selectedIndex,
     required this.onSelectTab,
     required TimeLogStore timeLogStore,
+    required String userName,
   });
 
   @override

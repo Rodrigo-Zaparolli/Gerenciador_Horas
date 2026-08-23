@@ -51,6 +51,7 @@ class OrientacaoScreen extends StatefulWidget {
     super.key,
     required this.selectedIndex,
     required this.onSelectTab,
+    required String userName,
   });
 
   @override

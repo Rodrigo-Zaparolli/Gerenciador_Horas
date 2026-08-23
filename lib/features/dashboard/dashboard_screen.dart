@@ -2132,7 +2132,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         availableWorkFormats.map((wf) => wf.name).toList();
 
     return Scaffold(
-      backgroundColor: CoresDashboard.fundo,
+      backgroundColor: Colors
+          .transparent, // Deixamos transparente para exibir a imagem de fundo
       appBar: Cabecalho(
         selectedIndex: widget.selectedIndex,
         onSelectTab: widget.onSelectTab,
@@ -2143,243 +2144,274 @@ class _DashboardScreenState extends State<DashboardScreen> {
           });
         },
         userName: '',
-        fotoPerfilProvider: _fotoPerfilProvider,
-        carregandoFoto: _carregandoFoto,
-        onAlterarFoto: _alterarFotoPerfil,
       ),
-      body: _isLoadingProjects
-          ? Center(
-              child: CircularProgressIndicator(
-                color: CoresApp.destaque,
-              ),
-            )
-          : SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      height: 180,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: SizedBox.expand(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: CoresDashboard.card,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: CoresApp.borda, width: 0.8),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: ControleProjetosWidget(
-                                    agrupar: _agrupar,
-                                    ordenarPrioridade: _ordenarPrioridade,
-                                    somenteAtivos: _onlyActive,
-                                    filtroAtivo: _filterOptions.hasFilter ||
-                                        (_tipoServicoSelecionado != null &&
-                                            _tipoServicoSelecionado!
-                                                .isNotEmpty) ||
-                                        _filtroProjetos.isNotEmpty ||
-                                        _dataInicioFiltro != null ||
-                                        _dataFimFiltro != null,
-                                    expandedProjectIds: _expandedProjectIds,
-                                    onNewProject: _createNewProject,
-                                    onSynchronize: () {
-                                      _loadDataFromFirebase(showLoader: false);
-                                    },
-                                    onFilter: () {},
-                                    onManual: () {
-                                      final target = _selectedTargetId ??
-                                          (_projects.isNotEmpty
-                                              ? _projects.first.id
-                                              : 'Geral');
-                                      _showManualTimeDialog(target);
-                                    },
-                                    onStart: () {
-                                      final target = _selectedTargetId ??
-                                          (_projects.isNotEmpty
-                                              ? _projects.first.id
-                                              : null);
+      body: Container(
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: const AssetImage(
+                'assets/images/fundo.png'), // Ajuste para o caminho do seu asset
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(
+                  0.4), // Escurece levemente o fundo para destacar os componentes
+              BlendMode.darken,
+            ),
+          ),
+        ),
+        child: _isLoadingProjects
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: CoresApp.destaque,
+                ),
+              )
+            : SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        height: 180,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: SizedBox.expand(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: CoresDashboard.card,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: CoresApp.borda, width: 0.8),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: ControleProjetosWidget(
+                                      agrupar: _agrupar,
+                                      ordenarPrioridade: _ordenarPrioridade,
+                                      somenteAtivos: _onlyActive,
+                                      filtroAtivo: _filterOptions.hasFilter ||
+                                          (_tipoServicoSelecionado != null &&
+                                              _tipoServicoSelecionado!
+                                                  .isNotEmpty) ||
+                                          _filtroProjetos.isNotEmpty ||
+                                          _dataInicioFiltro != null ||
+                                          _dataFimFiltro != null,
+                                      expandedProjectIds: _expandedProjectIds,
+                                      onNewProject: _createNewProject,
+                                      onSynchronize: () {
+                                        _loadDataFromFirebase(
+                                            showLoader: false);
+                                      },
+                                      onFilter: () {},
+                                      onManual: () {
+                                        final target = _selectedTargetId ??
+                                            (_projects.isNotEmpty
+                                                ? _projects.first.id
+                                                : 'Geral');
+                                        _showManualTimeDialog(target);
+                                      },
+                                      onStart: () {
+                                        final target = _selectedTargetId ??
+                                            (_projects.isNotEmpty
+                                                ? _projects.first.id
+                                                : null);
 
-                                      if (target != null) {
-                                        _startTimer(target);
-                                      } else {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: const Text(
-                                                'Selecione um trabalho na tabela para iniciar!'),
-                                            backgroundColor: CoresApp.aviso,
-                                            behavior: SnackBarBehavior.floating,
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(10)),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    onPause: _pauseTimer,
-                                    onStop: _stopTimer,
-                                    onAgruparChanged: (value) {
-                                      setState(() {
-                                        _agrupar = value ?? false;
-                                      });
-                                    },
-                                    onOrdenarPrioridadeChanged: (value) {
-                                      setState(() {
-                                        _ordenarPrioridade = value ?? false;
-                                      });
-                                    },
-                                    onSomenteAtivosChanged: (value) {
-                                      setState(() {
-                                        _onlyActive = value ?? false;
-                                      });
-                                    },
-                                    filtroProjetos: _filtroProjetos,
-                                    tipoServicoSelecionado:
-                                        _tipoServicoSelecionado ?? '',
-                                    onFiltroProjetosChanged: (String? value) {
-                                      setState(() {
-                                        _filtroProjetos = value ?? '';
-                                      });
-                                    },
-                                    onTipoServicoChanged: (String? value) {
-                                      setState(() {
-                                        _tipoServicoSelecionado = value;
-                                      });
-                                    },
-                                    tiposServicoOpcoes: tiposServicoNomes,
-                                    onDataInicioChanged: (DateTime? value) {
-                                      setState(() {
-                                        _dataInicioFiltro = value;
-                                      });
-                                    },
-                                    onDataFimChanged: (DateTime? value) {
-                                      setState(() {
-                                        _dataFimFiltro = value;
-                                      });
-                                    },
+                                        if (target != null) {
+                                          _startTimer(target);
+                                        } else {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: const Text(
+                                                  'Selecione um trabalho na tabela para iniciar!'),
+                                              backgroundColor: CoresApp.aviso,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          10)),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      onPause: _pauseTimer,
+                                      onStop: _stopTimer,
+                                      onAgruparChanged: (value) {
+                                        setState(() {
+                                          _agrupar = value ?? false;
+                                        });
+                                      },
+                                      onOrdenarPrioridadeChanged: (value) {
+                                        setState(() {
+                                          _ordenarPrioridade = value ?? false;
+                                        });
+                                      },
+                                      onSomenteAtivosChanged: (value) {
+                                        setState(() {
+                                          _onlyActive = value ?? false;
+                                        });
+                                      },
+                                      filtroProjetos: _filtroProjetos,
+                                      tipoServicoSelecionado:
+                                          _tipoServicoSelecionado ?? '',
+                                      onFiltroProjetosChanged: (String? value) {
+                                        setState(() {
+                                          _filtroProjetos = value ?? '';
+                                        });
+                                      },
+                                      onTipoServicoChanged: (String? value) {
+                                        setState(() {
+                                          _tipoServicoSelecionado = value;
+                                        });
+                                      },
+                                      tiposServicoOpcoes: tiposServicoNomes,
+                                      onDataInicioChanged: (DateTime? value) {
+                                        setState(() {
+                                          _dataInicioFiltro = value;
+                                        });
+                                      },
+                                      onDataFimChanged: (DateTime? value) {
+                                        setState(() {
+                                          _dataFimFiltro = value;
+                                        });
+                                      },
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 6,
-                            child: SizedBox.expand(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: CoresDashboard.card,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: CoresApp.borda, width: 0.8),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: ProgressoProjetoWidget(
-                                    activeProject: activeProject,
-                                    timeLogs: _timeLogs,
-                                    parseTimeToHours: _parseTimeToHours,
-                                    formatHours: _formatHours,
-                                    formatDateShort: _formatDateShort,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 6,
+                              child: SizedBox.expand(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: CoresDashboard.card,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: CoresApp.borda, width: 0.8),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: ProgressoProjetoWidget(
+                                      activeProject: activeProject,
+                                      timeLogs: _timeLogs,
+                                      parseTimeToHours: _parseTimeToHours,
+                                      formatHours: _formatHours,
+                                      formatDateShort: _formatDateShort,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 3,
-                            child: SizedBox.expand(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: CoresDashboard.card,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: CoresApp.borda, width: 0.8),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: GraficoHorasWidget(
-                                    points: dailyHoursPoints,
-                                    formatHours: _formatHours,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: SizedBox.expand(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: CoresDashboard.card,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: CoresApp.borda, width: 0.8),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: GraficoHorasWidget(
+                                      points: dailyHoursPoints,
+                                      formatHours: _formatHours,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        minHeight: 350,
-                      ),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: CoresDashboard.card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: CoresApp.borda, width: 0.8),
+                          ],
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: TabelaProjetosWidget(
-                            projects: filteredProjects,
-                            statusList: _statusList,
-                            expandedProjectIds: _expandedProjectIds,
-                            selectedTargetId: _selectedTargetId,
-                            timeLogs: _timeLogs,
-                            activeTimerTargetId: _activeTimerTargetId,
-                            activeStartTime: _activeStartTime,
-                            timerState: _timerState,
-                            secondsElapsed: _secondsElapsed,
-                            showPostStopButton: _showPostStopButton,
-                            horizontalController: _horizontalTableScroll,
-                            verticalController: _verticalTableScroll,
-                            onSelectTarget: (targetId) {
-                              setState(() {
-                                _selectedTargetId = targetId;
-                              });
-                            },
-                            onToggleExpand: _toggleExpand,
-                            onEditProject: (project) {
-                              setState(() {
-                                final index = _projects.indexWhere(
-                                  (p) => p.id == project.id,
-                                );
+                      ),
+                      const SizedBox(height: 16),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minHeight: 350,
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: CoresDashboard.card,
+                            borderRadius: BorderRadius.circular(14),
+                            border:
+                                Border.all(color: CoresApp.borda, width: 0.8),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: TabelaProjetosWidget(
+                              projects: filteredProjects,
+                              statusList: _statusList,
+                              expandedProjectIds: _expandedProjectIds,
+                              selectedTargetId: _selectedTargetId,
+                              timeLogs: _timeLogs,
+                              activeTimerTargetId: _activeTimerTargetId,
+                              activeStartTime: _activeStartTime,
+                              timerState: _timerState,
+                              secondsElapsed: _secondsElapsed,
+                              showPostStopButton: _showPostStopButton,
+                              horizontalController: _horizontalTableScroll,
+                              verticalController: _verticalTableScroll,
+                              onSelectTarget: (targetId) {
+                                setState(() {
+                                  _selectedTargetId = targetId;
+                                });
+                              },
+                              onToggleExpand: _toggleExpand,
+                              onEditProject: (project) {
+                                setState(() {
+                                  final index = _projects.indexWhere(
+                                    (p) => p.id == project.id,
+                                  );
 
-                                if (index != -1) {
-                                  _projects[index] = project;
-                                }
-                              });
-                            },
-                            onDeleteProject: _confirmDeleteProject,
-                            onAddSubTask: _addNewTaskDialog,
-                            onProjectStatusChanged: (project, newStatus) async {
-                              setState(() {
-                                project.status = newStatus;
-                              });
+                                  if (index != -1) {
+                                    _projects[index] = project;
+                                  }
+                                });
+                              },
+                              onDeleteProject: _confirmDeleteProject,
+                              onAddSubTask: _addNewTaskDialog,
+                              onProjectStatusChanged:
+                                  (project, newStatus) async {
+                                setState(() {
+                                  project.status = newStatus;
+                                });
 
-                              try {
-                                await _firebaseService.saveProject(project);
+                                try {
+                                  await _firebaseService.saveProject(project);
 
-                                if (newStatus == 'TRAB_FIM') {
-                                  widget.onProjectCompleted?.call(project);
+                                  if (newStatus == 'TRAB_FIM') {
+                                    widget.onProjectCompleted?.call(project);
 
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                              'Projeto ${project.id} finalizado e movido!'),
+                                          backgroundColor: CoresApp.sucesso,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                            'Projeto ${project.id} finalizado e movido!'),
-                                        backgroundColor: CoresApp.sucesso,
+                                            'Erro ao atualizar status: $e'),
+                                        backgroundColor: CoresApp.erro,
                                         behavior: SnackBarBehavior.floating,
                                         shape: RoundedRectangleBorder(
                                             borderRadius:
@@ -2388,12 +2420,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     );
                                   }
                                 }
-                              } catch (e) {
-                                if (context.mounted) {
+                              },
+                              onSubTaskStatusChanged: (task, newStatus) async {
+                                setState(() {
+                                  task.status = newStatus;
+                                });
+
+                                final parent = _projects.firstWhere(
+                                  (p) => p.subTasks?.contains(task) ?? false,
+                                  orElse: () => _projects.first,
+                                );
+
+                                await _firebaseService.saveProject(parent);
+                              },
+                              onEditSubTask: _editSubTaskDialog,
+                              onDeleteSubTask: _confirmDeleteSubTask,
+                              onStartTimer: _startTimer,
+                              onPauseTimer: _pauseTimer,
+                              onStopTimer: _stopTimer,
+                              onManualTime: _showManualTimeDialog,
+                              onEditLog: _editLogDialog,
+                              onDeleteLog: _confirmDeleteLog,
+                              onRegisterLog: (log) async {
+                                try {
+                                  await widget.timeLogStore.register(log);
+
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  setState(() {
+                                    _showPostStopButton = false;
+                                  });
+
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content:
-                                          Text('Erro ao atualizar status: $e'),
+                                      content: const Text(
+                                          'Tempo cadastrado e salvo no Firebase com sucesso!'),
+                                      backgroundColor: CoresApp.sucesso,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10)),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          'Erro ao cadastrar tempo no Firebase: $e'),
                                       backgroundColor: CoresApp.erro,
                                       behavior: SnackBarBehavior.floating,
                                       shape: RoundedRectangleBorder(
@@ -2402,110 +2481,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                   );
                                 }
-                              }
-                            },
-                            onSubTaskStatusChanged: (task, newStatus) async {
-                              setState(() {
-                                task.status = newStatus;
-                              });
-
-                              final parent = _projects.firstWhere(
-                                (p) => p.subTasks?.contains(task) ?? false,
-                                orElse: () => _projects.first,
-                              );
-
-                              await _firebaseService.saveProject(parent);
-                            },
-                            onEditSubTask: _editSubTaskDialog,
-                            onDeleteSubTask: _confirmDeleteSubTask,
-                            onStartTimer: _startTimer,
-                            onPauseTimer: _pauseTimer,
-                            onStopTimer: _stopTimer,
-                            onManualTime: _showManualTimeDialog,
-                            onEditLog: _editLogDialog,
-                            onDeleteLog: _confirmDeleteLog,
-                            onRegisterLog: (log) async {
-                              try {
-                                await widget.timeLogStore.register(log);
-
-                                if (!mounted) {
-                                  return;
-                                }
-
+                              },
+                              onMarkTaskCompleted: (task) async {
                                 setState(() {
-                                  _showPostStopButton = false;
+                                  task.status = 'TRAB';
                                 });
 
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Text(
-                                        'Tempo cadastrado e salvo no Firebase com sucesso!'),
-                                    backgroundColor: CoresApp.sucesso,
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                  ),
+                                final parent = _projects.firstWhere(
+                                  (p) => p.subTasks?.contains(task) ?? false,
+                                  orElse: () => _projects.first,
                                 );
-                              } catch (e) {
-                                if (!mounted) {
-                                  return;
+
+                                await _firebaseService.saveProject(parent);
+
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          'Etapa ${task.subId} marcada como realizada!'),
+                                      backgroundColor: CoresApp.sucesso,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10)),
+                                    ),
+                                  );
                                 }
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'Erro ao cadastrar tempo no Firebase: $e'),
-                                    backgroundColor: CoresApp.erro,
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                  ),
-                                );
-                              }
-                            },
-                            onMarkTaskCompleted: (task) async {
-                              setState(() {
-                                task.status = 'TRAB';
-                              });
-
-                              final parent = _projects.firstWhere(
-                                (p) => p.subTasks?.contains(task) ?? false,
-                                orElse: () => _projects.first,
-                              );
-
-                              await _firebaseService.saveProject(parent);
-
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'Etapa ${task.subId} marcada como realizada!'),
-                                    backgroundColor: CoresApp.sucesso,
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                  ),
-                                );
-                              }
-                            },
-                            formatDuration: _formatDuration,
-                            firebaseService: _firebaseService,
+                              },
+                              formatDuration: _formatDuration,
+                              firebaseService: _firebaseService,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    CentralAlertasWidget(
-                      projects: _projects,
-                      formatDateShort: _formatDateShort,
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      CentralAlertasWidget(
+                        projects: _projects,
+                        formatDateShort: _formatDateShort,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 }

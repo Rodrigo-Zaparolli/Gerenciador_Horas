@@ -18,6 +18,7 @@ class TarefasScreen extends StatefulWidget {
     required this.selectedIndex,
     required this.onSelectTab,
     required this.timeLogStore,
+    required String userName,
   });
 
   @override

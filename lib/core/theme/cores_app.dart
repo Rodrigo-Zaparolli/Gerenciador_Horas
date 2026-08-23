@@ -185,19 +185,12 @@ class TamanhosApp {
   // =============================================================
 
   static const double tabelaFonteCabecalho = 10;
-
   static const double tabelaFonte = 10;
-
   static const double tabelaFonteSecundaria = 9.5;
-
   static const double tabelaFonteStatus = 9.5;
-
   static const double tabelaFonteAcao = 9.5;
-
   static const double tabelaEspacamentoColunas = 8;
-
   static const double tabelaMargemHorizontal = 8;
-
   static const double tabelaAlturaMinima = 350;
 
   // =============================================================
@@ -205,9 +198,7 @@ class TamanhosApp {
   // =============================================================
 
   static const double iconeTabela = 17;
-
   static const double iconeAcao = 18;
-
   static const double iconeStatus = 14;
 
   // =============================================================
@@ -215,11 +206,8 @@ class TamanhosApp {
   // =============================================================
 
   static const double raioTabela = 12;
-
   static const double raioBadge = 5;
-
   static const double raioBotao = 6;
-
   static const double espessuraBorda = 0.8;
 
   // =============================================================
@@ -227,8 +215,6 @@ class TamanhosApp {
   // =============================================================
 
   static const double espacamentoPequeno = 4;
-
   static const double espacamentoMedio = 8;
-
   static const double espacamentoGrande = 12;
 }

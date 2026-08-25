@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/user_cache.dart';
 
@@ -38,17 +39,24 @@ class _CabecalhoState extends State<Cabecalho> {
   @override
   void initState() {
     super.initState();
+
     if (!_cache.carregado) {
       _carregarFotoDoFirestore();
     }
   }
 
+  // ============================================================
+  // CARREGAR FOTO E NOME DO USUÁRIO
+  // ============================================================
+
   Future<void> _carregarFotoDoFirestore() async {
     try {
       final User? user = FirebaseAuth.instance.currentUser;
+
       if (user != null) {
         final String displayName = user.displayName?.trim() ?? '';
         final String email = user.email?.trim() ?? '';
+
         _cache.userName = displayName.isNotEmpty
             ? displayName
             : (email.isNotEmpty
@@ -62,7 +70,9 @@ class _CabecalhoState extends State<Cabecalho> {
 
         if (doc.exists && doc.data()?['photoBase64'] != null) {
           final String base64Str = doc.data()!['photoBase64'];
+
           final bytes = base64Decode(base64Str);
+
           if (mounted) {
             setState(() {
               _cache.fotoPerfilProvider = MemoryImage(bytes);
@@ -71,7 +81,9 @@ class _CabecalhoState extends State<Cabecalho> {
         }
       }
     } catch (e) {
-      debugPrint('Erro ao carregar foto no cabeçalho: $e');
+      debugPrint(
+        'Erro ao carregar foto no cabeçalho: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -81,8 +93,13 @@ class _CabecalhoState extends State<Cabecalho> {
     }
   }
 
+  // ============================================================
+  // ALTERAR FOTO DE PERFIL
+  // ============================================================
+
   Future<void> _alterarFotoPerfil() async {
     final ImagePicker picker = ImagePicker();
+
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
       maxWidth: 300,
@@ -90,57 +107,267 @@ class _CabecalhoState extends State<Cabecalho> {
       imageQuality: 70,
     );
 
-    if (image == null) return;
+    if (image == null) {
+      return;
+    }
 
     try {
       final User? user = FirebaseAuth.instance.currentUser;
+
       if (user != null) {
         final bytes = await image.readAsBytes();
+
         final String base64Image = base64Encode(bytes);
 
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'photoBase64': base64Image,
-        }, SetOptions(merge: true));
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+          {
+            'photoBase64': base64Image,
+          },
+          SetOptions(merge: true),
+        );
 
         if (mounted) {
           setState(() {
             _cache.fotoPerfilProvider = MemoryImage(bytes);
+            _cache.carregado = true;
           });
+
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Foto alterada com sucesso!')),
+            const SnackBar(
+              content: Text(
+                'Foto alterada com sucesso!',
+              ),
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao alterar foto: $e')),
+          SnackBar(
+            content: Text(
+              'Erro ao alterar foto: $e',
+            ),
+            backgroundColor: CoresApp.erro,
+          ),
         );
       }
     }
   }
 
+  // ============================================================
+  // NOME DO USUÁRIO
+  // ============================================================
+
   String _getUserName() {
-    if (_cache.userName.isNotEmpty) return _cache.userName;
+    if (_cache.userName.isNotEmpty) {
+      return _cache.userName;
+    }
+
     final User? user = FirebaseAuth.instance.currentUser;
+
     if (user == null) {
       return widget.userName.isNotEmpty ? widget.userName : 'Usuário';
     }
 
     final String displayName = user.displayName?.trim() ?? '';
-    if (displayName.isNotEmpty) return displayName;
+
+    if (displayName.isNotEmpty) {
+      return displayName;
+    }
 
     final String email = user.email?.trim() ?? '';
-    if (email.isNotEmpty) return email;
+
+    if (email.isNotEmpty) {
+      return email;
+    }
 
     return widget.userName.isNotEmpty ? widget.userName : 'Usuário';
   }
 
+// ============================================================
+// CONFIRMAÇÃO DE LOGOUT
+// ============================================================
+
+  Future<void> _confirmarLogout() async {
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: CoresDashboard.fundoSecundario,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: CoresDashboard.tabelaBorda,
+              width: 1,
+            ),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: CoresApp.erro.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.logout_rounded,
+                  color: CoresApp.erro,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Sair da conta',
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Deseja realmente sair da sua conta?',
+            style: TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: 14,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(
+            16,
+            0,
+            16,
+            14,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: CoresApp.textoSecundario,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.erro,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+              icon: const Icon(
+                Icons.logout_rounded,
+                size: 17,
+              ),
+              label: const Text(
+                'Sair',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) {
+      return;
+    }
+
+    await _realizarLogout();
+  }
+
+  // ============================================================
+  // REALIZAR LOGOUT
+  // ============================================================
+
+  // ============================================================
+// REALIZAR LOGOUT
+// ============================================================
+
+  // ============================================================
+// REALIZAR LOGOUT
+// ============================================================
+
+  Future<void> _realizarLogout() async {
+    try {
+      // ----------------------------------------------------------
+      // 1. FAZ LOGOUT NO FIREBASE
+      // ----------------------------------------------------------
+
+      await FirebaseAuth.instance.signOut();
+
+      // ----------------------------------------------------------
+      // 2. LIMPA O CACHE DA FOTO E DO NOME
+      // ----------------------------------------------------------
+
+      _cache.carregado = false;
+      _cache.userName = '';
+      _cache.fotoPerfilProvider = null;
+
+      // ----------------------------------------------------------
+      // 3. NÃO PRECISAMOS NAVEGAR MANUALMENTE
+      // ----------------------------------------------------------
+      //
+      // O authStateChanges() do app.dart detectará o signOut()
+      // e automaticamente trocará:
+      //
+      // MainNavigationScreen
+      //
+      // por:
+      //
+      // LoginScreen
+      //
+      // ----------------------------------------------------------
+
+      debugPrint('Logout realizado com sucesso.');
+    } catch (e) {
+      debugPrint('Erro ao realizar logout: $e');
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao sair da conta: $e',
+          ),
+          backgroundColor: CoresApp.erro,
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     final String nomeUsuario = _getUserName();
-    final bool isProjectsSelected = widget.selectedIndex == 0;
+
     final bool carregando = !_cache.carregado;
+
     final ImageProvider? fotoProvider = _cache.fotoPerfilProvider;
 
     return Container(
@@ -163,7 +390,6 @@ class _CabecalhoState extends State<Cabecalho> {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Se a largura for menor que 1100 pixels, exibe o menu responsivo (hambúrguer)
           final bool isCompact = constraints.maxWidth < 1100;
 
           return AppBar(
@@ -173,86 +399,35 @@ class _CabecalhoState extends State<Cabecalho> {
             titleSpacing: 20,
             title: Row(
               children: [
-                Tooltip(
-                  message: 'Gestão de Horas e Projetos',
-                  decoration: BoxDecoration(
-                    color: CoresDashboard.fundoSecundario.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: CoresApp.primaria.withOpacity(0.4),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  textStyle: const TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  preferBelow: true,
-                  verticalOffset: 16,
-                  child: InkWell(
-                    onTap: () => widget.onSelectTab(0),
-                    borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
-                    child: SizedBox(
-                      height: 60,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SizedBox(
-                              height: 80,
-                              width: 120,
-                              child: Image.asset(
-                                'assets/images/Logo_H.png',
-                                fit: BoxFit.fill,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Text(
-                                    'Gestão de Horas e Projetos',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isProjectsSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.w500,
-                                      color: isProjectsSelected
-                                          ? CoresApp.textoPrincipal
-                                          : CoresApp.textoSecundario,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            if (isProjectsSelected)
-                              Positioned(
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                child: Container(
-                                  height: 3,
-                                  decoration: BoxDecoration(
-                                    color: CoresApp.primaria,
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(2),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+                // ==================================================
+                // LOGOTIPO
+                // ==================================================
+
+                SizedBox(
+                  height: 80,
+                  width: 150,
+                  child: Image.asset(
+                    'assets/images/Logo_H.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Text(
+                        'Gerenciamento de Horas',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: CoresApp.textoPrincipal,
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
-                const SizedBox(width: 8),
+
+                const SizedBox(width: 12),
+
+                // ==================================================
+                // MENU
+                // ==================================================
+
                 Expanded(
                   child: isCompact
                       ? Align(
@@ -277,13 +452,38 @@ class _CabecalhoState extends State<Cabecalho> {
                               widget.onSelectTab(index);
                             },
                             itemBuilder: (BuildContext context) => [
-                              _buildPopupMenuItem(1, 'Cadastro de Trabalho'),
-                              _buildPopupMenuItem(2, 'Métricas'),
-                              _buildPopupMenuItem(3, 'Projetos Finalizados'),
-                              _buildPopupMenuItem(4, 'Orientações'),
-                              _buildPopupMenuItem(5, 'Tarefas Executadas'),
-                              _buildPopupMenuItem(6, 'Check List'),
-                              _buildPopupMenuItem(7, 'Solicitações'),
+                              _buildPopupMenuItem(
+                                0,
+                                'Projetos',
+                              ),
+                              _buildPopupMenuItem(
+                                1,
+                                'Cadastro de Trabalho',
+                              ),
+                              _buildPopupMenuItem(
+                                2,
+                                'Métricas',
+                              ),
+                              _buildPopupMenuItem(
+                                3,
+                                'Projetos Finalizados',
+                              ),
+                              _buildPopupMenuItem(
+                                4,
+                                'Orientações',
+                              ),
+                              _buildPopupMenuItem(
+                                5,
+                                'Tarefas Executadas',
+                              ),
+                              _buildPopupMenuItem(
+                                6,
+                                'Check List',
+                              ),
+                              _buildPopupMenuItem(
+                                7,
+                                'Solicitações',
+                              ),
                             ],
                           ),
                         )
@@ -293,43 +493,44 @@ class _CabecalhoState extends State<Cabecalho> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               _buildTopTabItem(
+                                index: 0,
+                                label: 'Projetos',
+                                icon: Icons.storefront,
+                              ),
+                              _buildTopTabItem(
                                 index: 1,
                                 label: 'Cadastro de Trabalho',
-                                assetImagePath:
-                                    'assets/images/cadastro_trabalho.png',
+                                icon: Icons.work_outline,
                               ),
                               _buildTopTabItem(
                                 index: 2,
                                 label: 'Métricas',
-                                assetImagePath: 'assets/images/metricas.png',
+                                icon: Icons.bar_chart_rounded,
                               ),
                               _buildTopTabItem(
                                 index: 3,
                                 label: 'Projetos Finalizados',
-                                assetImagePath:
-                                    'assets/images/projetos_finalizados.png',
+                                icon: Icons.check_circle_outline,
                               ),
                               _buildTopTabItem(
                                 index: 4,
                                 label: 'Orientações',
-                                assetImagePath: 'assets/images/orientacoes.png',
+                                icon: Icons.help_outline_rounded,
                               ),
                               _buildTopTabItem(
                                 index: 5,
                                 label: 'Tarefas Executadas',
-                                assetImagePath:
-                                    'assets/images/tarefas_executadas.png',
+                                icon: Icons.warning_rounded,
                               ),
                               _buildTopTabItem(
                                 index: 6,
                                 label: 'Check List',
-                                assetImagePath: 'assets/images/check_list.png',
+                                icon: Icons.checklist_rounded,
                               ),
                               _buildTopTabItem(
                                 index: 7,
                                 label: 'Solicitações',
-                                assetImagePath:
-                                    'assets/images/solicitacoes.png',
+                                icon: Icons.mail_outline,
                               ),
                             ],
                           ),
@@ -337,12 +538,23 @@ class _CabecalhoState extends State<Cabecalho> {
                 ),
               ],
             ),
+
+            // ====================================================
+            // ÁREA DO USUÁRIO
+            // ====================================================
+
             actions: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // ============================================
+                    // PESQUISA
+                    // ============================================
+
                     SizedBox(
                       width: 180,
                       height: 36,
@@ -372,26 +584,39 @@ class _CabecalhoState extends State<Cabecalho> {
                           filled: true,
                           fillColor: CoresTelas.campoFormulario,
                           enabledBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(TamanhosApp.raioBotao),
-                            borderSide: const BorderSide(color: CoresApp.borda),
+                            borderRadius: BorderRadius.circular(
+                              TamanhosApp.raioBotao,
+                            ),
+                            borderSide: const BorderSide(
+                              color: CoresApp.borda,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(TamanhosApp.raioBotao),
-                            borderSide:
-                                const BorderSide(color: CoresApp.primaria),
+                            borderRadius: BorderRadius.circular(
+                              TamanhosApp.raioBotao,
+                            ),
+                            borderSide: const BorderSide(
+                              color: CoresApp.primaria,
+                            ),
                           ),
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 16),
+
                     Container(
                       width: 1,
                       height: 24,
                       color: CoresDashboard.tabelaDivisor,
                     ),
+
                     const SizedBox(width: 14),
+
+                    // ============================================
+                    // FOTO DO USUÁRIO
+                    // ============================================
+
                     Tooltip(
                       message: 'Clique para alterar a foto de perfil',
                       child: InkWell(
@@ -401,7 +626,7 @@ class _CabecalhoState extends State<Cabecalho> {
                           radius: 16,
                           backgroundColor: CoresApp.primaria.withOpacity(0.15),
                           backgroundImage: fotoProvider,
-                          child: (carregando)
+                          child: carregando
                               ? const SizedBox(
                                   width: 12,
                                   height: 12,
@@ -410,7 +635,7 @@ class _CabecalhoState extends State<Cabecalho> {
                                     color: CoresApp.primaria,
                                   ),
                                 )
-                              : (fotoProvider == null)
+                              : fotoProvider == null
                                   ? const Icon(
                                       Icons.person_outline_rounded,
                                       color: CoresApp.primaria,
@@ -420,19 +645,50 @@ class _CabecalhoState extends State<Cabecalho> {
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 8),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: 150,
-                      ),
-                      child: Text(
-                        nomeUsuario,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: CoresApp.textoPrincipal,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+
+                    // ============================================
+                    // NOME DO USUÁRIO
+                    // CLICÁVEL PARA LOGOUT
+                    // ============================================
+
+                    Tooltip(
+                      message: 'Clique para sair da conta',
+                      child: InkWell(
+                        onTap: _confirmarLogout,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 6,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 150,
+                                ),
+                                child: Text(
+                                  nomeUsuario,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: CoresApp.textoPrincipal,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: CoresApp.textoSecundario,
+                                size: 16,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -440,6 +696,7 @@ class _CabecalhoState extends State<Cabecalho> {
                 ),
               ),
             ],
+
             elevation: 0,
           );
         },
@@ -447,8 +704,16 @@ class _CabecalhoState extends State<Cabecalho> {
     );
   }
 
-  PopupMenuItem<int> _buildPopupMenuItem(int index, String label) {
+  // ============================================================
+  // ITEM DO MENU COMPACTO
+  // ============================================================
+
+  PopupMenuItem<int> _buildPopupMenuItem(
+    int index,
+    String label,
+  ) {
     final bool isSelected = widget.selectedIndex == index;
+
     return PopupMenuItem<int>(
       value: index,
       child: Text(
@@ -462,90 +727,68 @@ class _CabecalhoState extends State<Cabecalho> {
     );
   }
 
+  // ============================================================
+  // ITEM DO MENU SUPERIOR
+  // ============================================================
+
   Widget _buildTopTabItem({
     required int index,
     required String label,
-    required String assetImagePath,
+    required IconData icon,
   }) {
     final bool isSelected = widget.selectedIndex == index;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 0.2),
-      child: Tooltip(
-        message: label,
-        decoration: BoxDecoration(
-          color: CoresDashboard.fundoSecundario.withOpacity(0.95),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: CoresApp.primaria.withOpacity(0.4),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+    return InkWell(
+      onTap: () => widget.onSelectTab(index),
+      child: Container(
+        height: 60,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
         ),
-        textStyle: const TextStyle(
-          color: CoresApp.textoPrincipal,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        preferBelow: true,
-        verticalOffset: 16,
-        child: InkWell(
-          onTap: () => widget.onSelectTab(index),
-          borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
-          child: SizedBox(
-            height: 60,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    height: 50,
-                    width: 133,
-                    child: Image.asset(
-                      assetImagePath,
-                      fit: BoxFit.fill,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Center(
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isSelected
-                                  ? CoresApp.textoPrincipal
-                                  : CoresApp.textoSecundario,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color:
+                      isSelected ? CoresApp.primaria : CoresApp.textoSecundario,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected
+                        ? CoresApp.textoPrincipal
+                        : CoresApp.textoSecundario,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 12,
                   ),
-                  if (isSelected)
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: CoresApp.primaria,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(2),
-                          ),
-                        ),
+                ),
+              ],
+            ),
+            if (isSelected)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: CoresApp.primaria,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(
+                        2,
                       ),
                     ),
-                ],
+                  ),
+                ),
               ),
-            ),
-          ),
+          ],
         ),
       ),
     );

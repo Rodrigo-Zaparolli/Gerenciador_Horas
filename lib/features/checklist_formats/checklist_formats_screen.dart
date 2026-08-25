@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
+import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
@@ -24,6 +25,7 @@ class ChecklistFormatsScreen extends StatefulWidget {
 
 class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
+
   List<ChecklistFormat> _checklistFormats = [];
   bool _isLoading = true;
 
@@ -35,14 +37,17 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
 
   Future<void> _loadChecklistFormats() async {
     setState(() => _isLoading = true);
+
     try {
       final formats = await _firebaseService.getChecklistFormats();
+
       setState(() {
         _checklistFormats = formats;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -58,6 +63,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
     try {
       await _firebaseService.deleteChecklistFormat(id);
       await _loadChecklistFormats();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -80,8 +86,14 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
 
   void _openFormatDetailDialog({ChecklistFormat? format}) {
     final isEditing = format != null;
-    final idController = TextEditingController(text: format?.id ?? '');
-    final nameController = TextEditingController(text: format?.name ?? '');
+
+    final idController = TextEditingController(
+      text: format?.id ?? '',
+    );
+
+    final nameController = TextEditingController(
+      text: format?.name ?? '',
+    );
 
     final itemOrderController = TextEditingController();
     final itemNameController = TextEditingController();
@@ -91,6 +103,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
     if (format?.items != null) {
       for (int i = 0; i < format!.items.length; i++) {
         final itemData = format.items[i];
+
         currentItemsWithOrder.add({
           'order': itemData['order']?.toString() ?? '${i + 1}',
           'name': itemData['name']?.toString() ?? '',
@@ -122,11 +135,15 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     'name': nameText,
                     'completed': false,
                   });
+
                   itemNameController.clear();
-                  final nextVal =
-                      (double.tryParse(orderText.replaceAll(',', '.')) ??
-                              currentItemsWithOrder.length.toDouble()) +
-                          1.0;
+
+                  final nextVal = (double.tryParse(
+                            orderText.replaceAll(',', '.'),
+                          ) ??
+                          currentItemsWithOrder.length.toDouble()) +
+                      1.0;
+
                   itemOrderController.text = nextVal % 1 == 0
                       ? nextVal.toInt().toString()
                       : nextVal.toString();
@@ -142,10 +159,14 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
 
             void editItem(int index) {
               final item = currentItemsWithOrder[index];
-              final editOrderController =
-                  TextEditingController(text: item['order']?.toString() ?? '');
-              final editNameController =
-                  TextEditingController(text: item['name']?.toString() ?? '');
+
+              final editOrderController = TextEditingController(
+                text: item['order']?.toString() ?? '',
+              );
+
+              final editNameController = TextEditingController(
+                text: item['name']?.toString() ?? '',
+              );
 
               showDialog(
                 context: context,
@@ -155,7 +176,9 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     title: Text(
                       'Editar Item do Check List',
                       style: TextStyle(
-                          color: CoresApp.textoPrincipal, fontSize: 16),
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 16,
+                      ),
                     ),
                     content: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -163,32 +186,43 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                         TextField(
                           controller: editOrderController,
                           style: TextStyle(
-                              color: CoresApp.textoPrincipal, fontSize: 13),
+                            color: CoresApp.textoPrincipal,
+                            fontSize: 13,
+                          ),
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                           decoration: InputDecoration(
                             labelText: 'Nº / Ordem',
                             labelStyle: TextStyle(
-                                color: CoresApp.textoSecundario, fontSize: 12),
+                              color: CoresApp.textoSecundario,
+                              fontSize: 12,
+                            ),
                             filled: true,
                             fillColor: CoresTelas.campoFormulario,
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: editNameController,
                           style: TextStyle(
-                              color: CoresApp.textoPrincipal, fontSize: 13),
+                            color: CoresApp.textoPrincipal,
+                            fontSize: 13,
+                          ),
                           decoration: InputDecoration(
                             labelText: 'Descrição do Item',
                             labelStyle: TextStyle(
-                                color: CoresApp.textoSecundario, fontSize: 12),
+                              color: CoresApp.textoSecundario,
+                              fontSize: 12,
+                            ),
                             filled: true,
                             fillColor: CoresTelas.campoFormulario,
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ],
@@ -196,8 +230,12 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(innerContext),
-                        child: Text('Cancelar',
-                            style: TextStyle(color: CoresApp.textoSecundario)),
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(
+                            color: CoresApp.textoSecundario,
+                          ),
+                        ),
                       ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
@@ -218,11 +256,16 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                 'completed': item['completed'] ?? false,
                               };
                             });
+
                             Navigator.pop(innerContext);
                           }
                         },
-                        child: const Text('Atualizar',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Atualizar',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   );
@@ -234,7 +277,9 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               backgroundColor: CoresTelas.fundoModal,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: CoresApp.borda),
+                side: BorderSide(
+                  color: CoresApp.borda,
+                ),
               ),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -250,8 +295,10 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close_rounded,
-                        color: CoresApp.textoSecundario),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: CoresApp.textoSecundario,
+                    ),
                     onPressed: () => Navigator.pop(dialogContext),
                   ),
                 ],
@@ -270,23 +317,28 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                             child: TextField(
                               controller: idController,
                               style: TextStyle(
-                                  color: CoresApp.textoPrincipal, fontSize: 13),
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'ID do Modelo',
                                 labelStyle: TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 12),
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 12,
+                                ),
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.bordaSuave),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.bordaSuave,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.destaque),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.destaque,
+                                  ),
                                 ),
                               ),
                             ),
@@ -296,23 +348,28 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                             child: TextField(
                               controller: nameController,
                               style: TextStyle(
-                                  color: CoresApp.textoPrincipal, fontSize: 13),
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'Nome do Modelo / Tipo de Serviço',
                                 labelStyle: TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 12),
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 12,
+                                ),
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.bordaSuave),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.bordaSuave,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.destaque),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.destaque,
+                                  ),
                                 ),
                               ),
                             ),
@@ -333,11 +390,15 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: CoresTelas.fundoModalSecundario,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: CoresApp.bordaSuave),
+                              border: Border.all(
+                                color: CoresApp.bordaSuave,
+                              ),
                             ),
                             child: Text(
                               'Total: ${currentItemsWithOrder.length}',
@@ -358,31 +419,40 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                             child: TextField(
                               controller: itemOrderController,
                               style: TextStyle(
-                                  color: CoresApp.textoPrincipal, fontSize: 13),
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                              ),
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                      decimal: true),
+                                decimal: true,
+                              ),
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
-                                    RegExp(r'^\d*[.,]?\d{0,5}'))
+                                  RegExp(
+                                    r'^\d*[.,]?\d{0,5}',
+                                  ),
+                                ),
                               ],
                               decoration: InputDecoration(
                                 labelText: 'Nº',
                                 labelStyle: TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 12),
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 12,
+                                ),
                                 isDense: true,
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.bordaSuave),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.bordaSuave,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.destaque),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.destaque,
+                                  ),
                                 ),
                               ),
                             ),
@@ -392,26 +462,31 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                             child: TextField(
                               controller: itemNameController,
                               style: TextStyle(
-                                  color: CoresApp.textoPrincipal, fontSize: 13),
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                              ),
                               decoration: InputDecoration(
                                 hintText:
                                     'Descrição do item (ex: Verificar normas)',
                                 hintStyle: TextStyle(
-                                    color: CoresApp.textoSecundario
-                                        .withOpacity(0.5),
-                                    fontSize: 12),
+                                  color:
+                                      CoresApp.textoSecundario.withOpacity(0.5),
+                                  fontSize: 12,
+                                ),
                                 isDense: true,
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.bordaSuave),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.bordaSuave,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      BorderSide(color: CoresApp.destaque),
+                                  borderSide: BorderSide(
+                                    color: CoresApp.destaque,
+                                  ),
                                 ),
                               ),
                               onSubmitted: (_) => addItem(),
@@ -424,24 +499,38 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                               foregroundColor: Colors.black,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 14),
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                             onPressed: addItem,
-                            icon: const Icon(Icons.add_rounded, size: 18),
-                            label: const Text('Incluir',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            icon: const Icon(
+                              Icons.add_rounded,
+                              size: 18,
+                            ),
+                            label: const Text(
+                              'Incluir',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       Container(
-                        constraints: const BoxConstraints(maxHeight: 250),
+                        constraints: const BoxConstraints(
+                          maxHeight: 250,
+                        ),
                         decoration: BoxDecoration(
                           color: CoresTelas.fundoModalSecundario,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: CoresApp.bordaSuave),
+                          border: Border.all(
+                            color: CoresApp.bordaSuave,
+                          ),
                         ),
                         child: currentItemsWithOrder.isEmpty
                             ? Center(
@@ -450,8 +539,9 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                   child: Text(
                                     'Nenhum item cadastrado neste modelo.',
                                     style: TextStyle(
-                                        color: CoresApp.textoSecundario,
-                                        fontSize: 12),
+                                      color: CoresApp.textoSecundario,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
                               )
@@ -459,14 +549,19 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                 shrinkWrap: true,
                                 itemCount: currentItemsWithOrder.length,
                                 separatorBuilder: (_, __) => Divider(
-                                    color: CoresApp.bordaSuave, height: 1),
+                                  color: CoresApp.bordaSuave,
+                                  height: 1,
+                                ),
                                 itemBuilder: (context, index) {
                                   final entry = currentItemsWithOrder[index];
+
                                   return ListTile(
                                     onTap: () => editItem(index),
                                     leading: Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color:
                                             CoresApp.destaque.withOpacity(0.15),
@@ -484,24 +579,28 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                     title: Text(
                                       entry['name']?.toString() ?? '',
                                       style: TextStyle(
-                                          color: CoresApp.textoPrincipal,
-                                          fontSize: 13),
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         IconButton(
-                                          icon: Icon(Icons.edit_outlined,
-                                              color: CoresApp.textoSecundario,
-                                              size: 18),
+                                          icon: Icon(
+                                            Icons.edit_outlined,
+                                            color: CoresApp.textoSecundario,
+                                            size: 18,
+                                          ),
                                           tooltip: 'Editar item',
                                           onPressed: () => editItem(index),
                                         ),
                                         IconButton(
                                           icon: Icon(
-                                              Icons.delete_outline_rounded,
-                                              color: CoresApp.erro,
-                                              size: 18),
+                                            Icons.delete_outline_rounded,
+                                            color: CoresApp.erro,
+                                            size: 18,
+                                          ),
                                           tooltip: 'Excluir item',
                                           onPressed: () => removeItem(index),
                                         ),
@@ -518,8 +617,12 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: Text('Cancelar',
-                      style: TextStyle(color: CoresApp.textoSecundario)),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                    ),
+                  ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -527,16 +630,19 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     foregroundColor: Colors.black,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(TamanhosApp.raioBotao)),
+                      borderRadius: BorderRadius.circular(
+                        TamanhosApp.raioBotao,
+                      ),
+                    ),
                   ),
                   onPressed: () async {
                     if (idController.text.trim().isEmpty ||
                         nameController.text.trim().isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content:
-                              const Text('Preencha o ID e o Nome do modelo.'),
+                          content: const Text(
+                            'Preencha o ID e o Nome do modelo.',
+                          ),
                           backgroundColor: CoresApp.erro,
                         ),
                       );
@@ -545,7 +651,9 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
 
                     if (isEditing && format.id != idController.text.trim()) {
                       try {
-                        await _firebaseService.deleteChecklistFormat(format.id);
+                        await _firebaseService.deleteChecklistFormat(
+                          format.id,
+                        );
                       } catch (_) {}
                     }
 
@@ -556,13 +664,20 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     );
 
                     try {
-                      await _firebaseService.saveChecklistFormat(updatedFormat);
+                      await _firebaseService.saveChecklistFormat(
+                        updatedFormat,
+                      );
+
                       if (dialogContext.mounted) {
                         Navigator.pop(dialogContext);
+
                         _loadChecklistFormats();
+
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: const Text('Modelo salvo com sucesso!'),
+                            content: const Text(
+                              'Modelo salvo com sucesso!',
+                            ),
                             backgroundColor: CoresApp.sucesso,
                           ),
                         );
@@ -578,8 +693,12 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                       }
                     }
                   },
-                  child: const Text('Salvar alterações',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Salvar alterações',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             );
@@ -592,7 +711,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CoresTelas.fundoPrincipal,
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
@@ -603,147 +722,229 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
           userName: '',
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ============================================================
+          // IMAGEM DE FUNDO
+          // ============================================================
+
+          Positioned.fill(
+            child: Image.asset(
+              AppTheme.caminhoFundo,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: CoresApp.fundo,
+                );
+              },
+            ),
+          ),
+
+          // ============================================================
+          // CAMADA ESCURA SOBRE A IMAGEM
+          // ============================================================
+
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(
+                AppTheme.opacidadeFundo,
+              ),
+            ),
+          ),
+
+          // ============================================================
+          // CONTEÚDO ORIGINAL DA TELA
+          // ============================================================
+
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Modelos de Check List',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: CoresApp.textoPrincipal,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Modelos de Check List',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: CoresApp.textoPrincipal,
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CoresApp.destaque,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            TamanhosApp.raioBotao,
+                          ),
+                        ),
+                      ),
+                      onPressed: () => _openFormatDetailDialog(),
+                      icon: const Icon(
+                        Icons.add_rounded,
+                      ),
+                      label: const Text(
+                        'Novo Modelo',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CoresApp.destaque,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(TamanhosApp.raioBotao),
+                const SizedBox(height: 20),
+                Container(
+                  decoration: BoxDecoration(
+                    color: CoresTelas.fundoCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: CoresApp.borda,
                     ),
                   ),
-                  onPressed: () => _openFormatDetailDialog(),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text(
-                    'Novo Modelo',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: CoresTelas.fundoCard,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: CoresApp.borda),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      // [AJUSTE UI]: Altere o padding vertical do cabeçalho da tabela se desejar ajustar a altura dele
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: CoresTelas.cabecalhoTabela,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(12)),
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 100,
-                            child: Text('ID',
-                                style: TextStyle(
-                                    color: CoresApp.textoPrincipal,
-                                    fontWeight: FontWeight.bold)),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: CoresTelas.cabecalhoTabela,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(12),
                           ),
-                          SizedBox(
-                            width: 120,
-                            child: Text('Nº Itens',
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 100,
+                              child: Text(
+                                'ID',
                                 style: TextStyle(
-                                    color: CoresApp.textoPrincipal,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                          Expanded(
-                            child: Text('Nome do Modelo',
+                                  color: CoresApp.textoPrincipal,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 120,
+                              child: Text(
+                                'Nº Itens',
                                 style: TextStyle(
-                                    color: CoresApp.textoPrincipal,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                          SizedBox(
-                            width: 100,
-                            child: Text('Ações',
+                                  color: CoresApp.textoPrincipal,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Nome do Modelo',
+                                style: TextStyle(
+                                  color: CoresApp.textoPrincipal,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 100,
+                              child: Text(
+                                'Ações',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                    color: CoresApp.textoPrincipal,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                        ],
+                                  color: CoresApp.textoPrincipal,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _isLoading
-                          ? Center(
-                              child: CircularProgressIndicator(
-                                  color: CoresApp.destaque))
+                      _isLoading
+                          ? Padding(
+                              padding: const EdgeInsets.all(
+                                40.0,
+                              ),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: CoresApp.destaque,
+                                ),
+                              ),
+                            )
                           : _checklistFormats.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    'Nenhum modelo de check list cadastrado.',
-                                    style: TextStyle(
-                                        color: CoresApp.textoSecundario),
+                              ? Padding(
+                                  padding: const EdgeInsets.all(
+                                    40.0,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      'Nenhum modelo de check list cadastrado.',
+                                      style: TextStyle(
+                                        color: CoresApp.textoSecundario,
+                                      ),
+                                    ),
                                   ),
                                 )
                               : ListView.separated(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
                                   itemCount: _checklistFormats.length,
                                   separatorBuilder: (_, __) => Divider(
-                                      color: CoresApp.bordaSuave, height: 1),
+                                    color: CoresApp.bordaSuave,
+                                    height: 1,
+                                  ),
                                   itemBuilder: (context, index) {
                                     final item = _checklistFormats[index];
+
                                     return InkWell(
-                                      onTap: () =>
-                                          _openFormatDetailDialog(format: item),
+                                      onTap: () => _openFormatDetailDialog(
+                                        format: item,
+                                      ),
                                       child: Padding(
-                                        // [AJUSTE UI]: Reduza ou aumente o padding vertical (ex: de 10 a 14) para diminuir/aumentar a altura das linhas da tabela
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 24, vertical: 10),
+                                          horizontal: 24,
+                                          vertical: 10,
+                                        ),
                                         child: Row(
                                           children: [
                                             SizedBox(
                                               width: 100,
-                                              child: Text(item.id,
-                                                  style: TextStyle(
-                                                      color: CoresApp
-                                                          .textoSecundario,
-                                                      fontWeight:
-                                                          FontWeight.bold)),
+                                              child: Text(
+                                                item.id,
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
                                             ),
                                             SizedBox(
                                               width: 120,
                                               child: Text(
-                                                  '${item.items.length}',
-                                                  style: TextStyle(
-                                                      color: CoresApp
-                                                          .textoSecundario)),
+                                                '${item.items.length}',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                ),
+                                              ),
                                             ),
                                             Expanded(
-                                              child: Text(item.name,
-                                                  style: TextStyle(
-                                                      color: CoresApp
-                                                          .textoPrincipal,
-                                                      fontWeight:
-                                                          FontWeight.w500)),
+                                              child: Text(
+                                                item.name,
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoPrincipal,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
                                             ),
                                             SizedBox(
                                               width: 100,
@@ -752,35 +953,43 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                                     MainAxisAlignment.center,
                                                 children: [
                                                   IconButton(
-                                                    // [AJUSTE UI]: Ajuste o tamanho visual e constraints dos botões de ação da linha se necessário
                                                     constraints:
                                                         const BoxConstraints(
-                                                            minWidth: 32,
-                                                            minHeight: 32),
+                                                      minWidth: 32,
+                                                      minHeight: 32,
+                                                    ),
                                                     padding: EdgeInsets.zero,
                                                     icon: Icon(
-                                                        Icons.edit_outlined,
-                                                        color: CoresApp
-                                                            .textoSecundario,
-                                                        size: 18),
+                                                      Icons.edit_outlined,
+                                                      color: CoresApp
+                                                          .textoSecundario,
+                                                      size: 18,
+                                                    ),
                                                     onPressed: () =>
                                                         _openFormatDetailDialog(
-                                                            format: item),
+                                                      format: item,
+                                                    ),
                                                   ),
-                                                  const SizedBox(width: 4),
+                                                  const SizedBox(
+                                                    width: 4,
+                                                  ),
                                                   IconButton(
                                                     constraints:
                                                         const BoxConstraints(
-                                                            minWidth: 32,
-                                                            minHeight: 32),
+                                                      minWidth: 32,
+                                                      minHeight: 32,
+                                                    ),
                                                     padding: EdgeInsets.zero,
                                                     icon: Icon(
-                                                        Icons
-                                                            .delete_outline_rounded,
-                                                        color: CoresApp.erro,
-                                                        size: 18),
+                                                      Icons
+                                                          .delete_outline_rounded,
+                                                      color: CoresApp.erro,
+                                                      size: 18,
+                                                    ),
                                                     onPressed: () =>
-                                                        _deleteFormat(item.id),
+                                                        _deleteFormat(
+                                                      item.id,
+                                                    ),
                                                   ),
                                                 ],
                                               ),
@@ -791,13 +1000,13 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                     );
                                   },
                                 ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -117,8 +117,7 @@ class ProjectModel {
   List<TaskModel>? subTasks;
 
   // Novo campo para armazenar os itens do Check List do projeto
-  List<Map<String, dynamic>>? checklist;
-
+  List<Map<String, dynamic>> checklist;
   String? excelLink;
   String? folderPath;
 
@@ -136,7 +135,7 @@ class ProjectModel {
     required this.hourType,
     this.observacao,
     this.subTasks,
-    this.checklist, // Adicionado no construtor
+    this.checklist = const [],
     this.excelLink,
     this.folderPath,
   });

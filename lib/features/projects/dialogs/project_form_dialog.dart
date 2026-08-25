@@ -1,8 +1,10 @@
 import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
+import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -78,6 +80,21 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
   bool _isSaving = false;
 
+  // ============================================================
+  // CHECKLIST
+  // ============================================================
+
+  List<ChecklistFormat> _checklistFormats = [];
+
+  ChecklistFormat? _selectedChecklistFormat;
+
+  List<Map<String, dynamic>> _checklistItems = [];
+
+  bool _loadingChecklistFormats = true;
+
+  final TextEditingController _newChecklistItemController =
+      TextEditingController();
+
   bool get _isEditing => widget.projectToEdit != null;
 
   @override
@@ -105,12 +122,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       // DATA INICIAL
       // ----------------------------------------------------------
 
-      _startDate = project.startDate;
+      _startDate = _onlyDate(project.startDate);
 
       if (project.subTasks != null && project.subTasks!.isNotEmpty) {
         final firstTask = project.subTasks!.first;
 
-        _startDate = firstTask.planStart ?? firstTask.startDate;
+        _startDate = _onlyDate(
+          firstTask.planStart ?? firstTask.startDate,
+        );
       }
 
       debugPrint('====================================');
@@ -119,6 +138,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       debugPrint('CLIENTE: ${project.client}');
       debugPrint('DATA PROJETO: ${project.startDate}');
       debugPrint('SUBTASKS: ${project.subTasks?.length}');
+      debugPrint(
+        'CHECKLIST EXISTENTE: ${project.checklist?.length ?? 0}',
+      );
       debugPrint('====================================');
 
       if (project.subTasks != null) {
@@ -131,17 +153,33 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           );
         }
       }
+
+      // ----------------------------------------------------------
+      // CARREGA CHECKLIST EXISTENTE
+      // ----------------------------------------------------------
+
+      if (project.checklist != null && project.checklist!.isNotEmpty) {
+        _checklistItems = project.checklist!
+            .map(
+              (item) => Map<String, dynamic>.from(item),
+            )
+            .toList();
+
+        debugPrint(
+          'CHECKLIST CARREGADO DO PROJETO: ${_checklistItems.length}',
+        );
+      }
     } else {
       // ----------------------------------------------------------
       // NOVO PROJETO
       // ----------------------------------------------------------
 
-      _startDate = DateTime.now();
+      final now = DateTime.now();
 
       _startDate = DateTime(
-        _startDate.year,
-        _startDate.month,
-        _startDate.day,
+        now.year,
+        now.month,
+        now.day,
       );
     }
 
@@ -166,25 +204,366 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         existingProject: project,
       );
     }
+
+    // ------------------------------------------------------------
+    // CARREGA MODELOS DE CHECKLIST
+    // ------------------------------------------------------------
+
+    _loadChecklistFormats();
+  }
+
+  // ============================================================
+  // CARREGAR MODELOS DE CHECKLIST
+  // ============================================================
+
+  Future<void> _loadChecklistFormats() async {
+    try {
+      final formats = await _firebaseService.getChecklistFormats();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _checklistFormats = formats;
+        _loadingChecklistFormats = false;
+      });
+
+      debugPrint('==========================================');
+      debugPrint('MODELOS DE CHECKLIST CARREGADOS');
+      debugPrint('TOTAL: ${formats.length}');
+
+      for (final format in formats) {
+        debugPrint(
+          'MODELO: ${format.name} | '
+          'ID: ${format.id} | '
+          'ITENS: ${format.items.length}',
+        );
+      }
+
+      debugPrint('==========================================');
+
+      if (_isEditing &&
+          _checklistItems.isNotEmpty &&
+          _selectedChecklistFormat == null &&
+          formats.isNotEmpty) {
+        final ChecklistFormat? matchedFormat =
+            _findMatchingChecklistFormat(formats);
+
+        if (matchedFormat != null && mounted) {
+          setState(() {
+            _selectedChecklistFormat = matchedFormat;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        'ERRO AO CARREGAR MODELOS DE CHECKLIST: $e',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loadingChecklistFormats = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível carregar os modelos de Check List: $e',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // ENCONTRA MODELO COMPATÍVEL COM CHECKLIST EXISTENTE
+  // ============================================================
+
+  ChecklistFormat? _findMatchingChecklistFormat(
+    List<ChecklistFormat> formats,
+  ) {
+    final existingNames = _checklistItems
+        .map(
+          (item) => item['name']?.toString().trim().toLowerCase() ?? '',
+        )
+        .where(
+          (name) => name.isNotEmpty,
+        )
+        .toSet();
+
+    if (existingNames.isEmpty) {
+      return null;
+    }
+
+    ChecklistFormat? bestMatch;
+    int bestMatchCount = 0;
+
+    for (final format in formats) {
+      int matchCount = 0;
+
+      for (final item in format.items) {
+        final name = item['name']?.toString().trim().toLowerCase() ?? '';
+
+        if (name.isNotEmpty && existingNames.contains(name)) {
+          matchCount++;
+        }
+      }
+
+      if (matchCount > bestMatchCount) {
+        bestMatchCount = matchCount;
+        bestMatch = format;
+      }
+    }
+
+    return bestMatch;
+  }
+
+  // ============================================================
+  // APLICAR MODELO DE CHECKLIST
+  // ============================================================
+
+  void _applyChecklistFormat(
+    ChecklistFormat? format,
+  ) {
+    if (format == null) {
+      return;
+    }
+
+    debugPrint('==========================================');
+    debugPrint('APLICANDO MODELO DE CHECKLIST');
+    debugPrint('MODELO: ${format.name}');
+    debugPrint('ID: ${format.id}');
+    debugPrint('ITENS: ${format.items.length}');
+    debugPrint('==========================================');
+
+    final List<Map<String, dynamic>> newItems = [];
+
+    for (int index = 0; index < format.items.length; index++) {
+      final item = format.items[index];
+
+      final String name = item['name']?.toString().trim() ?? '';
+
+      if (name.isEmpty) {
+        continue;
+      }
+
+      newItems.add(
+        {
+          'order': item['order']?.toString().isNotEmpty == true
+              ? item['order'].toString()
+              : (index + 1).toString(),
+          'name': name,
+          'completed': false,
+          'source': 'model',
+          'modelId': format.id,
+          'modelName': format.name,
+        },
+      );
+    }
+
+    setState(() {
+      _selectedChecklistFormat = format;
+      _checklistItems = newItems;
+    });
+
+    debugPrint(
+      'CHECKLIST APLICADO: ${_checklistItems.length} itens',
+    );
+  }
+
+  // ============================================================
+  // ADICIONAR ITEM MANUAL
+  // ============================================================
+
+  Future<void> _addChecklistItem() async {
+    _newChecklistItemController.clear();
+
+    final String? itemName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2D2D44),
+          title: const Text(
+            'Adicionar item ao Check List',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: TextField(
+              controller: _newChecklistItemController,
+              autofocus: true,
+              style: const TextStyle(
+                color: Colors.white,
+              ),
+              onSubmitted: (value) {
+                final text = value.trim();
+
+                if (text.isNotEmpty) {
+                  Navigator.of(dialogContext).pop(text);
+                }
+              },
+              decoration: const InputDecoration(
+                labelText: 'Descrição do item',
+                labelStyle: TextStyle(
+                  color: Colors.white70,
+                ),
+                hintText: 'Digite o item do Check List',
+                hintStyle: TextStyle(
+                  color: Colors.white30,
+                ),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00FFCC),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () {
+                final text = _newChecklistItemController.text.trim();
+
+                if (text.isNotEmpty) {
+                  Navigator.of(dialogContext).pop(text);
+                }
+              },
+              child: const Text(
+                'Adicionar',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (itemName == null || itemName.trim().isEmpty || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _checklistItems.add(
+        {
+          'order': (_checklistItems.length + 1).toString(),
+          'name': itemName.trim(),
+          'completed': false,
+          'source': 'manual',
+          'modelId': null,
+          'modelName': null,
+        },
+      );
+    });
+
+    debugPrint(
+      'ITEM MANUAL ADICIONADO: $itemName',
+    );
+  }
+
+  // ============================================================
+  // REMOVER ITEM DO CHECKLIST
+  // ============================================================
+
+  void _removeChecklistItem(
+    int index,
+  ) {
+    if (index < 0 || index >= _checklistItems.length) {
+      return;
+    }
+
+    final item = _checklistItems[index];
+
+    final String source = item['source']?.toString() ?? 'model';
+
+    setState(() {
+      _checklistItems.removeAt(index);
+
+      for (int i = 0; i < _checklistItems.length; i++) {
+        _checklistItems[i]['order'] = (i + 1).toString();
+      }
+    });
+
+    debugPrint(
+      'ITEM REMOVIDO DO PROJETO: '
+      '${item['name']} | source=$source',
+    );
+  }
+
+  // ============================================================
+  // MARCAR CHECKLIST
+  // ============================================================
+
+  void _toggleChecklistItem(
+    int index,
+    bool? value,
+  ) {
+    if (index < 0 || index >= _checklistItems.length) {
+      return;
+    }
+
+    setState(() {
+      _checklistItems[index]['completed'] = value == true;
+    });
+  }
+
+  // ============================================================
+  // CONVERTER CHECKLIST PARA SALVAMENTO
+  // ============================================================
+
+  List<Map<String, dynamic>> _buildChecklistForSave() {
+    final List<Map<String, dynamic>> result = [];
+
+    for (int index = 0; index < _checklistItems.length; index++) {
+      final item = Map<String, dynamic>.from(
+        _checklistItems[index],
+      );
+
+      final String name = item['name']?.toString().trim() ?? '';
+
+      if (name.isEmpty) {
+        continue;
+      }
+
+      result.add(
+        {
+          'order': (index + 1).toString(),
+          'name': name,
+          'completed': item['completed'] == true,
+          'source': item['source']?.toString() ?? 'manual',
+          'modelId': item['modelId'],
+          'modelName': item['modelName'],
+        },
+      );
+    }
+
+    return result;
   }
 
   // ============================================================
   // CONVERTER ETAPA DO WORK FORMAT
-  // ============================================================
-  //
-  // O Firestore pode possuir etapas armazenadas como:
-  //
-  // String:
-  //   "Análise"
-  //
-  // Map:
-  //   {"name": "Análise"}
-  //
-  // Ou formatos antigos utilizando:
-  //   stage / title / description
-  //
-  // Esta função evita que o app quebre ao abrir
-  // o formulário de Novo Trabalho.
   // ============================================================
 
   String _getWorkName(
@@ -254,31 +633,122 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     );
   }
 
+  // ============================================================
+  // SELETOR DE DATA
+  //
+  // CORRIGIDO:
+  // - normaliza a data;
+  // - garante que initialDate esteja entre firstDate/lastDate;
+  // - não força locale diretamente no showDatePicker;
+  // - protege contra exceções;
+  // - retorna a data sem horário.
+  // ============================================================
+
   Future<DateTime?> _selectDate({
     required DateTime initialDate,
   }) async {
-    final DateTime normalizedInitialDate = _onlyDate(initialDate);
-
-    return showDatePicker(
-      context: context,
-      initialDate: normalizedInitialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      locale: const Locale('pt', 'BR'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF00FFCC),
-              onPrimary: Colors.black,
-              surface: Color(0xFF2D2D44),
-              onSurface: Colors.white,
-            ),
-          ),
-          child: child!,
-        );
-      },
+    DateTime normalizedInitialDate = _onlyDate(
+      initialDate,
     );
+
+    final DateTime firstDate = DateTime(
+      2000,
+      1,
+      1,
+    );
+
+    final DateTime lastDate = DateTime(
+      2100,
+      12,
+      31,
+    );
+
+    // ----------------------------------------------------------
+    // Garante que initialDate esteja dentro do intervalo.
+    // ----------------------------------------------------------
+
+    if (normalizedInitialDate.isBefore(firstDate)) {
+      normalizedInitialDate = firstDate;
+    }
+
+    if (normalizedInitialDate.isAfter(lastDate)) {
+      normalizedInitialDate = lastDate;
+    }
+
+    try {
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: normalizedInitialDate,
+        firstDate: firstDate,
+        lastDate: lastDate,
+
+        // IMPORTANTE:
+        // Não usamos:
+        //
+        // locale: const Locale('pt', 'BR'),
+        //
+        // diretamente aqui.
+        //
+        // A localização deve ser configurada no MaterialApp.
+
+        builder: (
+          BuildContext dialogContext,
+          Widget? child,
+        ) {
+          if (child == null) {
+            return const SizedBox.shrink();
+          }
+
+          return Theme(
+            data: Theme.of(dialogContext).copyWith(
+              colorScheme: const ColorScheme.dark(
+                primary: Color(0xFF00FFCC),
+                onPrimary: Colors.black,
+                surface: Color(0xFF2D2D44),
+                onSurface: Colors.white,
+              ),
+              dialogTheme: const DialogThemeData(
+                backgroundColor: Color(0xFF2D2D44),
+              ),
+            ),
+            child: child,
+          );
+        },
+      );
+
+      if (picked == null) {
+        return null;
+      }
+
+      return _onlyDate(
+        picked,
+      );
+    } catch (e, stackTrace) {
+      debugPrint('==========================================');
+      debugPrint('ERRO AO ABRIR SELETOR DE DATA');
+      debugPrint('DATA RECEBIDA: $initialDate');
+      debugPrint(
+        'DATA NORMALIZADA: $normalizedInitialDate',
+      );
+      debugPrint('ERRO: $e');
+      debugPrint('STACK TRACE: $stackTrace');
+      debugPrint('==========================================');
+
+      if (!mounted) {
+        return null;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível abrir o calendário: $e',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+
+      return null;
+    }
   }
 
   // ============================================================
@@ -288,7 +758,49 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   Future<void> _editStartDate(
     Map<String, dynamic> work,
   ) async {
-    final DateTime currentDate = work['startDate'] as DateTime;
+    final dynamic rawStartDate = work['startDate'];
+    final dynamic rawEndDate = work['endDate'];
+
+    // ----------------------------------------------------------
+    // Proteção contra dados inválidos.
+    // ----------------------------------------------------------
+
+    if (rawStartDate is! DateTime || rawEndDate is! DateTime) {
+      debugPrint(
+        'ERRO: datas inválidas no trabalho ${work['name']}',
+      );
+
+      debugPrint(
+        'startDate: $rawStartDate '
+        '(${rawStartDate.runtimeType})',
+      );
+
+      debugPrint(
+        'endDate: $rawEndDate '
+        '(${rawEndDate.runtimeType})',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível editar a data desta etapa.',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+
+      return;
+    }
+
+    final DateTime currentDate = _onlyDate(
+      rawStartDate,
+    );
+
+    final DateTime endDate = _onlyDate(
+      rawEndDate,
+    );
 
     final DateTime? picked = await _selectDate(
       initialDate: currentDate,
@@ -298,7 +810,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       return;
     }
 
-    final DateTime endDate = work['endDate'] as DateTime;
+    // ----------------------------------------------------------
+    // Valida início x término.
+    // ----------------------------------------------------------
 
     if (picked.isAfter(endDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -316,7 +830,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     setState(() {
       work['startDate'] = picked;
 
-      if (_internalWorks.isNotEmpty && identical(work, _internalWorks.first)) {
+      if (_internalWorks.isNotEmpty &&
+          identical(
+            work,
+            _internalWorks.first,
+          )) {
         _startDate = picked;
       }
     });
@@ -329,7 +847,49 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   Future<void> _editEndDate(
     Map<String, dynamic> work,
   ) async {
-    final DateTime currentDate = work['endDate'] as DateTime;
+    final dynamic rawStartDate = work['startDate'];
+    final dynamic rawEndDate = work['endDate'];
+
+    // ----------------------------------------------------------
+    // Proteção contra dados inválidos.
+    // ----------------------------------------------------------
+
+    if (rawStartDate is! DateTime || rawEndDate is! DateTime) {
+      debugPrint(
+        'ERRO: datas inválidas no trabalho ${work['name']}',
+      );
+
+      debugPrint(
+        'startDate: $rawStartDate '
+        '(${rawStartDate.runtimeType})',
+      );
+
+      debugPrint(
+        'endDate: $rawEndDate '
+        '(${rawEndDate.runtimeType})',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível editar a data desta etapa.',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+
+      return;
+    }
+
+    final DateTime currentDate = _onlyDate(
+      rawEndDate,
+    );
+
+    final DateTime startDate = _onlyDate(
+      rawStartDate,
+    );
 
     final DateTime? picked = await _selectDate(
       initialDate: currentDate,
@@ -339,7 +899,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       return;
     }
 
-    final DateTime startDate = work['startDate'] as DateTime;
+    // ----------------------------------------------------------
+    // Valida término x início.
+    // ----------------------------------------------------------
 
     if (picked.isBefore(startDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -377,10 +939,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     WorkFormat workFormat, {
     ProjectModel? existingProject,
   }) {
-    // ============================================================
-    // LIBERA CONTROLLERS ANTIGOS
-    // ============================================================
-
     for (final work in _internalWorks) {
       final controller = work['controller'];
 
@@ -389,15 +947,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       }
     }
 
-    // ============================================================
-    // GARANTE DATA BASE
-    // ============================================================
-
-    DateTime baseDate = _onlyDate(_startDate);
-
-    // ============================================================
-    // SUBTASKS EXISTENTES
-    // ============================================================
+    DateTime baseDate = _onlyDate(
+      _startDate,
+    );
 
     final List<TaskModel> existingTasks =
         existingProject?.subTasks ?? <TaskModel>[];
@@ -405,8 +957,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     debugPrint('==========================================');
     debugPrint('CARREGANDO TRABALHOS INTERNOS');
     debugPrint('PROJETO: ${existingProject?.id}');
-    debugPrint('ETAPAS DO FORMATO: ${workFormat.steps.length}');
-    debugPrint('SUBTASKS DO PROJETO: ${existingTasks.length}');
+    debugPrint(
+      'ETAPAS DO FORMATO: ${workFormat.steps.length}',
+    );
+    debugPrint(
+      'SUBTASKS DO PROJETO: ${existingTasks.length}',
+    );
 
     for (final task in existingTasks) {
       debugPrint(
@@ -421,17 +977,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     debugPrint('==========================================');
 
-    // ============================================================
-    // MONTA AS ETAPAS
-    // ============================================================
-
     _internalWorks = List.generate(
       workFormat.steps.length,
       (index) {
-        // ========================================================
-        // CONVERSÃO SEGURA DA ETAPA
-        // ========================================================
-
         final dynamic rawStep = workFormat.steps[index];
 
         final String workName = _getWorkName(
@@ -447,10 +995,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           'NOME NORMALIZADO: $workName',
         );
 
-        // --------------------------------------------------------
-        // DATA PADRÃO
-        // --------------------------------------------------------
-
         DateTime stepStart = baseDate;
 
         DateTime stepEnd = baseDate.add(
@@ -459,17 +1003,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
         String hoursText = '00:00';
 
-        // --------------------------------------------------------
-        // PROCURA A TAREFA EXISTENTE
-        //
-        // Primeiro pelo nome da etapa.
-        // Se não encontrar, usa o índice como fallback.
-        // --------------------------------------------------------
-
         TaskModel? existingTask;
 
         if (existingTasks.isNotEmpty) {
-          // 1º - tenta pelo nome
           for (final task in existingTasks) {
             if (task.stage.trim().toLowerCase() ==
                 workName.trim().toLowerCase()) {
@@ -478,27 +1014,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             }
           }
 
-          // 2º - fallback pelo índice
           if (existingTask == null && index < existingTasks.length) {
             existingTask = existingTasks[index];
           }
         }
 
-        // --------------------------------------------------------
-        // CARREGA DADOS EXISTENTES
-        // --------------------------------------------------------
-
         if (existingTask != null) {
-          // INÍCIO
           stepStart = existingTask.planStart ?? existingTask.startDate;
 
-          // TÉRMINO
           stepEnd = existingTask.planEnd ??
               stepStart.add(
                 const Duration(days: 15),
               );
 
-          // HORAS
           hoursText = existingTask.estimatedHours.trim();
 
           if (hoursText.isEmpty) {
@@ -527,14 +1055,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         }
 
         // --------------------------------------------------------
-        // NORMALIZA DATAS
+        // Normaliza as datas.
         // --------------------------------------------------------
 
-        stepStart = _onlyDate(stepStart);
-        stepEnd = _onlyDate(stepEnd);
+        stepStart = _onlyDate(
+          stepStart,
+        );
+
+        stepEnd = _onlyDate(
+          stepEnd,
+        );
 
         // --------------------------------------------------------
-        // SEGURANÇA
+        // Proteção contra término anterior ao início.
         // --------------------------------------------------------
 
         if (stepEnd.isBefore(stepStart)) {
@@ -542,10 +1075,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             const Duration(days: 15),
           );
         }
-
-        // --------------------------------------------------------
-        // CRIA CONTROLLER
-        // --------------------------------------------------------
 
         return <String, dynamic>{
           'name': workName,
@@ -558,17 +1087,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       },
     );
 
-    // ============================================================
-    // DATA GLOBAL DO PROJETO
-    // ============================================================
-
     if (_internalWorks.isNotEmpty) {
       _startDate = _internalWorks.first['startDate'] as DateTime;
     }
-
-    // ============================================================
-    // DEBUG FINAL
-    // ============================================================
 
     debugPrint('==========================================');
     debugPrint('RESULTADO FINAL DO EDITAR');
@@ -614,7 +1135,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       int hours = padded ~/ 100;
       int minutes = padded % 100;
 
-      // Corrige entradas como 00:90.
       hours += minutes ~/ 60;
       minutes %= 60;
 
@@ -690,10 +1210,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     try {
       final String path = caminho.trim();
 
-      // ========================================================
-      // LINK HTTP / HTTPS
-      // ========================================================
-
       if (path.startsWith('http://') || path.startsWith('https://')) {
         final Uri uri = Uri.parse(path);
 
@@ -709,15 +1225,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         return;
       }
 
-      // ========================================================
-      // ARQUIVO
-      // ========================================================
-
       final File file = File(path);
-
-      // ========================================================
-      // PASTA
-      // ========================================================
 
       final Directory directory = Directory(path);
 
@@ -776,10 +1284,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     final String client = _clientController.text.trim();
 
-    // ==========================================================
-    // VALIDA CAMPOS OBRIGATÓRIOS
-    // ==========================================================
-
     if (id.isEmpty || client.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -798,9 +1302,25 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     // ==========================================================
 
     for (final work in _internalWorks) {
-      final DateTime startDate = work['startDate'] as DateTime;
+      final dynamic rawStartDate = work['startDate'];
+      final dynamic rawEndDate = work['endDate'];
 
-      final DateTime endDate = work['endDate'] as DateTime;
+      if (rawStartDate is! DateTime || rawEndDate is! DateTime) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'A etapa "${work['name']}" possui datas inválidas.',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+
+        return;
+      }
+
+      final DateTime startDate = _onlyDate(rawStartDate);
+
+      final DateTime endDate = _onlyDate(rawEndDate);
 
       if (endDate.isBefore(startDate)) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -818,7 +1338,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     }
 
     // ==========================================================
-    // CRIA AS SUBTASKS
+    // CRIA SUBTASKS
     // ==========================================================
 
     final List<TaskModel> customSubTasks = [];
@@ -829,9 +1349,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       final TextEditingController controller =
           work['controller'] as TextEditingController;
 
-      final DateTime stepStart = work['startDate'] as DateTime;
+      final DateTime stepStart = _onlyDate(work['startDate'] as DateTime);
 
-      final DateTime stepEnd = work['endDate'] as DateTime;
+      final DateTime stepEnd = _onlyDate(work['endDate'] as DateTime);
 
       customSubTasks.add(
         TaskModel(
@@ -854,8 +1374,36 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     // ==========================================================
 
     final DateTime globalStartDate = _internalWorks.isNotEmpty
-        ? _internalWorks.first['startDate'] as DateTime
-        : _startDate;
+        ? _onlyDate(
+            _internalWorks.first['startDate'] as DateTime,
+          )
+        : _onlyDate(_startDate);
+
+    // ==========================================================
+    // CHECKLIST
+    // ==========================================================
+
+    final List<Map<String, dynamic>> checklistToSave = _buildChecklistForSave();
+
+    debugPrint('==========================================');
+    debugPrint('SALVANDO CHECKLIST');
+    debugPrint(
+      'MODELO: ${_selectedChecklistFormat?.name ?? 'Nenhum'}',
+    );
+    debugPrint(
+      'ITENS: ${checklistToSave.length}',
+    );
+
+    for (final item in checklistToSave) {
+      debugPrint(
+        '${item['order']} - '
+        '${item['name']} - '
+        'concluído=${item['completed']} - '
+        'source=${item['source']}',
+      );
+    }
+
+    debugPrint('==========================================');
 
     // ==========================================================
     // PROJETO
@@ -863,42 +1411,28 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     final ProjectModel savedProject = ProjectModel(
       id: id,
-
-      // Mantém o ID2 existente durante edição.
       id2: widget.projectToEdit?.id2 ?? '0',
-
       client: client,
-
       serviceType: _selectedWorkFormat?.name ?? 'Geral',
-
       stage: _internalWorks.isNotEmpty
           ? _internalWorks.first['name'] as String
           : 'Geral',
-
-      // Mantém a tarefa existente durante edição.
       task: widget.projectToEdit?.task ?? '',
-
       status: _status,
-
       startDate: globalStartDate,
-
       estimatedHours: _calculateTotalEstimatedHours(),
-
       leader: _leaderController.text.trim().isEmpty
           ? 'Equipe'
           : _leaderController.text.trim(),
-
       hourType: _hourType,
-
       excelLink: _excelLinkController.text.trim().isEmpty
           ? null
           : _excelLinkController.text.trim(),
-
       folderPath: _folderPathController.text.trim().isEmpty
           ? null
           : _folderPathController.text.trim(),
-
       subTasks: customSubTasks,
+      checklist: checklistToSave,
     );
 
     // ==========================================================
@@ -950,6 +1484,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     _excelLinkController.dispose();
     _folderPathController.dispose();
 
+    _newChecklistItemController.dispose();
+
     _disposeInternalControllers();
 
     super.dispose();
@@ -965,18 +1501,20 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     return AlertDialog(
       backgroundColor: const Color(0xFF2D2D44),
-
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            _isEditing
-                ? 'Editar Trabalho - ${widget.projectToEdit!.id}'
-                : 'Novo Trabalho',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+          Expanded(
+            child: Text(
+              _isEditing
+                  ? 'Editar Trabalho - ${widget.projectToEdit!.id}'
+                  : 'Novo Trabalho',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           IconButton(
@@ -989,7 +1527,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           ),
         ],
       ),
-
       content: SizedBox(
         width: 820,
         child: SingleChildScrollView(
@@ -1182,7 +1719,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 _folderPathController.text,
                               );
                             } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(
                                 const SnackBar(
                                   content: Text(
                                     'Nenhuma pasta cadastrada.',
@@ -1233,7 +1772,424 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               const SizedBox(height: 18),
 
               // ==================================================
-              // TÍTULO
+              // CHECK LIST
+              // ==================================================
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Check List',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Selecione um modelo para aplicar os itens ao trabalho.',
+                        style: TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_checklistItems.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(
+                          0xFF00FFCC,
+                        ).withOpacity(
+                          0.10,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          20,
+                        ),
+                        border: Border.all(
+                          color: const Color(
+                            0xFF00FFCC,
+                          ).withOpacity(
+                            0.30,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        '${_checklistItems.where((item) => item['completed'] == true).length}/${_checklistItems.length}',
+                        style: const TextStyle(
+                          color: Color(
+                            0xFF00FFCC,
+                          ),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // ==================================================
+              // SELEÇÃO DO MODELO
+              // ==================================================
+
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(
+                    0xFF232338,
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    8,
+                  ),
+                  border: Border.all(
+                    color: Colors.white24,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.playlist_add_check,
+                      color: Color(0xFF00FFCC),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _loadingChecklistFormats
+                          ? const Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(
+                                      0xFF00FFCC,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Carregando modelos de Check List...',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : DropdownButtonFormField<ChecklistFormat>(
+                              value: _selectedChecklistFormat,
+                              isExpanded: true,
+                              dropdownColor: const Color(
+                                0xFF2D2D44,
+                              ),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Modelo de Check List',
+                                labelStyle: TextStyle(
+                                  color: Colors.white70,
+                                ),
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              hint: const Text(
+                                'Selecione um modelo',
+                                style: TextStyle(
+                                  color: Colors.white38,
+                                ),
+                              ),
+                              items: _checklistFormats
+                                  .map(
+                                    (
+                                      format,
+                                    ) =>
+                                        DropdownMenuItem<ChecklistFormat>(
+                                      value: format,
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              format.name,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${format.items.length} itens',
+                                            style: const TextStyle(
+                                              color: Colors.white38,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value == null) {
+                                  return;
+                                }
+
+                                _applyChecklistFormat(
+                                  value,
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // ==================================================
+              // ITENS DO CHECKLIST
+              // ==================================================
+
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(
+                    0xFF232338,
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    8,
+                  ),
+                  border: Border.all(
+                    color: Colors.white24,
+                  ),
+                ),
+                child: _checklistItems.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.checklist,
+                              color: Colors.white24,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Nenhum item no Check List deste trabalho.',
+                                style: TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _addChecklistItem,
+                              icon: const Icon(
+                                Icons.add,
+                                size: 18,
+                              ),
+                              label: const Text(
+                                'Adicionar',
+                              ),
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(
+                                  0xFF00FFCC,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          ...List.generate(
+                            _checklistItems.length,
+                            (index) {
+                              final item = _checklistItems[index];
+
+                              final String itemName =
+                                  item['name']?.toString() ?? '';
+
+                              final bool completed = item['completed'] == true;
+
+                              final String source =
+                                  item['source']?.toString() ?? 'model';
+
+                              final bool isManual = source == 'manual';
+
+                              return Container(
+                                margin: EdgeInsets.only(
+                                  bottom: index == _checklistItems.length - 1
+                                      ? 0
+                                      : 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: completed
+                                      ? const Color(
+                                          0xFF00FFCC,
+                                        ).withOpacity(
+                                          0.06,
+                                        )
+                                      : Colors.white.withOpacity(
+                                          0.02,
+                                        ),
+                                  borderRadius: BorderRadius.circular(
+                                    6,
+                                  ),
+                                  border: Border.all(
+                                    color: completed
+                                        ? const Color(
+                                            0xFF00FFCC,
+                                          ).withOpacity(
+                                            0.25,
+                                          )
+                                        : Colors.white.withOpacity(
+                                            0.08,
+                                          ),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: completed,
+                                      activeColor: const Color(
+                                        0xFF00FFCC,
+                                      ),
+                                      checkColor: Colors.black,
+                                      onChanged: (value) {
+                                        _toggleChecklistItem(
+                                          index,
+                                          value,
+                                        );
+                                      },
+                                    ),
+                                    Container(
+                                      width: 25,
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: const TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        itemName,
+                                        style: TextStyle(
+                                          color: completed
+                                              ? Colors.white38
+                                              : Colors.white,
+                                          fontSize: 12,
+                                          decoration: completed
+                                              ? TextDecoration.lineThrough
+                                              : TextDecoration.none,
+                                          decorationColor: Colors.white38,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isManual
+                                            ? Colors.orangeAccent.withOpacity(
+                                                0.10,
+                                              )
+                                            : Colors.cyanAccent.withOpacity(
+                                                0.08,
+                                              ),
+                                        borderRadius: BorderRadius.circular(
+                                          10,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        isManual ? 'Adicional' : 'Modelo',
+                                        style: TextStyle(
+                                          color: isManual
+                                              ? Colors.orangeAccent
+                                              : Colors.cyanAccent,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      tooltip: 'Remover item deste trabalho',
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.white30,
+                                        size: 17,
+                                      ),
+                                      onPressed: () {
+                                        _removeChecklistItem(
+                                          index,
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              onPressed: _addChecklistItem,
+                              icon: const Icon(
+                                Icons.add,
+                                size: 17,
+                              ),
+                              label: const Text(
+                                'Adicionar item',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(
+                                  0xFF00FFCC,
+                                ),
+                                side: BorderSide(
+                                  color: const Color(
+                                    0xFF00FFCC,
+                                  ).withOpacity(
+                                    0.50,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+
+              const SizedBox(height: 18),
+
+              // ==================================================
+              // TÍTULO TRABALHOS INTERNOS
               // ==================================================
 
               const Text(
@@ -1264,8 +2220,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF232338),
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(
+                    0xFF232338,
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    8,
+                  ),
                   border: Border.all(
                     color: Colors.white24,
                   ),
@@ -1295,10 +2255,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               ),
                               child: Row(
                                 children: [
-                                  // =================================
-                                  // NOME DA ETAPA
-                                  // =================================
-
+                                  // NOME
                                   Expanded(
                                     flex: 3,
                                     child: Text(
@@ -1311,14 +2268,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                   ),
 
-                                  const SizedBox(
-                                    width: 8,
-                                  ),
+                                  const SizedBox(width: 8),
 
-                                  // =================================
-                                  // DATA INÍCIO
-                                  // =================================
-
+                                  // INÍCIO
                                   Expanded(
                                     flex: 2,
                                     child: InkWell(
@@ -1365,14 +2317,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                   ),
 
-                                  const SizedBox(
-                                    width: 8,
-                                  ),
+                                  const SizedBox(width: 8),
 
-                                  // =================================
-                                  // DATA TÉRMINO
-                                  // =================================
-
+                                  // TÉRMINO
                                   Expanded(
                                     flex: 2,
                                     child: InkWell(
@@ -1419,14 +2366,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                   ),
 
-                                  const SizedBox(
-                                    width: 8,
-                                  ),
+                                  const SizedBox(width: 8),
 
-                                  // =================================
                                   // HORAS
-                                  // =================================
-
                                   SizedBox(
                                     width: 100,
                                     child: TextField(
@@ -1443,7 +2385,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         HoursInputFormatter(),
                                       ],
                                       onChanged: (_) {
-                                        setState(() {});
+                                        setState(
+                                          () {},
+                                        );
                                       },
                                       decoration: const InputDecoration(
                                         labelText: 'Horas',
@@ -1505,7 +2449,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     child: DropdownButtonFormField<String>(
                       value: _hourType,
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF2D2D44),
+                      dropdownColor: const Color(
+                        0xFF2D2D44,
+                      ),
                       style: const TextStyle(
                         color: Colors.white,
                       ),

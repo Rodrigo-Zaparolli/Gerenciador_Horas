@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
+import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -130,6 +131,7 @@ class TabelaProjetosWidget extends StatefulWidget {
 class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   final Map<String, TextEditingController> _inlineControllers = {};
   final Map<String, TextEditingController> _logCommentControllers = {};
+  late List<TimeLog> _localTimeLogs;
 
   final List<String> _tiposHsOpcoes = const [
     'Hs Cobradas',
@@ -139,6 +141,20 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     'Outras',
     'Hs Não Informadas',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _localTimeLogs = List.from(widget.timeLogs);
+  }
+
+  @override
+  void didUpdateWidget(covariant TabelaProjetosWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.timeLogs != oldWidget.timeLogs) {
+      _localTimeLogs = List.from(widget.timeLogs);
+    }
+  }
 
   @override
   void dispose() {
@@ -433,7 +449,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   void _showCheckListDialog(ProjectModel project) {
     final newItemController = TextEditingController();
     String? selectedFormatId;
-    List<Map<String, dynamic>> availableFormats = [];
+    List<ChecklistFormat> availableFormats = [];
     bool isLoadingFormats = true;
 
     showDialog(
@@ -445,7 +461,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
               widget.firebaseService.getChecklistFormats().then((formats) {
                 if (dialogContext.mounted) {
                   setDialogState(() {
-                    availableFormats = List<Map<String, dynamic>>.from(formats);
+                    availableFormats = formats;
                     isLoadingFormats = false;
                   });
                 }
@@ -516,11 +532,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                         fontSize: 13),
                                   ),
                                   items: availableFormats.map((format) {
-                                    final String formatId =
-                                        format['id']?.toString() ?? '';
+                                    final String formatId = format.id;
                                     final String formatName =
-                                        format['name']?.toString() ??
-                                            'Sem nome';
+                                        format.name.trim().isNotEmpty
+                                            ? format.name
+                                            : 'Sem nome';
 
                                     return DropdownMenuItem<String>(
                                       value: formatId,
@@ -550,23 +566,30 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                           onPressed: selectedFormatId == null
                               ? null
                               : () async {
-                                  final chosenFormat =
-                                      availableFormats.firstWhere(
-                                    (f) =>
-                                        f['id'].toString() == selectedFormatId,
-                                    orElse: () => {},
-                                  );
+                                  ChecklistFormat? chosenFormat;
+                                  for (final format in availableFormats) {
+                                    if (format.id == selectedFormatId) {
+                                      chosenFormat = format;
+                                      break;
+                                    }
+                                  }
 
-                                  if (chosenFormat.isNotEmpty) {
-                                    final List itemsList =
-                                        chosenFormat['items'] ?? [];
+                                  if (chosenFormat != null) {
+                                    project.checklist ??=
+                                        <Map<String, dynamic>>[];
 
-                                    project.checklist ??= [];
-
-                                    for (var formatItem in itemsList) {
+                                    for (final formatItem
+                                        in chosenFormat.items) {
+                                      final name = formatItem['name']
+                                              ?.toString()
+                                              .trim() ??
+                                          '';
+                                      if (name.isEmpty) continue;
                                       project.checklist!.add({
-                                        'order': formatItem['order'] ?? '',
-                                        'name': formatItem['name'] ?? '',
+                                        'order':
+                                            formatItem['order']?.toString() ??
+                                                '',
+                                        'name': name,
                                         'completed': false,
                                       });
                                     }
@@ -846,7 +869,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     final serviceTypeController =
         TextEditingController(text: project.serviceType);
     final hourTypeController = TextEditingController(text: project.hourType);
-    // Adicionado o controller para o campo descritivo/observação dentro do modal
     final observacaoController =
         TextEditingController(text: project.observacao ?? '');
 
@@ -1057,7 +1079,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            // Campo Descritivo (Observação) inserido junto ao modal
                             TextField(
                               controller: observacaoController,
                               style: TextStyle(
@@ -1355,6 +1376,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                           sub.startDate,
                                                       firstDate: DateTime(2020),
                                                       lastDate: DateTime(2030),
+                                                      // Adicione este builder para injetar o suporte a localização no diálogo
+                                                      builder:
+                                                          (BuildContext context,
+                                                              Widget? child) {
+                                                        return Localizations
+                                                            .override(
+                                                          context: context,
+                                                          locale: const Locale(
+                                                              'pt', 'BR'),
+                                                          child: child!,
+                                                        );
+                                                      },
                                                     );
                                                     if (picked != null) {
                                                       setDialogState(() {
@@ -1409,14 +1442,25 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                         await showDatePicker(
                                                       context: context,
                                                       initialDate:
-                                                          sub.planEnd ??
-                                                              sub.startDate,
+                                                          sub.startDate,
                                                       firstDate: DateTime(2020),
                                                       lastDate: DateTime(2030),
+                                                      // Adicione este builder para injetar o suporte a localização no diálogo
+                                                      builder:
+                                                          (BuildContext context,
+                                                              Widget? child) {
+                                                        return Localizations
+                                                            .override(
+                                                          context: context,
+                                                          locale: const Locale(
+                                                              'pt', 'BR'),
+                                                          child: child!,
+                                                        );
+                                                      },
                                                     );
                                                     if (picked != null) {
                                                       setDialogState(() {
-                                                        sub.planEnd = picked;
+                                                        sub.startDate = picked;
                                                       });
                                                     }
                                                   },
@@ -1441,7 +1485,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                               .spaceBetween,
                                                       children: [
                                                         Text(
-                                                          'Término: ${sub.planEnd != null ? _formatDate(sub.planEnd!) : '-'}',
+                                                          'Início: ${_formatDate(sub.startDate)}',
                                                           style: TextStyle(
                                                               color: CoresApp
                                                                   .textoPrincipal,
@@ -1638,7 +1682,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               project.subTasks = tempSubTasks;
                               project.estimatedHours =
                                   estimatedHoursController.text.trim();
-                              // Atribuindo o valor do campo descritivo/observação atualizado no modal
                               project.observacao =
                                   observacaoController.text.trim();
 
@@ -1955,7 +1998,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           }
 
           final completedLogsSub =
-              widget.timeLogs.where((l) => l.targetId == subTargetId).toList();
+              _localTimeLogs.where((l) => l.targetId == subTargetId).toList();
           for (final log in completedLogsSub) {
             if (log.isRegistered) continue;
 
@@ -2058,11 +2101,47 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
         DataCell(Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildSubTaskActionControls(
-              project: project,
-              task: task,
-              targetId: targetId,
-              title: title,
+            if (widget.timerState == TimerState.running) ...[
+              _buildActionIconButton(
+                icon: Icons.pause_circle_filled_rounded,
+                color: CoresApp.destaqueAmarelo,
+                tooltip: 'Pausar',
+                onPressed: widget.onPauseTimer,
+              ),
+              _buildActionIconButton(
+                icon: Icons.stop_circle_rounded,
+                color: CoresApp.erro,
+                tooltip: 'Stop',
+                onPressed: widget.onStopTimer,
+              ),
+            ] else if (widget.timerState == TimerState.paused) ...[
+              _buildActionIconButton(
+                icon: Icons.play_circle_fill_rounded,
+                color: CoresDashboard.statusTrabalhando,
+                tooltip: 'Retomar',
+                onPressed: () => widget.onStartTimer(targetId),
+              ),
+              _buildActionIconButton(
+                icon: Icons.stop_circle_rounded,
+                color: CoresApp.erro,
+                tooltip: 'Stop',
+                onPressed: widget.onStopTimer,
+              ),
+            ],
+            _buildActionIconButton(
+              icon: Icons.more_time_rounded,
+              color: CoresApp.destaque,
+              tooltip: 'Adicionar Horas Manualmente',
+              onPressed: () => widget.onManualTime(title),
+            ),
+            _buildActionIconButton(
+              icon: Icons.delete_outline_rounded,
+              color: CoresApp.erro,
+              tooltip: 'Descartar Execução Atual',
+              onPressed: () {
+                widget.onStopTimer();
+                setState(() {});
+              },
             ),
             const SizedBox(width: 2),
             IconButton(
@@ -2074,20 +2153,24 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                 try {
                   await widget.firebaseService.salvarProjeto(project);
                   widget.onMarkTaskCompleted(task);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          'Etapa ${task.subId} marcada como realizada e salva!'),
-                      backgroundColor: CoresApp.sucesso,
-                    ),
-                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            'Etapa ${task.subId} marcada como realizada e salva!'),
+                        backgroundColor: CoresApp.sucesso,
+                      ),
+                    );
+                  }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Erro ao salvar no Firebase: $e'),
-                      backgroundColor: CoresApp.erro,
-                    ),
-                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erro ao salvar no Firebase: $e'),
+                        backgroundColor: CoresApp.erro,
+                      ),
+                    );
+                  }
                 }
               },
             ),
@@ -2258,7 +2341,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
               icon: Icon(Icons.delete_outline_rounded,
                   color: CoresApp.erro, size: 18),
               tooltip: 'Excluir Apontamento',
-              onPressed: () => widget.onDeleteLog(log),
+              onPressed: () {
+                setState(() {
+                  _localTimeLogs.remove(log);
+                });
+                widget.onDeleteLog(log);
+              },
             ),
           ],
         )),
@@ -2478,7 +2566,84 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           icon: Icons.delete_outline_rounded,
           color: CoresApp.erro,
           tooltip: 'Excluir Subtrabalho',
-          onPressed: () => widget.onDeleteSubTask(project, task),
+          onPressed: () async {
+            // Exibe o diálogo de confirmação antes de excluir
+            final bool? confirmar = await showDialog<bool>(
+              context: context,
+              builder: (BuildContext dialogContext) {
+                return AlertDialog(
+                  backgroundColor: CoresTelas.fundoModal,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: CoresApp.borda),
+                  ),
+                  title: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: CoresApp.erro),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Confirmar Exclusão',
+                        style: TextStyle(
+                            color: CoresApp.textoPrincipal, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  content: Text(
+                    'Deseja realmente excluir a etapa "${task.subId} - ${task.stage}"? Esta ação não poderá ser desfeita.',
+                    style: TextStyle(
+                        color: CoresApp.textoSecundario, fontSize: 13),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: Text('Cancelar',
+                          style: TextStyle(color: CoresApp.textoSecundario)),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CoresApp.erro,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      child: const Text('Excluir',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                );
+              },
+            );
+
+            // Se o usuário não confirmar, encerra a execução
+            if (confirmar != true) return;
+
+            project.subTasks?.removeWhere((s) => s.subId == task.subId);
+
+            setState(() {});
+
+            try {
+              await widget.firebaseService.salvarProjeto(project);
+
+              widget.onEditProject(project);
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Etapa excluída com sucesso!'),
+                    backgroundColor: CoresApp.sucesso,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erro ao excluir etapa: $e'),
+                    backgroundColor: CoresApp.erro,
+                  ),
+                );
+              }
+            }
+          },
         ),
       ],
     );

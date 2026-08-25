@@ -703,11 +703,212 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              final picked = await showDatePicker(
+                              int diaTemp = startDate.day;
+                              int mesTemp = startDate.month;
+                              int anoTemp = startDate.year;
+
+                              final DateTime? picked =
+                                  await showDialog<DateTime>(
                                 context: context,
-                                initialDate: startDate,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
+                                builder: (BuildContext dialogContext) {
+                                  return StatefulBuilder(
+                                    builder: (context, setStateDialog) {
+                                      return AlertDialog(
+                                        backgroundColor:
+                                            const Color(0xFF1B1B2A),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          side: BorderSide(
+                                              color: Colors.white
+                                                  .withOpacity(0.16)),
+                                        ),
+                                        title: const Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_outlined,
+                                                color: Color(0xFF35D27F),
+                                                size: 20),
+                                            SizedBox(width: 10),
+                                            Text(
+                                              'Selecionar Data',
+                                              style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15),
+                                            ),
+                                          ],
+                                        ),
+                                        content: SizedBox(
+                                          width: 300,
+                                          height: 110,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              // DIA
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Dia',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: diaTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              31,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              diaTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // MÊS
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Mês',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: mesTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              12,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              mesTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // ANO
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Ano',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: anoTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              11,
+                                                              (index) =>
+                                                                  2020 + index)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              anoTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(dialogContext)
+                                                    .pop(null),
+                                            child: const Text('Cancelar',
+                                                style: TextStyle(
+                                                    color: Color(0xFFBDBDC7))),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(0xFF35D27F),
+                                              foregroundColor: Colors.black,
+                                            ),
+                                            onPressed: () {
+                                              try {
+                                                final novaData = DateTime(
+                                                    anoTemp, mesTemp, diaTemp);
+                                                Navigator.of(dialogContext)
+                                                    .pop(novaData);
+                                              } catch (_) {
+                                                Navigator.of(dialogContext)
+                                                    .pop(null);
+                                              }
+                                            },
+                                            child: const Text('Confirmar',
+                                                style: TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
                               );
 
                               if (picked != null) {
@@ -741,16 +942,217 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              final picked = await showDatePicker(
+                              int diaTemp = startDate.day;
+                              int mesTemp = startDate.month;
+                              int anoTemp = startDate.year;
+
+                              final DateTime? picked =
+                                  await showDialog<DateTime>(
                                 context: context,
-                                initialDate: endDate,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
+                                builder: (BuildContext dialogContext) {
+                                  return StatefulBuilder(
+                                    builder: (context, setStateDialog) {
+                                      return AlertDialog(
+                                        backgroundColor:
+                                            const Color(0xFF1B1B2A),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          side: BorderSide(
+                                              color: Colors.white
+                                                  .withOpacity(0.16)),
+                                        ),
+                                        title: const Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_outlined,
+                                                color: Color(0xFF35D27F),
+                                                size: 20),
+                                            SizedBox(width: 10),
+                                            Text(
+                                              'Selecionar Data',
+                                              style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15),
+                                            ),
+                                          ],
+                                        ),
+                                        content: SizedBox(
+                                          width: 300,
+                                          height: 110,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              // DIA
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Dia',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: diaTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              31,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              diaTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // MÊS
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Mês',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: mesTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              12,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              mesTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // ANO
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Ano',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: anoTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              11,
+                                                              (index) =>
+                                                                  2020 + index)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              anoTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(dialogContext)
+                                                    .pop(null),
+                                            child: const Text('Cancelar',
+                                                style: TextStyle(
+                                                    color: Color(0xFFBDBDC7))),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(0xFF35D27F),
+                                              foregroundColor: Colors.black,
+                                            ),
+                                            onPressed: () {
+                                              try {
+                                                final novaData = DateTime(
+                                                    anoTemp, mesTemp, diaTemp);
+                                                Navigator.of(dialogContext)
+                                                    .pop(novaData);
+                                              } catch (_) {
+                                                Navigator.of(dialogContext)
+                                                    .pop(null);
+                                              }
+                                            },
+                                            child: const Text('Confirmar',
+                                                style: TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
                               );
 
                               if (picked != null) {
                                 setDialogState(() {
-                                  endDate = picked;
+                                  startDate = picked;
                                 });
                               }
                             },
@@ -1006,11 +1408,212 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              final picked = await showDatePicker(
+                              int diaTemp = startDate.day;
+                              int mesTemp = startDate.month;
+                              int anoTemp = startDate.year;
+
+                              final DateTime? picked =
+                                  await showDialog<DateTime>(
                                 context: context,
-                                initialDate: startDate,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
+                                builder: (BuildContext dialogContext) {
+                                  return StatefulBuilder(
+                                    builder: (context, setStateDialog) {
+                                      return AlertDialog(
+                                        backgroundColor:
+                                            const Color(0xFF1B1B2A),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          side: BorderSide(
+                                              color: Colors.white
+                                                  .withOpacity(0.16)),
+                                        ),
+                                        title: const Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_outlined,
+                                                color: Color(0xFF35D27F),
+                                                size: 20),
+                                            SizedBox(width: 10),
+                                            Text(
+                                              'Selecionar Data',
+                                              style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15),
+                                            ),
+                                          ],
+                                        ),
+                                        content: SizedBox(
+                                          width: 300,
+                                          height: 110,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              // DIA
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Dia',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: diaTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              31,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              diaTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // MÊS
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Mês',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: mesTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              12,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              mesTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // ANO
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Ano',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: anoTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              11,
+                                                              (index) =>
+                                                                  2020 + index)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              anoTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(dialogContext)
+                                                    .pop(null),
+                                            child: const Text('Cancelar',
+                                                style: TextStyle(
+                                                    color: Color(0xFFBDBDC7))),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(0xFF35D27F),
+                                              foregroundColor: Colors.black,
+                                            ),
+                                            onPressed: () {
+                                              try {
+                                                final novaData = DateTime(
+                                                    anoTemp, mesTemp, diaTemp);
+                                                Navigator.of(dialogContext)
+                                                    .pop(novaData);
+                                              } catch (_) {
+                                                Navigator.of(dialogContext)
+                                                    .pop(null);
+                                              }
+                                            },
+                                            child: const Text('Confirmar',
+                                                style: TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
                               );
 
                               if (picked != null) {
@@ -1044,16 +1647,217 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              final picked = await showDatePicker(
+                              int diaTemp = startDate.day;
+                              int mesTemp = startDate.month;
+                              int anoTemp = startDate.year;
+
+                              final DateTime? picked =
+                                  await showDialog<DateTime>(
                                 context: context,
-                                initialDate: endDate,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
+                                builder: (BuildContext dialogContext) {
+                                  return StatefulBuilder(
+                                    builder: (context, setStateDialog) {
+                                      return AlertDialog(
+                                        backgroundColor:
+                                            const Color(0xFF1B1B2A),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          side: BorderSide(
+                                              color: Colors.white
+                                                  .withOpacity(0.16)),
+                                        ),
+                                        title: const Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_outlined,
+                                                color: Color(0xFF35D27F),
+                                                size: 20),
+                                            SizedBox(width: 10),
+                                            Text(
+                                              'Selecionar Data',
+                                              style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15),
+                                            ),
+                                          ],
+                                        ),
+                                        content: SizedBox(
+                                          width: 300,
+                                          height: 110,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              // DIA
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Dia',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: diaTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              31,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              diaTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // MÊS
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Mês',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: mesTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              12,
+                                                              (index) =>
+                                                                  index + 1)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()
+                                                                .padLeft(
+                                                                    2, '0')));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              mesTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Text('/',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20)),
+                                              // ANO
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text('Ano',
+                                                        style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 12)),
+                                                    const SizedBox(height: 5),
+                                                    DropdownButton<int>(
+                                                      value: anoTemp,
+                                                      dropdownColor:
+                                                          const Color(
+                                                              0xFF1B1B2A),
+                                                      style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16),
+                                                      items: List.generate(
+                                                              11,
+                                                              (index) =>
+                                                                  2020 + index)
+                                                          .map((val) {
+                                                        return DropdownMenuItem(
+                                                            value: val,
+                                                            child: Text(val
+                                                                .toString()));
+                                                      }).toList(),
+                                                      onChanged: (val) {
+                                                        if (val != null)
+                                                          setStateDialog(() =>
+                                                              anoTemp = val);
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(dialogContext)
+                                                    .pop(null),
+                                            child: const Text('Cancelar',
+                                                style: TextStyle(
+                                                    color: Color(0xFFBDBDC7))),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(0xFF35D27F),
+                                              foregroundColor: Colors.black,
+                                            ),
+                                            onPressed: () {
+                                              try {
+                                                final novaData = DateTime(
+                                                    anoTemp, mesTemp, diaTemp);
+                                                Navigator.of(dialogContext)
+                                                    .pop(novaData);
+                                              } catch (_) {
+                                                Navigator.of(dialogContext)
+                                                    .pop(null);
+                                              }
+                                            },
+                                            child: const Text('Confirmar',
+                                                style: TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
                               );
 
                               if (picked != null) {
                                 setDialogState(() {
-                                  endDate = picked;
+                                  startDate = picked;
                                 });
                               }
                             },
@@ -2132,8 +2936,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         availableWorkFormats.map((wf) => wf.name).toList();
 
     return Scaffold(
-      backgroundColor: Colors
-          .transparent, // Deixamos transparente para exibir a imagem de fundo
+      backgroundColor: Colors.transparent,
       appBar: Cabecalho(
         selectedIndex: widget.selectedIndex,
         onSelectTab: widget.onSelectTab,
@@ -2148,12 +2951,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Container(
         decoration: BoxDecoration(
           image: DecorationImage(
-            image: const AssetImage(
-                'assets/images/fundo.png'), // Ajuste para o caminho do seu asset
+            image: const AssetImage('assets/images/fundo.png'),
             fit: BoxFit.cover,
             colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(
-                  0.4), // Escurece levemente o fundo para destacar os componentes
+              Colors.black.withOpacity(0.4),
               BlendMode.darken,
             ),
           ),
@@ -2333,85 +3134,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          minHeight: 350,
+                      // Substituído ConstrainedBox por Container simples para ajustar de forma dinâmica
+                      Container(
+                        decoration: BoxDecoration(
+                          color: CoresDashboard.card,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: CoresApp.borda, width: 0.8),
                         ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: CoresDashboard.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border:
-                                Border.all(color: CoresApp.borda, width: 0.8),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: TabelaProjetosWidget(
-                              projects: filteredProjects,
-                              statusList: _statusList,
-                              expandedProjectIds: _expandedProjectIds,
-                              selectedTargetId: _selectedTargetId,
-                              timeLogs: _timeLogs,
-                              activeTimerTargetId: _activeTimerTargetId,
-                              activeStartTime: _activeStartTime,
-                              timerState: _timerState,
-                              secondsElapsed: _secondsElapsed,
-                              showPostStopButton: _showPostStopButton,
-                              horizontalController: _horizontalTableScroll,
-                              verticalController: _verticalTableScroll,
-                              onSelectTarget: (targetId) {
-                                setState(() {
-                                  _selectedTargetId = targetId;
-                                });
-                              },
-                              onToggleExpand: _toggleExpand,
-                              onEditProject: (project) {
-                                setState(() {
-                                  final index = _projects.indexWhere(
-                                    (p) => p.id == project.id,
-                                  );
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: TabelaProjetosWidget(
+                            projects: filteredProjects,
+                            statusList: _statusList,
+                            expandedProjectIds: _expandedProjectIds,
+                            selectedTargetId: _selectedTargetId,
+                            timeLogs: _timeLogs,
+                            activeTimerTargetId: _activeTimerTargetId,
+                            activeStartTime: _activeStartTime,
+                            timerState: _timerState,
+                            secondsElapsed: _secondsElapsed,
+                            showPostStopButton: _showPostStopButton,
+                            horizontalController: _horizontalTableScroll,
+                            verticalController: _verticalTableScroll,
+                            onSelectTarget: (targetId) {
+                              setState(() {
+                                _selectedTargetId = targetId;
+                              });
+                            },
+                            onToggleExpand: _toggleExpand,
+                            onEditProject: (project) {
+                              setState(() {
+                                final index = _projects.indexWhere(
+                                  (p) => p.id == project.id,
+                                );
 
-                                  if (index != -1) {
-                                    _projects[index] = project;
-                                  }
-                                });
-                              },
-                              onDeleteProject: _confirmDeleteProject,
-                              onAddSubTask: _addNewTaskDialog,
-                              onProjectStatusChanged:
-                                  (project, newStatus) async {
-                                setState(() {
-                                  project.status = newStatus;
-                                });
+                                if (index != -1) {
+                                  _projects[index] = project;
+                                }
+                              });
+                            },
+                            onDeleteProject: _confirmDeleteProject,
+                            onAddSubTask: _addNewTaskDialog,
+                            onProjectStatusChanged: (project, newStatus) async {
+                              setState(() {
+                                project.status = newStatus;
+                              });
 
-                                try {
-                                  await _firebaseService.saveProject(project);
+                              try {
+                                await _firebaseService.saveProject(project);
 
-                                  if (newStatus == 'TRAB_FIM') {
-                                    widget.onProjectCompleted?.call(project);
+                                if (newStatus == 'TRAB_FIM') {
+                                  widget.onProjectCompleted?.call(project);
 
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                              'Projeto ${project.id} finalizado e movido!'),
-                                          backgroundColor: CoresApp.sucesso,
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10)),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                            'Erro ao atualizar status: $e'),
-                                        backgroundColor: CoresApp.erro,
+                                            'Projeto ${project.id} finalizado e movido!'),
+                                        backgroundColor: CoresApp.sucesso,
                                         behavior: SnackBarBehavior.floating,
                                         shape: RoundedRectangleBorder(
                                             borderRadius:
@@ -2420,59 +3200,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     );
                                   }
                                 }
-                              },
-                              onSubTaskStatusChanged: (task, newStatus) async {
-                                setState(() {
-                                  task.status = newStatus;
-                                });
-
-                                final parent = _projects.firstWhere(
-                                  (p) => p.subTasks?.contains(task) ?? false,
-                                  orElse: () => _projects.first,
-                                );
-
-                                await _firebaseService.saveProject(parent);
-                              },
-                              onEditSubTask: _editSubTaskDialog,
-                              onDeleteSubTask: _confirmDeleteSubTask,
-                              onStartTimer: _startTimer,
-                              onPauseTimer: _pauseTimer,
-                              onStopTimer: _stopTimer,
-                              onManualTime: _showManualTimeDialog,
-                              onEditLog: _editLogDialog,
-                              onDeleteLog: _confirmDeleteLog,
-                              onRegisterLog: (log) async {
-                                try {
-                                  await widget.timeLogStore.register(log);
-
-                                  if (!mounted) {
-                                    return;
-                                  }
-
-                                  setState(() {
-                                    _showPostStopButton = false;
-                                  });
-
+                              } catch (e) {
+                                if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: const Text(
-                                          'Tempo cadastrado e salvo no Firebase com sucesso!'),
-                                      backgroundColor: CoresApp.sucesso,
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10)),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  if (!mounted) {
-                                    return;
-                                  }
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                          'Erro ao cadastrar tempo no Firebase: $e'),
+                                      content:
+                                          Text('Erro ao atualizar status: $e'),
                                       backgroundColor: CoresApp.erro,
                                       behavior: SnackBarBehavior.floating,
                                       shape: RoundedRectangleBorder(
@@ -2481,36 +3214,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                   );
                                 }
-                              },
-                              onMarkTaskCompleted: (task) async {
+                              }
+                            },
+                            onSubTaskStatusChanged: (task, newStatus) async {
+                              setState(() {
+                                task.status = newStatus;
+                              });
+
+                              final parent = _projects.firstWhere(
+                                (p) => p.subTasks?.contains(task) ?? false,
+                                orElse: () => _projects.first,
+                              );
+
+                              await _firebaseService.saveProject(parent);
+                            },
+                            onEditSubTask: _editSubTaskDialog,
+                            onDeleteSubTask: _confirmDeleteSubTask,
+                            onStartTimer: _startTimer,
+                            onPauseTimer: _pauseTimer,
+                            onStopTimer: _stopTimer,
+                            onManualTime: _showManualTimeDialog,
+                            onEditLog: _editLogDialog,
+                            onDeleteLog: _confirmDeleteLog,
+                            onRegisterLog: (log) async {
+                              try {
+                                await widget.timeLogStore.register(log);
+
+                                if (!mounted) {
+                                  return;
+                                }
+
                                 setState(() {
-                                  task.status = 'TRAB';
+                                  _showPostStopButton = false;
                                 });
 
-                                final parent = _projects.firstWhere(
-                                  (p) => p.subTasks?.contains(task) ?? false,
-                                  orElse: () => _projects.first,
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text(
+                                        'Tempo cadastrado e salvo no Firebase com sucesso!'),
+                                    backgroundColor: CoresApp.sucesso,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                  ),
                                 );
-
-                                await _firebaseService.saveProject(parent);
-
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                          'Etapa ${task.subId} marcada como realizada!'),
-                                      backgroundColor: CoresApp.sucesso,
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10)),
-                                    ),
-                                  );
+                              } catch (e) {
+                                if (!mounted) {
+                                  return;
                                 }
-                              },
-                              formatDuration: _formatDuration,
-                              firebaseService: _firebaseService,
-                            ),
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Erro ao cadastrar tempo no Firebase: $e'),
+                                    backgroundColor: CoresApp.erro,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                  ),
+                                );
+                              }
+                            },
+                            onMarkTaskCompleted: (task) async {
+                              setState(() {
+                                task.status = 'TRAB';
+                              });
+
+                              final parent = _projects.firstWhere(
+                                (p) => p.subTasks?.contains(task) ?? false,
+                                orElse: () => _projects.first,
+                              );
+
+                              await _firebaseService.saveProject(parent);
+
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Etapa ${task.subId} marcada como realizada!'),
+                                    backgroundColor: CoresApp.sucesso,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                  ),
+                                );
+                              }
+                            },
+                            formatDuration: _formatDuration,
+                            firebaseService: _firebaseService,
                           ),
                         ),
                       ),

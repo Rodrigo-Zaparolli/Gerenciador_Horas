@@ -2,12 +2,14 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
 
 class FirebaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // ============================================================
@@ -18,23 +20,21 @@ class FirebaseService {
     final user = _auth.currentUser;
 
     if (user == null) {
-      throw Exception('Usuário não autenticado.');
+      throw Exception(
+        'Usuário não autenticado.',
+      );
     }
 
     return user.uid;
   }
 
   // ============================================================
-  // REFERÊNCIA DOS PROJETOS ATIVOS
+  // REFERÊNCIAS
   // ============================================================
 
   CollectionReference<Map<String, dynamic>> get _projectsRef {
     return _db.collection('users').doc(_userId).collection('projects');
   }
-
-  // ============================================================
-  // REFERÊNCIA DOS PROJETOS FINALIZADOS
-  // ============================================================
 
   CollectionReference<Map<String, dynamic>> get _completedProjectsRef {
     return _db
@@ -43,12 +43,20 @@ class FirebaseService {
         .collection('completed_projects');
   }
 
-  // ============================================================
-  // REFERÊNCIA DOS MODELOS DE CHECKLIST (Por Utilizador)
-  // ============================================================
-
   CollectionReference<Map<String, dynamic>> get _checklistFormatsRef {
     return _db.collection('users').doc(_userId).collection('checklist_formats');
+  }
+
+  CollectionReference<Map<String, dynamic>> get _workFormatsRef {
+    return _db.collection('users').doc(_userId).collection('work_formats');
+  }
+
+  CollectionReference<Map<String, dynamic>> get _metricsRef {
+    return _db.collection('users').doc(_userId).collection('metrics');
+  }
+
+  CollectionReference<Map<String, dynamic>> get _orientacoesRef {
+    return _db.collection('users').doc(_userId).collection('orientacoes');
   }
 
   // ============================================================
@@ -76,10 +84,12 @@ class FirebaseService {
   }
 
   // ============================================================
-  // CONVERTE SUBTASKS DO FIRESTORE
+  // CONVERTE SUBTASKS
   // ============================================================
 
-  List<TaskModel> _parseSubTasks(dynamic value) {
+  List<TaskModel> _parseSubTasks(
+    dynamic value,
+  ) {
     if (value == null || value is! List) {
       return [];
     }
@@ -99,21 +109,21 @@ class FirebaseService {
 
       final DateTime? planEnd = _parseDate(data['planEnd']);
 
-      final TaskModel task = TaskModel(
-        subId: data['subId']?.toString() ?? '',
-        stage: data['stage']?.toString() ?? '',
-        status: data['status']?.toString() ?? 'INI_PRO',
-        startDate: startDate ?? planStart ?? DateTime.now(),
-        planStart: planStart,
-        planEnd: planEnd,
-        estimatedHours: data['estimatedHours']?.toString() ??
-            data['workedHours']?.toString() ??
-            data['horasTrabalhadas']?.toString() ??
-            '00:00',
-        hourType: data['hourType']?.toString() ?? 'Hs Cobradas',
+      tasks.add(
+        TaskModel(
+          subId: data['subId']?.toString() ?? '',
+          stage: data['stage']?.toString() ?? '',
+          status: data['status']?.toString() ?? 'INI_PRO',
+          startDate: startDate ?? planStart ?? DateTime.now(),
+          planStart: planStart,
+          planEnd: planEnd,
+          estimatedHours: data['estimatedHours']?.toString() ??
+              data['workedHours']?.toString() ??
+              data['horasTrabalhadas']?.toString() ??
+              '00:00',
+          hourType: data['hourType']?.toString() ?? 'Hs Cobradas',
+        ),
       );
-
-      tasks.add(task);
     }
 
     return tasks;
@@ -128,10 +138,14 @@ class FirebaseService {
   ) {
     final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
 
-    final DateTime projectStartDate =
-        _parseDate(data['startDate']) ?? DateTime.now();
+    final DateTime projectStartDate = _parseDate(
+          data['startDate'],
+        ) ??
+        DateTime.now();
 
-    final List<TaskModel> subTasks = _parseSubTasks(data['subTasks']);
+    final List<TaskModel> subTasks = _parseSubTasks(
+      data['subTasks'],
+    );
 
     final String resolvedHours = data['estimatedHours']?.toString() ??
         data['workedHours']?.toString() ??
@@ -140,11 +154,17 @@ class FirebaseService {
         '00:00';
 
     List<Map<String, dynamic>> parsedChecklist = [];
+
     final dynamic rawChecklist = data['checklist'];
+
     if (rawChecklist is List) {
       parsedChecklist = rawChecklist
           .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
+          .map(
+            (item) => Map<String, dynamic>.from(
+              item,
+            ),
+          )
           .toList();
     }
 
@@ -169,7 +189,7 @@ class FirebaseService {
   }
 
   // ============================================================
-  // BUSCAR PROJETOS
+  // PROJETOS
   // ============================================================
 
   Future<List<ProjectModel>> getProjects() async {
@@ -182,25 +202,19 @@ class FirebaseService {
         .toList();
   }
 
-  // ============================================================
-  // STREAM DE PROJETOS ATIVOS
-  // ============================================================
-
   Stream<List<ProjectModel>> getProjectsStream() {
     return _projectsRef.snapshots().map(
       (snapshot) {
         return snapshot.docs
             .map(
-              (doc) => _projectFromFirestore(doc),
+              (doc) => _projectFromFirestore(
+                doc,
+              ),
             )
             .toList();
       },
     );
   }
-
-  // ============================================================
-  // BUSCAR UM PROJETO
-  // ============================================================
 
   Future<ProjectModel?> getProject(
     String projectId,
@@ -215,7 +229,7 @@ class FirebaseService {
   }
 
   // ============================================================
-  // SALVAR / ATUALIZAR PROJETO
+  // SALVAR PROJETO
   // ============================================================
 
   Future<void> saveProject(
@@ -242,10 +256,19 @@ class FirebaseService {
     }
 
     final Map<String, dynamic> data = project.toJson();
+
     data['id'] = project.id;
     data['estimatedHours'] = project.estimatedHours;
     data['workedHours'] = project.estimatedHours;
     data['horasTrabalhadas'] = project.estimatedHours;
+
+    data['checklist'] = List<Map<String, dynamic>>.from(
+      project.checklist.map(
+        (item) => Map<String, dynamic>.from(
+          item,
+        ),
+      ),
+    );
 
     await _projectsRef.doc(targetDocId).set(
           data,
@@ -254,7 +277,172 @@ class FirebaseService {
   }
 
   // ============================================================
-  // ADICIONAR APONTAMENTO DE HORAS (SUBCOLEÇÃO 'time_entries')
+  // CHECKLIST
+  // ============================================================
+
+  Future<void> saveProjectChecklist(
+    String projectId,
+    List<Map<String, dynamic>> checklist,
+  ) async {
+    final String id = projectId.trim();
+
+    if (id.isEmpty) {
+      throw Exception(
+        'Não foi possível salvar o checklist: ID do projeto vazio.',
+      );
+    }
+
+    final List<Map<String, dynamic>> normalizedChecklist =
+        checklist.map((item) {
+      return Map<String, dynamic>.from(
+        item,
+      );
+    }).toList();
+
+    await _projectsRef.doc(id).set(
+      {
+        'checklist': normalizedChecklist,
+        'checklistUpdatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> replaceProjectChecklist(
+    ProjectModel project,
+    List<Map<String, dynamic>> checklist,
+  ) async {
+    final List<Map<String, dynamic>> copiedChecklist = checklist.map((item) {
+      final copy = Map<String, dynamic>.from(
+        item,
+      );
+
+      copy['completed'] = false;
+
+      return copy;
+    }).toList();
+
+    project.checklist = copiedChecklist;
+
+    await saveProjectChecklist(
+      project.id,
+      copiedChecklist,
+    );
+  }
+
+  Future<void> addChecklistItemToProject(
+    ProjectModel project,
+    Map<String, dynamic> item,
+  ) async {
+    final List<Map<String, dynamic>> checklist = project.checklist.map((item) {
+      return Map<String, dynamic>.from(
+        item,
+      );
+    }).toList();
+
+    final Map<String, dynamic> newItem = Map<String, dynamic>.from(
+      item,
+    );
+
+    newItem['completed'] = newItem['completed'] == true;
+
+    checklist.add(newItem);
+
+    project.checklist = checklist;
+
+    await saveProjectChecklist(
+      project.id,
+      checklist,
+    );
+  }
+
+  Future<void> updateChecklistItem(
+    ProjectModel project,
+    int index,
+    Map<String, dynamic> item,
+  ) async {
+    final List<Map<String, dynamic>> checklist = project.checklist.map((item) {
+      return Map<String, dynamic>.from(
+        item,
+      );
+    }).toList();
+
+    if (index < 0 || index >= checklist.length) {
+      throw Exception(
+        'Item de checklist inválido.',
+      );
+    }
+
+    checklist[index] = Map<String, dynamic>.from(item);
+
+    project.checklist = checklist;
+
+    await saveProjectChecklist(
+      project.id,
+      checklist,
+    );
+  }
+
+  Future<void> toggleChecklistItem(
+    ProjectModel project,
+    int index,
+  ) async {
+    final List<Map<String, dynamic>> checklist = project.checklist.map((item) {
+      return Map<String, dynamic>.from(
+        item,
+      );
+    }).toList();
+
+    if (index < 0 || index >= checklist.length) {
+      throw Exception(
+        'Item de checklist inválido.',
+      );
+    }
+
+    final bool current = checklist[index]['completed'] == true;
+
+    checklist[index]['completed'] = !current;
+
+    project.checklist = checklist;
+
+    await saveProjectChecklist(
+      project.id,
+      checklist,
+    );
+  }
+
+  Future<void> removeChecklistItem(
+    ProjectModel project,
+    int index,
+  ) async {
+    final List<Map<String, dynamic>> checklist = project.checklist.map((item) {
+      return Map<String, dynamic>.from(
+        item,
+      );
+    }).toList();
+
+    if (index < 0 || index >= checklist.length) {
+      throw Exception(
+        'Item de checklist inválido.',
+      );
+    }
+
+    checklist.removeAt(index);
+
+    for (int i = 0; i < checklist.length; i++) {
+      checklist[i]['order'] = i + 1;
+    }
+
+    project.checklist = checklist;
+
+    await saveProjectChecklist(
+      project.id,
+      checklist,
+    );
+  }
+
+  // ============================================================
+  // APONTAMENTOS
   // ============================================================
 
   Future<void> addTimeEntry({
@@ -264,8 +452,11 @@ class FirebaseService {
     DateTime? date,
   }) async {
     final String idTrimmed = projectId.trim();
+
     if (idTrimmed.isEmpty) {
-      throw Exception('ID do projeto inválido para apontamento de horas.');
+      throw Exception(
+        'ID do projeto inválido para apontamento de horas.',
+      );
     }
 
     final entryRef = _projectsRef.doc(idTrimmed).collection('time_entries');
@@ -278,18 +469,22 @@ class FirebaseService {
     });
   }
 
-  // ============================================================
-  // BUSCAR APONTAMENTOS DE HORAS DE UM PROJETO
-  // ============================================================
-
-  Future<List<Map<String, dynamic>>> getTimeEntries(String projectId) async {
+  Future<List<Map<String, dynamic>>> getTimeEntries(
+    String projectId,
+  ) async {
     final String idTrimmed = projectId.trim();
-    if (idTrimmed.isEmpty) return [];
+
+    if (idTrimmed.isEmpty) {
+      return [];
+    }
 
     final snapshot = await _projectsRef
         .doc(idTrimmed)
         .collection('time_entries')
-        .orderBy('date', descending: true)
+        .orderBy(
+          'date',
+          descending: true,
+        )
         .get();
 
     return snapshot.docs.map((doc) {
@@ -300,15 +495,16 @@ class FirebaseService {
     }).toList();
   }
 
-  // ============================================================
-  // ATUALIZAR APENAS AS HORAS TRABALHADAS DE UM PROJETO
-  // ============================================================
-
   Future<void> atualizarHorasProjeto(
-      String projectId, String novasHoras) async {
+    String projectId,
+    String novasHoras,
+  ) async {
     final String idTrimmed = projectId.trim();
+
     if (idTrimmed.isEmpty) {
-      throw Exception('ID do projeto inválido para atualizar horas.');
+      throw Exception(
+        'ID do projeto inválido para atualizar horas.',
+      );
     }
 
     await _projectsRef.doc(idTrimmed).update({
@@ -319,7 +515,7 @@ class FirebaseService {
   }
 
   // ============================================================
-  // FINALIZAR / MOVER PROJETO
+  // FINALIZAR PROJETO
   // ============================================================
 
   Future<void> finalizarProjeto(
@@ -339,19 +535,26 @@ class FirebaseService {
     project.status = 'TRAB_FIM';
 
     final Map<String, dynamic> completedData = project.toJson();
+
     completedData['id'] = project.id;
+
     completedData['status'] = 'TRAB_FIM';
+
     completedData['estimatedHours'] = project.estimatedHours;
+
     completedData['workedHours'] = project.estimatedHours;
+
     completedData['horasTrabalhadas'] = project.estimatedHours;
+
     completedData['finalizedAt'] = FieldValue.serverTimestamp();
+
     completedData['sourceCollection'] = 'projects';
 
-    final DocumentReference<Map<String, dynamic>> activeProjectRef =
-        _projectsRef.doc(projectId);
+    final activeProjectRef = _projectsRef.doc(projectId);
 
-    final DocumentReference<Map<String, dynamic>> completedProjectRef =
-        _completedProjectsRef.doc(projectId);
+    final completedProjectRef = _completedProjectsRef.doc(
+      projectId,
+    );
 
     final WriteBatch batch = _db.batch();
 
@@ -361,12 +564,13 @@ class FirebaseService {
       SetOptions(merge: true),
     );
 
-    batch.delete(activeProjectRef);
+    batch.delete(
+      activeProjectRef,
+    );
 
     await batch.commit();
 
-    final DocumentSnapshot<Map<String, dynamic>> activeCheck =
-        await activeProjectRef.get();
+    final activeCheck = await activeProjectRef.get();
 
     if (activeCheck.exists) {
       await activeProjectRef.delete();
@@ -374,7 +578,7 @@ class FirebaseService {
   }
 
   // ============================================================
-  // EXCLUIR PROJETO ATIVO
+  // EXCLUIR PROJETO
   // ============================================================
 
   Future<void> deleteProject(
@@ -387,27 +591,30 @@ class FirebaseService {
   // WORK FORMATS
   // ============================================================
 
-  CollectionReference<Map<String, dynamic>> get _workFormatsRef {
-    return _db.collection('users').doc(_userId).collection('work_formats');
-  }
-
   Future<List<WorkFormat>> getWorkFormats() async {
     final snapshot = await _workFormatsRef.get();
 
     return snapshot.docs.map((doc) {
       final data = doc.data();
       final dynamic rawSteps = data['steps'];
+
       final List<String> normalizedSteps = [];
 
       if (rawSteps is List) {
         for (final step in rawSteps) {
           if (step is String) {
             final value = step.trim();
+
             if (value.isNotEmpty) {
-              normalizedSteps.add(value);
+              normalizedSteps.add(
+                value,
+              );
             }
           } else if (step is Map) {
-            final Map<String, dynamic> map = Map<String, dynamic>.from(step);
+            final Map<String, dynamic> map = Map<String, dynamic>.from(
+              step,
+            );
+
             final dynamic name = map['name'] ??
                 map['stage'] ??
                 map['title'] ??
@@ -416,14 +623,20 @@ class FirebaseService {
 
             if (name != null) {
               final value = name.toString().trim();
+
               if (value.isNotEmpty) {
-                normalizedSteps.add(value);
+                normalizedSteps.add(
+                  value,
+                );
               }
             }
           } else {
             final value = step.toString().trim();
+
             if (value.isNotEmpty) {
-              normalizedSteps.add(value);
+              normalizedSteps.add(
+                value,
+              );
             }
           }
         }
@@ -445,11 +658,15 @@ class FirebaseService {
     for (final step in format.steps) {
       if (step is String) {
         final value = step.trim();
+
         if (value.isNotEmpty) {
           normalizedSteps.add(value);
         }
       } else if (step is Map) {
-        final Map<String, dynamic> map = Map<String, dynamic>.from(step);
+        final Map<String, dynamic> map = Map<String, dynamic>.from(
+          step,
+        );
+
         final dynamic name = map['name'] ??
             map['stage'] ??
             map['title'] ??
@@ -458,12 +675,16 @@ class FirebaseService {
 
         if (name != null) {
           final value = name.toString().trim();
+
           if (value.isNotEmpty) {
-            normalizedSteps.add(value);
+            normalizedSteps.add(
+              value,
+            );
           }
         }
       } else {
         final value = step.toString().trim();
+
         if (value.isNotEmpty) {
           normalizedSteps.add(value);
         }
@@ -487,12 +708,91 @@ class FirebaseService {
   }
 
   // ============================================================
-  // MÉTRICAS
+  // EXPORTAR MODELOS
   // ============================================================
 
-  CollectionReference<Map<String, dynamic>> get _metricsRef {
-    return _db.collection('users').doc(_userId).collection('metrics');
+  Future<List<Map<String, dynamic>>> exportWorkFormats() async {
+    final snapshot = await _workFormatsRef.get();
+
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(
+        doc.data(),
+      );
+
+      return {
+        'id': doc.id,
+        'name': data['name']?.toString() ?? '',
+        'steps': data['steps'] is List
+            ? List<dynamic>.from(
+                data['steps'],
+              )
+            : <dynamic>[],
+      };
+    }).toList();
   }
+
+  // ============================================================
+  // IMPORTAR MODELOS
+  // ============================================================
+
+  Future<int> importWorkFormats(
+    List<dynamic> formats,
+  ) async {
+    int importedCount = 0;
+
+    final WriteBatch batch = _db.batch();
+
+    for (final item in formats) {
+      if (item is! Map) {
+        continue;
+      }
+
+      final Map<String, dynamic> data = Map<String, dynamic>.from(
+        item,
+      );
+
+      final String id = data['id']?.toString().trim() ?? '';
+
+      final String name = data['name']?.toString().trim() ?? '';
+
+      if (id.isEmpty || name.isEmpty) {
+        continue;
+      }
+
+      final dynamic rawSteps = data['steps'];
+
+      final List<dynamic> steps = rawSteps is List
+          ? List<dynamic>.from(
+              rawSteps,
+            )
+          : <dynamic>[];
+
+      final DocumentReference<Map<String, dynamic>> ref =
+          _workFormatsRef.doc(id);
+
+      batch.set(
+        ref,
+        {
+          'id': id,
+          'name': name,
+          'steps': steps,
+        },
+        SetOptions(merge: true),
+      );
+
+      importedCount++;
+    }
+
+    if (importedCount > 0) {
+      await batch.commit();
+    }
+
+    return importedCount;
+  }
+
+  // ============================================================
+  // MÉTRICAS
+  // ============================================================
 
   Future<void> saveUserMetrics(
     Map<String, dynamic> data,
@@ -505,6 +805,7 @@ class FirebaseService {
 
   Future<Map<String, dynamic>?> getUserMetrics() async {
     final doc = await _metricsRef.doc('yearly_data').get();
+
     return doc.data();
   }
 
@@ -512,38 +813,106 @@ class FirebaseService {
   // ORIENTAÇÕES
   // ============================================================
 
-  CollectionReference<Map<String, dynamic>> get _orientacoesRef {
-    return _db.collection('users').doc(_userId).collection('orientacoes');
-  }
+  /// Mantido para compatibilidade
+  /// com código antigo do projeto.
+  get firestore => _db;
+
+  /// Mantido para compatibilidade
+  /// com código antigo do projeto.
+  get currentUserId => _userId;
+
+  // ------------------------------------------------------------
+  // BUSCAR ORIENTAÇÕES
+  // ------------------------------------------------------------
 
   Future<List<Map<String, dynamic>>> getOrientacoes() async {
     final snapshot = await _orientacoesRef.get();
 
-    return snapshot.docs.map(
-      (doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          ...data,
-        };
-      },
-    ).toList();
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+
+      // Garante que o ID também
+      // esteja disponível para a tela.
+      final Map<String, dynamic> resultado = {
+        'id': doc.id,
+        ...data,
+      };
+
+      // Normaliza imagens antigas.
+      if (resultado['imagens'] is List) {
+        resultado['imagens'] = List<String>.from(
+          (resultado['imagens'] as List).whereType<String>(),
+        );
+      } else {
+        resultado['imagens'] = <String>[];
+      }
+
+      return resultado;
+    }).toList();
   }
+
+  // ------------------------------------------------------------
+  // SALVAR ORIENTAÇÃO
+  // ------------------------------------------------------------
 
   Future<void> saveOrientacao(
     String id,
     Map<String, dynamic> data,
   ) async {
-    await _orientacoesRef.doc(id).set(
-          data,
+    if (id.trim().isEmpty) {
+      throw Exception(
+        'Não foi possível salvar orientação: ID vazio.',
+      );
+    }
+
+    final Map<String, dynamic> dadosParaSalvar = Map<String, dynamic>.from(
+      data,
+    );
+
+    // Garante o ID no documento.
+    dadosParaSalvar['id'] = id.trim();
+
+    // ----------------------------------------------------------
+    // IMAGENS
+    // ----------------------------------------------------------
+    //
+    // As imagens são mantidas como
+    // List<String> em Base64.
+    //
+
+    final dynamic rawImagens = dadosParaSalvar['imagens'];
+
+    if (rawImagens is List) {
+      dadosParaSalvar['imagens'] = rawImagens
+          .whereType<String>()
+          .where(
+            (item) => item.trim().isNotEmpty,
+          )
+          .toList();
+    } else {
+      dadosParaSalvar['imagens'] = <String>[];
+    }
+
+    await _orientacoesRef.doc(id.trim()).set(
+          dadosParaSalvar,
           SetOptions(merge: true),
         );
   }
 
+  // ------------------------------------------------------------
+  // EXCLUIR ORIENTAÇÃO
+  // ------------------------------------------------------------
+
   Future<void> deleteOrientacao(
     String id,
   ) async {
-    await _orientacoesRef.doc(id).delete();
+    if (id.trim().isEmpty) {
+      throw Exception(
+        'Não foi possível excluir orientação: ID vazio.',
+      );
+    }
+
+    await _orientacoesRef.doc(id.trim()).delete();
   }
 
   // ============================================================
@@ -556,6 +925,7 @@ class FirebaseService {
         return snapshot.docs.map(
           (doc) {
             final data = doc.data();
+
             return {
               'id': doc.id,
               ...data,
@@ -572,6 +942,7 @@ class FirebaseService {
     return snapshot.docs.map(
       (doc) {
         final data = doc.data();
+
         return {
           'id': doc.id,
           ...data,
@@ -590,7 +961,9 @@ class FirebaseService {
       );
     }
 
-    final Map<String, dynamic> completedData = Map<String, dynamic>.from(data);
+    final Map<String, dynamic> completedData = Map<String, dynamic>.from(
+      data,
+    );
 
     completedData['id'] = id;
     completedData['status'] = 'TRAB_FIM';
@@ -614,19 +987,22 @@ class FirebaseService {
   }
 
   // ============================================================
-  // REABRIR / REVERTER PROJETO FINALIZADO
+  // REABRIR PROJETO
   // ============================================================
 
   Future<void> reopenCompletedProject(
     String projectId,
   ) async {
     if (projectId.trim().isEmpty) {
-      throw Exception('ID do projeto inválido.');
+      throw Exception(
+        'ID do projeto inválido.',
+      );
     }
 
     final String id = projectId.trim();
 
     final completedRef = _completedProjectsRef.doc(id);
+
     final completedSnapshot = await completedRef.get();
 
     if (!completedSnapshot.exists) {
@@ -647,12 +1023,21 @@ class FirebaseService {
             : 'TRAB';
 
     completedData['status'] = previousStatus;
-    completedData.remove('finalizedAt');
-    completedData.remove('statusBeforeCompletion');
+
+    completedData.remove(
+      'finalizedAt',
+    );
+
+    completedData.remove(
+      'statusBeforeCompletion',
+    );
+
     completedData['sourceCollection'] = 'projects';
+
     completedData['reopenedAt'] = FieldValue.serverTimestamp();
 
     final projectRef = _projectsRef.doc(id);
+
     final batch = _db.batch();
 
     batch.set(
@@ -661,50 +1046,71 @@ class FirebaseService {
       SetOptions(merge: false),
     );
 
-    batch.delete(completedRef);
+    batch.delete(
+      completedRef,
+    );
 
     await batch.commit();
   }
 
   // ============================================================
-  // CHECKLIST FORMATS (Modelos Globais de Check List)
+  // MODELOS DE CHECK LIST
   // ============================================================
 
   Future<List<ChecklistFormat>> getChecklistFormats() async {
     try {
       final snapshot = await _checklistFormatsRef.get();
+
       return snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return ChecklistFormat.fromJson(data, doc.id);
+        final data = doc.data();
+
+        return ChecklistFormat.fromJson(
+          data,
+          doc.id,
+        );
       }).toList();
     } catch (e) {
-      print('Erro ao buscar modelos de check list: $e');
+      print(
+        'Erro ao buscar modelos de check list: $e',
+      );
+
       return [];
     }
   }
 
-  Future<void> saveChecklistFormat(ChecklistFormat format) async {
+  Future<void> saveChecklistFormat(
+    ChecklistFormat format,
+  ) async {
     try {
-      await _checklistFormatsRef
-          .doc(format.id)
-          .set(format.toJson(), SetOptions(merge: true));
+      await _checklistFormatsRef.doc(format.id).set(
+            format.toJson(),
+            SetOptions(merge: true),
+          );
     } catch (e) {
-      print('Erro ao salvar modelo de check list: $e');
+      print(
+        'Erro ao salvar modelo de check list: $e',
+      );
+
       rethrow;
     }
   }
 
-  Future<void> deleteChecklistFormat(String id) async {
+  Future<void> deleteChecklistFormat(
+    String id,
+  ) async {
     try {
       await _checklistFormatsRef.doc(id).delete();
     } catch (e) {
-      print('Erro ao excluir modelo de check list: $e');
+      print(
+        'Erro ao excluir modelo de check list: $e',
+      );
+
       rethrow;
     }
   }
 
   // ============================================================
-  // ALIASES & EXTRAS
+  // ALIASES
   // ============================================================
 
   Future<void> salvarProjeto(
@@ -717,10 +1123,15 @@ class FirebaseService {
     );
   }
 
-  Future<void> excluirProjeto(String id) async {
+  Future<void> excluirProjeto(
+    String id,
+  ) async {
     await _projectsRef.doc(id).delete();
+
     await _completedProjectsRef.doc(id).delete();
   }
 
-  Future<void> deleteTimeLog(String s) async {}
+  Future<void> deleteTimeLog(
+    String s,
+  ) async {}
 }

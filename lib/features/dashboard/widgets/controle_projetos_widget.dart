@@ -8,13 +8,13 @@ class ControleProjetosWidget extends StatefulWidget {
   final bool somenteAtivos;
   final bool filtroAtivo;
 
-  // Parâmetro para o tipo de serviço selecionado
+  // Tipo de serviço selecionado
   final String tipoServicoSelecionado;
 
-  // Lista dinâmica vinda do cadastro de trabalho (WorkFormatsScreen)
+  // Lista dinâmica vinda do cadastro de trabalho
   final List<String> tiposServicoOpcoes;
 
-  // Parâmetros para o período (Data Inicial e Data Fim)
+  // Período
   final DateTime? dataInicio;
   final DateTime? dataFim;
 
@@ -33,7 +33,7 @@ class ControleProjetosWidget extends StatefulWidget {
   final ValueChanged<bool?> onOrdenarPrioridadeChanged;
   final ValueChanged<bool?> onSomenteAtivosChanged;
 
-  // Callbacks
+  // Callbacks dos filtros
   final ValueChanged<String?> onTipoServicoChanged;
   final ValueChanged<DateTime?> onDataInicioChanged;
   final ValueChanged<DateTime?> onDataFimChanged;
@@ -63,6 +63,8 @@ class ControleProjetosWidget extends StatefulWidget {
     required this.onTipoServicoChanged,
     required this.onDataInicioChanged,
     required this.onDataFimChanged,
+
+    // Mantidos para compatibilidade com a chamada existente.
     required String filtroProjetos,
     required Null Function(String? value) onFiltroProjetosChanged,
   });
@@ -75,23 +77,24 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
   late Timer _timer;
   late DateTime _now;
 
-  // Armazena localmente para garantir resposta visual imediata no clique
+  // Mantém a resposta visual imediata do dropdown.
   late String _tipoServicoLocal;
 
   @override
   void initState() {
     super.initState();
+
     _now = DateTime.now();
     _tipoServicoLocal = widget.tipoServicoSelecionado;
 
     _timer = Timer.periodic(
       const Duration(seconds: 1),
       (timer) {
-        if (mounted) {
-          setState(() {
-            _now = DateTime.now();
-          });
-        }
+        if (!mounted) return;
+
+        setState(() {
+          _now = DateTime.now();
+        });
       },
     );
   }
@@ -99,10 +102,9 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
   @override
   void didUpdateWidget(covariant ControleProjetosWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+
     if (widget.tipoServicoSelecionado != _tipoServicoLocal) {
-      setState(() {
-        _tipoServicoLocal = widget.tipoServicoSelecionado;
-      });
+      _tipoServicoLocal = widget.tipoServicoSelecionado;
     }
   }
 
@@ -124,27 +126,168 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         '${date.second.toString().padLeft(2, '0')}';
   }
 
+  // ==============================================================
+  // SELEÇÃO DE DATA
+  // ==============================================================
+  //
+  // Usa o showDatePicker nativo do Flutter.
+  //
+  // Isso substitui o showDialog + StatefulBuilder que estava sendo
+  // usado anteriormente e evita conflitos entre dialogs/modais.
+  //
   Future<void> _selecionarData(BuildContext context, bool isInicio) async {
     final DateTime initialDate =
         (isInicio ? widget.dataInicio : widget.dataFim) ?? DateTime.now();
 
-    final DateTime? picked = await showDatePicker(
+    int diaTemp = initialDate.day;
+    int mesTemp = initialDate.month;
+    int anoTemp = initialDate.year;
+
+    final DateTime? picked = await showDialog<DateTime>(
       context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF35D27F),
-              onPrimary: Colors.black,
-              surface: Color(0xFF1B1B2A),
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: const Color(0xFF1B1B2A),
-          ),
-          child: child!,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1B1B2A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.white.withOpacity(0.16)),
+              ),
+              title: Row(
+                children: [
+                  const Icon(Icons.calendar_today_outlined,
+                      color: Color(0xFF35D27F), size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    isInicio
+                        ? 'Selecionar Data Inicial'
+                        : 'Selecionar Data Final',
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 300,
+                height: 110,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // DIA
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Dia',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12)),
+                          const SizedBox(height: 5),
+                          DropdownButton<int>(
+                            value: diaTemp,
+                            dropdownColor: const Color(0xFF1B1B2A),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
+                            items: List.generate(31, (index) => index + 1)
+                                .map((val) {
+                              return DropdownMenuItem(
+                                  value: val,
+                                  child: Text(val.toString().padLeft(2, '0')));
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null)
+                                setStateDialog(() => diaTemp = val);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Text('/',
+                        style: TextStyle(color: Colors.white, fontSize: 20)),
+                    // MÊS
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Mês',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12)),
+                          const SizedBox(height: 5),
+                          DropdownButton<int>(
+                            value: mesTemp,
+                            dropdownColor: const Color(0xFF1B1B2A),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
+                            items: List.generate(12, (index) => index + 1)
+                                .map((val) {
+                              return DropdownMenuItem(
+                                  value: val,
+                                  child: Text(val.toString().padLeft(2, '0')));
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null)
+                                setStateDialog(() => mesTemp = val);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Text('/',
+                        style: TextStyle(color: Colors.white, fontSize: 20)),
+                    // ANO
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Ano',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12)),
+                          const SizedBox(height: 5),
+                          DropdownButton<int>(
+                            value: anoTemp,
+                            dropdownColor: const Color(0xFF1B1B2A),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
+                            items: List.generate(16, (index) => 2020 + index)
+                                .map((val) {
+                              return DropdownMenuItem(
+                                  value: val, child: Text(val.toString()));
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null)
+                                setStateDialog(() => anoTemp = val);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(null),
+                  child: const Text('Cancelar',
+                      style: TextStyle(color: Color(0xFFBDBDC7))),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF35D27F),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () {
+                    try {
+                      final novaData = DateTime(anoTemp, mesTemp, diaTemp);
+                      Navigator.of(dialogContext).pop(novaData);
+                    } catch (_) {
+                      Navigator.of(dialogContext).pop(null);
+                    }
+                  },
+                  child: const Text('Confirmar',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -158,16 +301,22 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
       widget.onFilter();
     }
   }
+  // ==============================================================
+  // BUILD
+  // ==============================================================
 
   @override
   Widget build(BuildContext context) {
     final List<String> listaServicos = [
       'Todos os Serviços',
-      ...widget.tiposServicoOpcoes.where((item) => item != 'Todos os Serviços')
+      ...widget.tiposServicoOpcoes.where(
+        (item) => item != 'Todos os Serviços',
+      ),
     ];
 
     if (!listaServicos.contains(_tipoServicoLocal)) {
-      _tipoServicoLocal = listaServicos.first;
+      _tipoServicoLocal =
+          listaServicos.isNotEmpty ? listaServicos.first : 'Todos os Serviços';
     }
 
     return Container(
@@ -188,6 +337,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
           // DATA + RELÓGIO
           // ========================================================
+
           Container(
             height: 34,
             padding: const EdgeInsets.symmetric(horizontal: 9),
@@ -247,6 +397,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
           // TÍTULO + LIMPAR
           // ========================================================
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -265,9 +416,14 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                     setState(() {
                       _tipoServicoLocal = 'Todos os Serviços';
                     });
-                    widget.onTipoServicoChanged('Todos os Serviços');
+
+                    widget.onTipoServicoChanged(
+                      'Todos os Serviços',
+                    );
+
                     widget.onDataInicioChanged(null);
                     widget.onDataFimChanged(null);
+
                     widget.onFilter();
                   },
                   child: const Text(
@@ -287,6 +443,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
           // FILTRO: TIPO DE SERVIÇO
           // ========================================================
+
           _dropdown<String>(
             value: _tipoServicoLocal,
             items: listaServicos.map((tipo) {
@@ -299,13 +456,14 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
               );
             }).toList(),
             onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _tipoServicoLocal = value;
-                });
-                widget.onTipoServicoChanged(value);
-                widget.onFilter();
-              }
+              if (value == null) return;
+
+              setState(() {
+                _tipoServicoLocal = value;
+              });
+
+              widget.onTipoServicoChanged(value);
+              widget.onFilter();
             },
           ),
 
@@ -314,6 +472,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
           // FILTRO POR PERÍODO
           // ========================================================
+
           Row(
             children: [
               Expanded(
@@ -321,7 +480,10 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                   label: widget.dataInicio != null
                       ? _formatDate(widget.dataInicio!)
                       : 'Data Inicial',
-                  onTap: () => _selecionarData(context, true),
+                  onTap: () => _selecionarData(
+                    context,
+                    true,
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -330,7 +492,10 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                   label: widget.dataFim != null
                       ? _formatDate(widget.dataFim!)
                       : 'Data Final',
-                  onTap: () => _selecionarData(context, false),
+                  onTap: () => _selecionarData(
+                    context,
+                    false,
+                  ),
                 ),
               ),
             ],
@@ -341,6 +506,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
           // BOTÕES
           // ========================================================
+
           Row(
             children: [
               Expanded(
@@ -402,6 +568,10 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
     );
   }
 
+  // ==============================================================
+  // DROPDOWN
+  // ==============================================================
+
   Widget _dropdown<T>({
     required T value,
     required List<DropdownMenuItem<T>> items,
@@ -441,7 +611,14 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
     );
   }
 
-  Widget _dataField({required String label, required VoidCallback onTap}) {
+  // ==============================================================
+  // CAMPO DE DATA
+  // ==============================================================
+
+  Widget _dataField({
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),

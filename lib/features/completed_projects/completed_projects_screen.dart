@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
+import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class CompletedProjectsScreen extends StatefulWidget {
@@ -676,7 +677,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             ],
           ),
           content: Text(
-            'O projeto "$id" voltará para os projetos ativos.\n\n'
+            'O projeto "$id" voltará para los projetos ativos.\n\n'
             'As etapas, horários, arquivo Excel e pasta vinculada '
             'serão preservados.',
             style: TextStyle(
@@ -1311,7 +1312,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
         horizontal: 30,
-        vertical: 60,
+        vertical: 40,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1357,7 +1358,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // TABELA COMPLETA COM VISUAL MAIS MODERNO E ELEGANTE
+  // TABELA COMPLETA
   // ============================================================
 
   Widget _buildCompletedProjectsTable(
@@ -1389,14 +1390,21 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               height: 4,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [CoresApp.primaria, CoresApp.sucesso],
+                  colors: [
+                    CoresApp.primaria,
+                    CoresApp.sucesso,
+                  ],
                 ),
               ),
             ),
-            Expanded(
-              child: completedProjects.isEmpty
-                  ? _buildEmptyState()
-                  : Scrollbar(
+            completedProjects.isEmpty
+                ? _buildEmptyState()
+                : ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxHeight:
+                          500, // Altura máxima antes de habilitar o scroll vertical
+                    ),
+                    child: Scrollbar(
                       controller: _verticalController,
                       thumbVisibility: true,
                       child: SingleChildScrollView(
@@ -1490,7 +1498,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                         ),
                       ),
                     ),
-            ),
+                  ),
           ],
         ),
       ),
@@ -1656,10 +1664,19 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             children: [
                               _infoRow('ID', id),
                               _infoRow('Cliente', client),
-                              _infoRow('Tipo de Serviço', serviceType),
+                              _infoRow(
+                                'Tipo de Serviço',
+                                serviceType,
+                              ),
                               _infoRow('Líder', leader),
-                              _infoRow('Horas Estimadas', estimatedHours),
-                              _infoRow('Data Início', _formatDate(startDate)),
+                              _infoRow(
+                                'Horas Estimadas',
+                                estimatedHours,
+                              ),
+                              _infoRow(
+                                'Data Início',
+                                _formatDate(startDate),
+                              ),
                               _infoRow(
                                 'Finalizado em',
                                 _formatDateTime(finalizedAt),
@@ -1740,14 +1757,18 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                               : excelLink,
                           available: excelLink.isNotEmpty,
                           onPressed: () async {
-                            final opened = await _openResource(excelLink);
+                            final opened = await _openResource(
+                              excelLink,
+                            );
 
                             if (!mounted) {
                               return;
                             }
 
                             if (!opened) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(
                                 SnackBar(
                                   content: const Text(
                                     'Não foi possível abrir o arquivo Excel.',
@@ -1768,14 +1789,18 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                               : folderPath,
                           available: folderPath.isNotEmpty,
                           onPressed: () async {
-                            final opened = await _openResource(folderPath);
+                            final opened = await _openResource(
+                              folderPath,
+                            );
 
                             if (!mounted) {
                               return;
                             }
 
                             if (!opened) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(
                                 SnackBar(
                                   content: const Text(
                                     'Não foi possível abrir a pasta do projeto.',
@@ -1908,17 +1933,23 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         userName: '',
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0B0F19),
-              Color(0xFF0F172A),
-            ],
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: const AssetImage(
+              AppTheme.caminhoFundo,
+            ),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(
+                AppTheme.opacidadeFundo,
+              ),
+              BlendMode.darken,
+            ),
           ),
         ),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(28.0),
           child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: widget.firebaseService.getCompletedProjectsStream(),
@@ -1975,16 +2006,16 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               }
 
               final List<dynamic> rawProjects = snapshot.data != null
-                  ? List<dynamic>.from(
-                      snapshot.data!,
-                    )
+                  ? List<dynamic>.from(snapshot.data!)
                   : <dynamic>[];
 
               final allProjects = _convertProjects(rawProjects);
+
               final completedProjects = _filterProjects(allProjects);
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2047,10 +2078,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Expanded(
-                    child: _buildCompletedProjectsTable(
-                      completedProjects,
-                    ),
+                  _buildCompletedProjectsTable(
+                    completedProjects,
                   ),
                 ],
               );

@@ -19,6 +19,210 @@ class TimeLogStore extends ChangeNotifier {
   String? get _userId => _auth.currentUser?.uid;
 
   // ============================================================
+  // AUXILIAR: CONVERTE "HH:MM" PARA MINUTOS
+  // ============================================================
+  int _timeToMinutes(String timeStr) {
+    try {
+      final parts = timeStr.trim().split(':');
+      if (parts.length == 2) {
+        final hours = int.tryParse(parts[0]) ?? 0;
+        final minutes = int.tryParse(parts[1]) ?? 0;
+        return (hours * 60) + minutes;
+      } else if (parts.length == 1) {
+        final val = double.tryParse(parts[0].replaceAll(',', '.')) ?? 0.0;
+        return (val * 60).round();
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  // ============================================================
+  // AUXILIAR: CONVERTE MINUTOS PARA FORMATO "HH:MM"
+  // ============================================================
+  String _minutesToTime(int totalMinutes) {
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+  }
+
+  // ============================================================
+  // MÉTODOS DE METAS ANUAIS E MENSAIS
+  // ============================================================
+
+  Future<Map<String, dynamic>?> carregarMetasAnuais(int ano) async {
+    final userId = _userId;
+    if (userId == null || userId.trim().isEmpty) return null;
+
+    try {
+      final doc = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('metrics')
+          .doc('yearly_$ano')
+          .get();
+      return doc.data();
+    } catch (e) {
+      debugPrint('Erro ao carregar metas anuais: $e');
+      return null;
+    }
+  }
+
+  Future<void> salvarMetaMensal(int ano, String mesIndex, String valor) async {
+    final userId = _userId;
+    if (userId == null || userId.trim().isEmpty) return;
+
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('metrics')
+          .doc('yearly_$ano');
+
+      final docSnapshot = await docRef.get();
+      final Map<String, dynamic> dadosAtuais = docSnapshot.data() ?? {};
+
+      dadosAtuais[mesIndex] = valor;
+
+      int totalMinutesSum = 0;
+
+      final List<String> mesesValidos = [
+        '0',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '12',
+        'janeiro',
+        'fevereiro',
+        'março',
+        'abril',
+        'maio',
+        'junho',
+        'julho',
+        'agosto',
+        'setembro',
+        'outubro',
+        'novembro',
+        'dezembro'
+      ];
+
+      dadosAtuais.forEach((key, val) {
+        if (mesesValidos.contains(key.toLowerCase())) {
+          final timeStr = val?.toString() ?? '00:00';
+          totalMinutesSum += _timeToMinutes(timeStr);
+        }
+      });
+
+      final String totalFormatado = _minutesToTime(totalMinutesSum);
+
+      await docRef.set({
+        mesIndex: valor,
+        'totalAnual': totalFormatado,
+      }, SetOptions(merge: true));
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erro ao salvar meta mensal e atualizar total: $e');
+    }
+  }
+
+  Future<void> salvarMetasAnuaisCompleta(
+      int ano, Map<String, dynamic> metasMensais) async {
+    final userId = _userId;
+    if (userId == null || userId.trim().isEmpty) {
+      throw Exception('Usuário não autenticado.');
+    }
+
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('metrics')
+          .doc('yearly_$ano');
+
+      int totalMinutesSum = 0;
+      final List<String> mesesValidos = [
+        '0',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '12',
+        'janeiro',
+        'fevereiro',
+        'março',
+        'abril',
+        'maio',
+        'junho',
+        'julho',
+        'agosto',
+        'setembro',
+        'outubro',
+        'novembro',
+        'dezembro'
+      ];
+
+      metasMensais.forEach((key, val) {
+        if (mesesValidos.contains(key.toLowerCase())) {
+          final timeStr = val?.toString() ?? '00:00';
+          totalMinutesSum += _timeToMinutes(timeStr);
+        }
+      });
+
+      final String totalFormatado = _minutesToTime(totalMinutesSum);
+
+      final Map<String, dynamic> dadosCompletos = {
+        ...metasMensais,
+        'totalAnual': totalFormatado,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await docRef.set(dadosCompletos, SetOptions(merge: true));
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erro ao salvar o conjunto completo de métricas anuais: $e');
+      rethrow;
+    }
+  }
+
+  // ============================================================
   // INICIAR ESCUTA DOS LOGS DOS PROJETOS
   // ============================================================
 
@@ -30,9 +234,7 @@ class TimeLogStore extends ChangeNotifier {
     final userId = _userId;
 
     if (userId == null || userId.trim().isEmpty) {
-      debugPrint(
-        'TimeLogStore: usuário não autenticado.',
-      );
+      debugPrint('TimeLogStore: usuário não autenticado.');
       return;
     }
 
@@ -49,10 +251,7 @@ class TimeLogStore extends ChangeNotifier {
           .collection('projects')
           .doc(id)
           .collection('time_logs')
-          .orderBy(
-            'createdAt',
-            descending: true,
-          )
+          .orderBy('createdAt', descending: true)
           .snapshots()
           .listen(
         (snapshot) {
@@ -62,9 +261,7 @@ class TimeLogStore extends ChangeNotifier {
           );
         },
         onError: (error) {
-          debugPrint(
-            'Erro ao escutar logs do projeto $id: $error',
-          );
+          debugPrint('Erro ao escutar logs do projeto $id: $error');
         },
       );
 
@@ -83,7 +280,6 @@ class TimeLogStore extends ChangeNotifier {
     final otherLogs = _logs.where(
       (log) {
         final baseProjectId = log.targetId.split('_').first;
-
         return baseProjectId != projectId;
       },
     ).toList();
@@ -110,9 +306,7 @@ class TimeLogStore extends ChangeNotifier {
         if (rawHours is num) {
           hours = rawHours.toDouble();
         } else {
-          hours = double.tryParse(
-            rawHours?.toString() ?? '',
-          );
+          hours = double.tryParse(rawHours?.toString() ?? '');
         }
 
         return TimeLog(
@@ -158,10 +352,7 @@ class TimeLogStore extends ChangeNotifier {
         .collection('projects')
         .doc(projectId)
         .collection('time_logs')
-        .orderBy(
-          'createdAt',
-          descending: true,
-        )
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
       (snapshot) {
@@ -187,9 +378,7 @@ class TimeLogStore extends ChangeNotifier {
             if (rawHours is num) {
               hours = rawHours.toDouble();
             } else {
-              hours = double.tryParse(
-                rawHours?.toString() ?? '',
-              );
+              hours = double.tryParse(rawHours?.toString() ?? '');
             }
 
             return TimeLog(
@@ -223,17 +412,13 @@ class TimeLogStore extends ChangeNotifier {
     final userId = _userId;
 
     if (userId == null || userId.trim().isEmpty) {
-      throw Exception(
-        'Usuário não autenticado.',
-      );
+      throw Exception('Usuário não autenticado.');
     }
 
     final id = projectId.trim();
 
     if (id.isEmpty) {
-      throw Exception(
-        'ID do projeto inválido.',
-      );
+      throw Exception('ID do projeto inválido.');
     }
 
     final String logId = log.id.trim().isNotEmpty
@@ -271,80 +456,64 @@ class TimeLogStore extends ChangeNotifier {
   }
 
   // ============================================================
-  // CADASTRAR / REGISTRAR
+  // CADASTRAR / REGISTRAR (CORRIGIDO)
   // ============================================================
 
-  Future<void> register(
-    TimeLog log,
-  ) async {
+  Future<void> register(TimeLog log) async {
     final userId = _userId;
 
     if (userId == null || userId.trim().isEmpty) {
-      throw Exception(
-        'Usuário não autenticado.',
-      );
+      throw Exception('Usuário não autenticado.');
     }
 
     final projectId = log.targetId.split('_').first.trim();
 
     if (projectId.isEmpty) {
-      throw Exception(
-        'Não foi possível identificar o projeto do apontamento.',
-      );
+      throw Exception('Não foi possível identificar o projeto do apontamento.');
     }
 
     final logId = log.id.trim();
+    String targetLogId = logId;
 
     if (logId.isEmpty) {
-      final newId = await addFirebaseLog(
-        projectId,
-        log,
-      );
-
-      log.isRegistered = true;
-
-      await _firestore
+      targetLogId = await addFirebaseLog(projectId, log);
+    } else {
+      final docRef = _firestore
           .collection('users')
           .doc(userId)
           .collection('projects')
           .doc(projectId)
           .collection('time_logs')
-          .doc(newId)
-          .update({
-        'isRegistered': true,
-        'registeredAt': FieldValue.serverTimestamp(),
-      });
+          .doc(logId);
 
-      return;
+      final snapshot = await docRef.get();
+
+      if (!snapshot.exists) {
+        targetLogId = await addFirebaseLog(projectId, log);
+      } else {
+        await docRef.set(
+          {
+            'isRegistered': true,
+            'registeredAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
     }
 
-    final docRef = _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('projects')
-        .doc(projectId)
-        .collection('time_logs')
-        .doc(logId);
-
-    final snapshot = await docRef.get();
-
-    if (!snapshot.exists) {
-      await addFirebaseLog(
-        projectId,
-        log,
-      );
+    // Atualiza de forma segura na memória local e notifica a UI
+    final index = _logs.indexWhere((item) => item.id == targetLogId);
+    if (index != -1) {
+      // Cria uma nova instância ou altera a flag e substitui na lista
+      final updatedLog = _logs[index];
+      updatedLog.isRegistered = true;
+      _logs[index] = updatedLog;
+    } else {
+      log.isRegistered = true;
+      _logs.add(log);
     }
 
-    await docRef.set(
-      {
-        'isRegistered': true,
-        'registeredAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
-
-    log.isRegistered = true;
-
+    _logs.sort((a, b) => b.date.compareTo(a.date));
     notifyListeners();
   }
 
@@ -358,23 +527,17 @@ class TimeLogStore extends ChangeNotifier {
     final userId = _userId;
 
     if (userId == null || userId.trim().isEmpty) {
-      throw Exception(
-        'Usuário não autenticado.',
-      );
+      throw Exception('Usuário não autenticado.');
     }
 
     final projectId = log.targetId.split('_').first.trim();
 
     if (projectId.isEmpty) {
-      throw Exception(
-        'Projeto inválido.',
-      );
+      throw Exception('Projeto inválido.');
     }
 
     if (log.id.trim().isEmpty) {
-      throw Exception(
-        'ID do apontamento inválido.',
-      );
+      throw Exception('ID do apontamento inválido.');
     }
 
     await _firestore
@@ -416,23 +579,17 @@ class TimeLogStore extends ChangeNotifier {
     final userId = _userId;
 
     if (userId == null || userId.trim().isEmpty) {
-      throw Exception(
-        'Usuário não autenticado.',
-      );
+      throw Exception('Usuário não autenticado.');
     }
 
     final projectId = log.targetId.split('_').first.trim();
 
     if (projectId.isEmpty) {
-      throw Exception(
-        'Projeto inválido.',
-      );
+      throw Exception('Projeto inválido.');
     }
 
     if (log.id.trim().isEmpty) {
-      throw Exception(
-        'ID do apontamento inválido.',
-      );
+      throw Exception('ID do apontamento inválido.');
     }
 
     await _firestore

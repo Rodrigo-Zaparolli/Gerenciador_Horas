@@ -21,6 +21,11 @@ class CentralAlertasWidget extends StatelessWidget {
     for (var project in projects) {
       if (project.subTasks != null && project.subTasks!.isNotEmpty) {
         for (var task in project.subTasks!) {
+          // Se o status for TRAB_FIM, ignora este item (já foi concluído)
+          if (task.status == 'TRAB_FIM') {
+            continue;
+          }
+
           final planEnd = task.planEnd ?? task.startDate;
           final normalizedEnd =
               DateTime(planEnd.year, planEnd.month, planEnd.day);
@@ -29,8 +34,7 @@ class CentralAlertasWidget extends StatelessWidget {
           final differenceDays = normalizedEnd.difference(today).inDays;
 
           // Regra de corte: Só exibe na central de alertas se estiver atrasado (negativo)
-          // ou se vencer nos próximos 5 dias ajustados. Se o usuário alterar a data para
-          // mais frente, differenceDays > 5, logo ele sai automaticamente da listagem.
+          // ou se vencer nos próximos 5 dias ajustados.
           if (differenceDays <= 5) {
             alertItems.add(
               _AlertItem(
@@ -48,6 +52,11 @@ class CentralAlertasWidget extends StatelessWidget {
           }
         }
       } else {
+        // Se o projeto principal estiver concluído (TRAB_FIM), ignora
+        if (project.status == 'TRAB_FIM') {
+          continue;
+        }
+
         final planEnd = project.startDate;
         final normalizedEnd =
             DateTime(planEnd.year, planEnd.month, planEnd.day);
@@ -138,7 +147,6 @@ class CentralAlertasWidget extends StatelessWidget {
                           : const Color(0xFF161622);
 
                       return Container(
-                        // Padding vertical reduzido para compactar a altura da linha
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 3,

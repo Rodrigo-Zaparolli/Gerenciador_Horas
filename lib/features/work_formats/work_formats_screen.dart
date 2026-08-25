@@ -1,11 +1,18 @@
+// ===============================================================
+// TELA DE CADASTRO DE TRABALHO
+// ===============================================================
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
-import 'package:gerenciador_horas/domain/models/work_format_model.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
+import 'package:gerenciador_horas/domain/models/work_format_model.dart';
+import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
-// Tela principal para gerenciamento e cadastro de modelos de projetos e etapas
 class WorkFormatsScreen extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelectTab;
@@ -22,33 +29,59 @@ class WorkFormatsScreen extends StatefulWidget {
 }
 
 class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
-  // Instância do serviço do Firebase para comunicação com o banco de dados
+  // =============================================================
+  // FIREBASE
+  // =============================================================
+
   final FirebaseService _firebaseService = FirebaseService();
 
-  // Lista local para armazenar os modelos de projetos carregados
+  // =============================================================
+  // DADOS
+  // =============================================================
+
   List<WorkFormat> _workFormats = [];
 
-  // Controla o estado de carregamento inicial da tela
   bool _isLoading = true;
+  bool _isExporting = false;
+  bool _isImporting = false;
+
+  // =============================================================
+  // INIT
+  // =============================================================
 
   @override
   void initState() {
     super.initState();
-    _loadWorkFormats(); // Carrega os dados assim que a tela é iniciada
+
+    _loadWorkFormats();
   }
 
-  // Função assíncrona para buscar os modelos cadastrados no Firebase
+  // =============================================================
+  // CARREGAR MODELOS
+  // =============================================================
+
   Future<void> _loadWorkFormats() async {
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
     try {
       final formats = await _firebaseService.getWorkFormats();
-      setState(() {
-        _workFormats = formats;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
+
       if (mounted) {
+        setState(() {
+          _workFormats = formats;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao carregar modelos: $e'),
@@ -59,11 +92,416 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
     }
   }
 
-  // Função assíncrona para excluir um modelo de projeto do Firebase pelo ID
+  // =============================================================
+  // EXPORTAR MODELOS PARA JSON
+  // =============================================================
+
+  Future<void> _exportWorkFormats() async {
+    if (_isExporting) {
+      return;
+    }
+
+    if (_workFormats.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não existem modelos de trabalho cadastrados para exportar.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      _isExporting = true;
+    });
+
+    try {
+      final List<Map<String, dynamic>> formatsData = _workFormats.map((format) {
+        return {
+          'id': format.id,
+          'name': format.name,
+          'steps': format.steps.map((step) {
+            if (step is Map) {
+              return Map<String, dynamic>.from(step);
+            }
+
+            return {
+              'order': format.steps.indexOf(step) + 1,
+              'name': step.toString(),
+            };
+          }).toList(),
+        };
+      }).toList();
+
+      final Map<String, dynamic> exportData = {
+        'format': 'gerenciador_horas_work_formats',
+        'version': 1,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'total': formatsData.length,
+        'workFormats': formatsData,
+      };
+
+      final String jsonString = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(exportData);
+
+      final String? outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Exportar modelos de trabalho',
+        fileName: 'modelos_trabalho.json',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        return;
+      }
+
+      String finalPath = outputPath;
+
+      if (!finalPath.toLowerCase().endsWith('.json')) {
+        finalPath = '$finalPath.json';
+      }
+
+      final File file = File(finalPath);
+
+      await file.writeAsString(
+        jsonString,
+        encoding: utf8,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Exportação concluída.\nArquivo salvo em:\n$finalPath',
+            ),
+            backgroundColor: CoresApp.sucesso,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro ao exportar modelos: $e',
+            ),
+            backgroundColor: CoresApp.erro,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
+  }
+
+  // =============================================================
+  // IMPORTAR MODELOS DE JSON
+  // =============================================================
+
+  Future<void> _importWorkFormats() async {
+    if (_isImporting) {
+      return;
+    }
+
+    setState(() {
+      _isImporting = true;
+    });
+
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Importar modelos de trabalho',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final PlatformFile pickedFile = result.files.first;
+
+      String jsonString;
+
+      if (pickedFile.bytes != null) {
+        jsonString = utf8.decode(
+          pickedFile.bytes!,
+          allowMalformed: false,
+        );
+      } else if (pickedFile.path != null) {
+        final File file = File(pickedFile.path!);
+
+        jsonString = await file.readAsString(
+          encoding: utf8,
+        );
+      } else {
+        throw Exception(
+          'Não foi possível acessar o arquivo selecionado.',
+        );
+      }
+
+      if (jsonString.trim().isEmpty) {
+        throw Exception(
+          'O arquivo JSON está vazio.',
+        );
+      }
+
+      final dynamic decoded = jsonDecode(jsonString);
+
+      if (decoded is! Map) {
+        throw Exception(
+          'Formato de arquivo inválido.',
+        );
+      }
+
+      final Map<String, dynamic> jsonData = Map<String, dynamic>.from(decoded);
+
+      final dynamic rawFormats = jsonData['workFormats'];
+
+      if (rawFormats is! List) {
+        throw Exception(
+          'O arquivo não contém a lista de modelos de trabalho.',
+        );
+      }
+
+      final List<WorkFormat> importedFormats = [];
+
+      for (final dynamic item in rawFormats) {
+        if (item is! Map) {
+          continue;
+        }
+
+        final Map<String, dynamic> data = Map<String, dynamic>.from(item);
+
+        final String id = data['id']?.toString().trim() ?? '';
+
+        final String name = data['name']?.toString().trim() ?? '';
+
+        if (id.isEmpty || name.isEmpty) {
+          continue;
+        }
+
+        final List<String> steps = [];
+
+        final dynamic rawSteps = data['steps'];
+
+        if (rawSteps is List) {
+          for (final dynamic step in rawSteps) {
+            if (step is String) {
+              final String value = step.trim();
+
+              if (value.isNotEmpty) {
+                steps.add(value);
+              }
+            } else if (step is Map) {
+              final Map<String, dynamic> stepMap =
+                  Map<String, dynamic>.from(step);
+
+              final dynamic stepName = stepMap['name'] ??
+                  stepMap['stage'] ??
+                  stepMap['title'] ??
+                  stepMap['descricao'] ??
+                  stepMap['description'];
+
+              if (stepName != null) {
+                final String value = stepName.toString().trim();
+
+                if (value.isNotEmpty) {
+                  steps.add(value);
+                }
+              }
+            }
+          }
+        }
+
+        importedFormats.add(
+          WorkFormat(
+            id: id,
+            name: name,
+            steps: steps,
+          ),
+        );
+      }
+
+      if (importedFormats.isEmpty) {
+        throw Exception(
+          'Nenhum modelo válido foi encontrado no arquivo.',
+        );
+      }
+
+      // =========================================================
+      // CONFIRMAR IMPORTAÇÃO
+      // =========================================================
+
+      if (!mounted) {
+        return;
+      }
+
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            backgroundColor: CoresTelas.fundoModal,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(
+                color: CoresApp.borda,
+              ),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: CoresApp.primaria.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.file_download_outlined,
+                    color: CoresApp.primaria,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Importar modelos',
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Foram encontrados ${importedFormats.length} '
+              'modelo(s) no arquivo.\n\n'
+              'Os modelos serão adicionados ou atualizados '
+              'na sua conta. Os modelos existentes que não '
+              'estiverem no arquivo não serão excluídos.',
+              style: const TextStyle(
+                color: CoresApp.textoSecundario,
+                height: 1.5,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(
+                    dialogContext,
+                    false,
+                  );
+                },
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CoresApp.primaria,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pop(
+                    dialogContext,
+                    true,
+                  );
+                },
+                child: const Text(
+                  'Importar',
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+
+      // =========================================================
+      // SALVAR NO FIREBASE
+      // =========================================================
+
+      int importedCount = 0;
+
+      for (final WorkFormat format in importedFormats) {
+        await _firebaseService.saveWorkFormat(
+          format,
+        );
+
+        importedCount++;
+      }
+
+      await _loadWorkFormats();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$importedCount modelo(s) importado(s) com sucesso.',
+            ),
+            backgroundColor: CoresApp.sucesso,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FormatException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'O arquivo selecionado não possui um JSON válido.',
+            ),
+            backgroundColor: CoresApp.erro,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro ao importar modelos: $e',
+            ),
+            backgroundColor: CoresApp.erro,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+        });
+      }
+    }
+  }
+
+  // =============================================================
+  // EXCLUIR MODELO
+  // =============================================================
+
   Future<void> _deleteFormat(String id) async {
     try {
       await _firebaseService.deleteWorkFormat(id);
-      await _loadWorkFormats(); // Atualiza a lista após a exclusão
+
+      await _loadWorkFormats();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,94 +514,128 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
     }
   }
 
-  // Abre o diálogo interativo para criar ou editar um modelo de projeto e suas etapas
-  void _openFormatDetailDialog({WorkFormat? format}) {
-    final isEditing = format != null;
-    final idController = TextEditingController(text: format?.id ?? '');
-    final nameController = TextEditingController(text: format?.name ?? '');
+  // =============================================================
+  // MODAL DE CADASTRO / EDIÇÃO
+  // =============================================================
+
+  void _openFormatDetailDialog({
+    WorkFormat? format,
+  }) {
+    final bool isEditing = format != null;
+
+    final idController = TextEditingController(
+      text: format?.id ?? '',
+    );
+
+    final nameController = TextEditingController(
+      text: format?.name ?? '',
+    );
 
     final stepOrderController = TextEditingController();
+
     final stepNameController = TextEditingController();
 
     final List<Map<String, String>> currentStepsWithOrder = [];
 
-    // Mapeia as etapas existentes caso seja uma edição
     if (format?.steps != null) {
       for (int i = 0; i < format!.steps.length; i++) {
         final stepData = format.steps[i];
+
         if (stepData is Map) {
-          currentStepsWithOrder.add({
-            'order': stepData['order']?.toString() ?? '${i + 1}',
-            'name': stepData['name']?.toString() ?? '',
-          });
+          currentStepsWithOrder.add(
+            {
+              'order': stepData['order']?.toString() ?? '${i + 1}',
+              'name': stepData['name']?.toString() ?? '',
+            },
+          );
         } else {
-          currentStepsWithOrder.add({
-            'order': '${i + 1}',
-            'name': stepData.toString(),
-          });
+          currentStepsWithOrder.add(
+            {
+              'order': '${i + 1}',
+              'name': stepData.toString(),
+            },
+          );
         }
       }
     }
 
-    if (stepOrderController.text.isEmpty) {
-      stepOrderController.text = '${currentStepsWithOrder.length + 1}';
-    }
+    stepOrderController.text = '${currentStepsWithOrder.length + 1}';
 
-    // Exibe o modal/diálogo de cadastro ou edição moderno
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-            // Função interna para adicionar uma nova etapa à lista temporária
+          builder: (
+            dialogContext,
+            setDialogState,
+          ) {
             void addStep() {
               final orderText = stepOrderController.text.trim();
+
               final nameText = stepNameController.text.trim();
 
               if (nameText.isNotEmpty) {
-                setDialogState(() {
-                  currentStepsWithOrder.add({
-                    'order': orderText.isEmpty
-                        ? '${currentStepsWithOrder.length + 1}'
-                        : orderText,
-                    'name': nameText,
-                  });
-                  stepNameController.clear();
-                  final nextVal =
-                      (double.tryParse(orderText.replaceAll(',', '.')) ??
-                              currentStepsWithOrder.length.toDouble()) +
-                          1.0;
-                  stepOrderController.text = nextVal % 1 == 0
-                      ? nextVal.toInt().toString()
-                      : nextVal.toString();
-                });
+                setDialogState(
+                  () {
+                    currentStepsWithOrder.add(
+                      {
+                        'order': orderText.isEmpty
+                            ? '${currentStepsWithOrder.length + 1}'
+                            : orderText,
+                        'name': nameText,
+                      },
+                    );
+
+                    stepNameController.clear();
+
+                    final nextVal = (double.tryParse(
+                              orderText.replaceAll(
+                                ',',
+                                '.',
+                              ),
+                            ) ??
+                            currentStepsWithOrder.length.toDouble()) +
+                        1.0;
+
+                    stepOrderController.text = nextVal % 1 == 0
+                        ? nextVal.toInt().toString()
+                        : nextVal.toString();
+                  },
+                );
               }
             }
 
-            // Função interna para remover uma etapa pelo índice
             void removeStep(int index) {
-              setDialogState(() {
-                currentStepsWithOrder.removeAt(index);
-              });
+              setDialogState(
+                () {
+                  currentStepsWithOrder.removeAt(index);
+                },
+              );
             }
 
-            // Função interna para abrir sub-diálogo de edição de uma etapa específica
             void editStep(int index) {
               final currentEntry = currentStepsWithOrder[index];
-              final editController =
-                  TextEditingController(text: currentEntry['name']);
-              final orderController =
-                  TextEditingController(text: currentEntry['order']);
+
+              final editController = TextEditingController(
+                text: currentEntry['name'],
+              );
+
+              final orderController = TextEditingController(
+                text: currentEntry['order'],
+              );
 
               showDialog(
-                context: context,
-                builder: (context) {
+                context: dialogContext,
+                builder: (editContext) {
                   return AlertDialog(
                     backgroundColor: CoresTelas.fundoModalSecundario,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: CoresApp.borda, width: 1),
+                      side: const BorderSide(
+                        color: CoresApp.borda,
+                        width: 1,
+                      ),
                     ),
                     title: const Text(
                       'Editar Etapa e Posição',
@@ -180,54 +652,74 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         children: [
                           TextField(
                             controller: orderController,
-                            style:
-                                const TextStyle(color: CoresApp.textoPrincipal),
+                            style: const TextStyle(
+                              color: CoresApp.textoPrincipal,
+                            ),
                             keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
+                              decimal: true,
+                            ),
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d*[.,]?\d{0,5}'))
+                                RegExp(
+                                  r'^\d*[.,]?\d{0,5}',
+                                ),
+                              ),
                             ],
                             decoration: InputDecoration(
                               labelText: 'Número / Posição (Ex: 01, 3)',
                               labelStyle: const TextStyle(
-                                  color: CoresApp.textoSecundario,
-                                  fontSize: 12),
+                                color: CoresApp.textoSecundario,
+                                fontSize: 12,
+                              ),
                               filled: true,
                               fillColor: CoresTelas.campoFormulario,
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide:
-                                    const BorderSide(color: CoresApp.borda),
+                                borderRadius: BorderRadius.circular(
+                                  8,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: CoresApp.borda,
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide:
-                                    const BorderSide(color: CoresApp.primaria),
+                                borderRadius: BorderRadius.circular(
+                                  8,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: CoresApp.primaria,
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
                           TextField(
                             controller: editController,
-                            style:
-                                const TextStyle(color: CoresApp.textoPrincipal),
+                            style: const TextStyle(
+                              color: CoresApp.textoPrincipal,
+                            ),
                             autofocus: true,
                             decoration: InputDecoration(
                               labelText: 'Descrição da Etapa',
                               labelStyle: const TextStyle(
-                                  color: CoresApp.textoSecundario),
+                                color: CoresApp.textoSecundario,
+                              ),
                               filled: true,
                               fillColor: CoresTelas.campoFormulario,
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide:
-                                    const BorderSide(color: CoresApp.borda),
+                                borderRadius: BorderRadius.circular(
+                                  8,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: CoresApp.borda,
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide:
-                                    const BorderSide(color: CoresApp.primaria),
+                                borderRadius: BorderRadius.circular(
+                                  8,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: CoresApp.primaria,
+                                ),
                               ),
                             ),
                           ),
@@ -236,35 +728,54 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancelar',
-                            style: TextStyle(color: CoresApp.textoSecundario)),
+                        onPressed: () {
+                          Navigator.pop(
+                            editContext,
+                          );
+                        },
+                        child: const Text(
+                          'Cancelar',
+                          style: TextStyle(
+                            color: CoresApp.textoSecundario,
+                          ),
+                        ),
                       ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: CoresApp.primaria,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(
+                              8,
+                            ),
                           ),
                         ),
                         onPressed: () {
                           final newText = editController.text.trim();
+
                           final newOrder = orderController.text.trim();
 
                           if (newText.isNotEmpty && newOrder.isNotEmpty) {
-                            setDialogState(() {
-                              currentStepsWithOrder[index] = {
-                                'order': newOrder,
-                                'name': newText,
-                              };
-                            });
-                            Navigator.pop(context);
+                            setDialogState(
+                              () {
+                                currentStepsWithOrder[index] = {
+                                  'order': newOrder,
+                                  'name': newText,
+                                };
+                              },
+                            );
+
+                            Navigator.pop(
+                              editContext,
+                            );
                           }
                         },
-                        child: const Text('Salvar',
-                            style: TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Salvar',
+                          style: TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   );
@@ -276,7 +787,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
               backgroundColor: CoresTelas.fundoModal,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(color: CoresApp.borda, width: 1),
+                side: const BorderSide(
+                  color: CoresApp.borda,
+                  width: 1,
+                ),
               ),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -289,8 +803,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                           color: CoresApp.primaria.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.layers_outlined,
-                            color: CoresApp.primaria, size: 20),
+                        child: const Icon(
+                          Icons.layers_outlined,
+                          color: CoresApp.primaria,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Text(
@@ -306,9 +823,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     ],
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close,
-                        color: CoresApp.textoSecundario),
-                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close,
+                      color: CoresApp.textoSecundario,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(
+                        dialogContext,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -319,7 +842,6 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Campos ID e Nome
                       Row(
                         children: [
                           SizedBox(
@@ -327,22 +849,30 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                             child: TextField(
                               controller: idController,
                               style: const TextStyle(
-                                  color: CoresApp.textoPrincipal),
+                                color: CoresApp.textoPrincipal,
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'ID',
                                 labelStyle: const TextStyle(
-                                    color: CoresApp.textoSecundario),
+                                  color: CoresApp.textoSecundario,
+                                ),
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      const BorderSide(color: CoresApp.borda),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
+                                  borderSide: const BorderSide(
+                                    color: CoresApp.borda,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
                                   borderSide: const BorderSide(
-                                      color: CoresApp.primaria),
+                                    color: CoresApp.primaria,
+                                  ),
                                 ),
                               ),
                             ),
@@ -352,22 +882,30 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                             child: TextField(
                               controller: nameController,
                               style: const TextStyle(
-                                  color: CoresApp.textoPrincipal),
+                                color: CoresApp.textoPrincipal,
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'Nome do Tipo de Projeto',
                                 labelStyle: const TextStyle(
-                                    color: CoresApp.textoSecundario),
+                                  color: CoresApp.textoSecundario,
+                                ),
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      const BorderSide(color: CoresApp.borda),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
+                                  borderSide: const BorderSide(
+                                    color: CoresApp.borda,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
                                   borderSide: const BorderSide(
-                                      color: CoresApp.primaria),
+                                    color: CoresApp.primaria,
+                                  ),
                                 ),
                               ),
                             ),
@@ -375,8 +913,6 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-
-                      // Título Etapas
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -397,7 +933,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                               color: CoresApp.primaria.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: CoresApp.primaria.withOpacity(0.3)),
+                                color: CoresApp.primaria.withOpacity(0.3),
+                              ),
                             ),
                             child: Text(
                               'Total: ${currentStepsWithOrder.length}',
@@ -411,8 +948,6 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-
-                      // Inserção de Etapas
                       Row(
                         children: [
                           SizedBox(
@@ -420,31 +955,43 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                             child: TextField(
                               controller: stepOrderController,
                               style: const TextStyle(
-                                  color: CoresApp.textoPrincipal),
+                                color: CoresApp.textoPrincipal,
+                              ),
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                      decimal: true),
+                                decimal: true,
+                              ),
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
-                                    RegExp(r'^\d*[.,]?\d{0,5}'))
+                                  RegExp(
+                                    r'^\d*[.,]?\d{0,5}',
+                                  ),
+                                ),
                               ],
                               decoration: InputDecoration(
                                 labelText: 'Nº',
                                 labelStyle: const TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 12),
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 12,
+                                ),
                                 isDense: true,
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      const BorderSide(color: CoresApp.borda),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
+                                  borderSide: const BorderSide(
+                                    color: CoresApp.borda,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
                                   borderSide: const BorderSide(
-                                      color: CoresApp.primaria),
+                                    color: CoresApp.primaria,
+                                  ),
                                 ),
                               ),
                             ),
@@ -454,7 +1001,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                             child: TextField(
                               controller: stepNameController,
                               style: const TextStyle(
-                                  color: CoresApp.textoPrincipal),
+                                color: CoresApp.textoPrincipal,
+                              ),
                               decoration: InputDecoration(
                                 hintText: 'Descrição da Etapa (ex: Contato)',
                                 hintStyle: const TextStyle(
@@ -465,17 +1013,25 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                 filled: true,
                                 fillColor: CoresTelas.campoFormulario,
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide:
-                                      const BorderSide(color: CoresApp.borda),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
+                                  borderSide: const BorderSide(
+                                    color: CoresApp.borda,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
                                   borderSide: const BorderSide(
-                                      color: CoresApp.primaria),
+                                    color: CoresApp.primaria,
+                                  ),
                                 ),
                               ),
-                              onSubmitted: (_) => addStep(),
+                              onSubmitted: (_) {
+                                addStep();
+                              },
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -487,7 +1043,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                 vertical: 14,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(
+                                  8,
+                                ),
                               ),
                             ),
                             onPressed: addStep,
@@ -499,30 +1057,38 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                             label: const Text(
                               'Incluir',
                               style: TextStyle(
-                                  color: CoresApp.textoPrincipal,
-                                  fontWeight: FontWeight.bold),
+                                color: CoresApp.textoPrincipal,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-
-                      // Lista de etapas cadastradas no modal
                       Container(
-                        constraints: const BoxConstraints(maxHeight: 250),
+                        constraints: const BoxConstraints(
+                          maxHeight: 250,
+                        ),
                         decoration: BoxDecoration(
                           color: CoresApp.fundoSecundario,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: CoresApp.borda),
+                          borderRadius: BorderRadius.circular(
+                            10,
+                          ),
+                          border: Border.all(
+                            color: CoresApp.borda,
+                          ),
                         ),
                         child: currentStepsWithOrder.isEmpty
                             ? const Center(
                                 child: Padding(
-                                  padding: EdgeInsets.all(24.0),
+                                  padding: EdgeInsets.all(
+                                    24.0,
+                                  ),
                                   child: Text(
                                     'Nenhum trabalho cadastrado para este tipo.',
-                                    style:
-                                        TextStyle(color: CoresApp.textoFraco),
+                                    style: TextStyle(
+                                      color: CoresApp.textoFraco,
+                                    ),
                                   ),
                                 ),
                               )
@@ -533,17 +1099,31 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                   color: CoresApp.bordaSuave,
                                   height: 1,
                                 ),
-                                itemBuilder: (context, index) {
+                                itemBuilder: (
+                                  context,
+                                  index,
+                                ) {
                                   final entry = currentStepsWithOrder[index];
+
                                   return ListTile(
-                                    key: ValueKey('${entry['name']}-$index'),
-                                    onTap: () => editStep(index),
+                                    key: ValueKey(
+                                      '${entry['name']}-$index',
+                                    ),
+                                    onTap: () {
+                                      editStep(
+                                        index,
+                                      );
+                                    },
                                     leading: Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: CoresApp.primaria,
-                                        borderRadius: BorderRadius.circular(6),
+                                        borderRadius: BorderRadius.circular(
+                                          6,
+                                        ),
                                       ),
                                       child: Text(
                                         entry['order'] ?? '',
@@ -570,7 +1150,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                             color: CoresApp.textoSecundario,
                                             size: 18,
                                           ),
-                                          onPressed: () => editStep(index),
+                                          onPressed: () {
+                                            editStep(
+                                              index,
+                                            );
+                                          },
                                         ),
                                         IconButton(
                                           icon: const Icon(
@@ -578,7 +1162,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                             color: CoresApp.erro,
                                             size: 18,
                                           ),
-                                          onPressed: () => removeStep(index),
+                                          onPressed: () {
+                                            removeStep(
+                                              index,
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
@@ -592,10 +1180,16 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    Navigator.pop(
+                      dialogContext,
+                    );
+                  },
                   child: const Text(
                     'Cancelar',
-                    style: TextStyle(color: CoresApp.textoSecundario),
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                    ),
                   ),
                 ),
                 ElevatedButton(
@@ -613,7 +1207,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
 
                     if (isEditing && format.id != idController.text.trim()) {
                       try {
-                        await _firebaseService.deleteWorkFormat(format.id);
+                        await _firebaseService.deleteWorkFormat(
+                          format.id,
+                        );
                       } catch (_) {}
                     }
 
@@ -624,16 +1220,26 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     );
 
                     try {
-                      await _firebaseService.saveWorkFormat(updatedFormat);
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        _loadWorkFormats();
+                      await _firebaseService.saveWorkFormat(
+                        updatedFormat,
+                      );
+
+                      if (dialogContext.mounted) {
+                        Navigator.pop(
+                          dialogContext,
+                        );
+
+                        await _loadWorkFormats();
                       }
                     } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(
+                          dialogContext,
+                        ).showSnackBar(
                           SnackBar(
-                            content: Text('Erro ao salvar: $e'),
+                            content: Text(
+                              'Erro ao salvar: $e',
+                            ),
                             backgroundColor: CoresApp.erro,
                           ),
                         );
@@ -656,11 +1262,14 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
     );
   }
 
+  // =============================================================
+  // BUILD
+  // =============================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CoresDashboard.fundo,
-      // Altura ajustada para 60 para corresponder perfeitamente ao Cabecalho
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
@@ -671,24 +1280,17 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           userName: '',
         ),
       ),
-      // Corpo principal envolto em um Container com gradiente suave de fundo
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0B0F19),
-              Color(0xFF0F172A),
-            ],
-          ),
-        ),
+        color: Colors.transparent,
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(28.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Cabeçalho da página com visual moderno
+              // =================================================
+              // CABEÇALHO DA PÁGINA
+              // =================================================
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -699,7 +1301,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         height: 24,
                         decoration: BoxDecoration(
                           color: CoresApp.primaria,
-                          borderRadius: BorderRadius.circular(2),
+                          borderRadius: BorderRadius.circular(
+                            2,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -714,40 +1318,156 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                       ),
                     ],
                   ),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: CoresApp.primaria,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 16,
+
+                  // =================================================
+                  // BOTÕES
+                  // =================================================
+
+                  Row(
+                    children: [
+                      // =============================================
+                      // IMPORTAR
+                      // =============================================
+
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: CoresApp.textoPrincipal,
+                          side: const BorderSide(
+                            color: CoresApp.borda,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              10,
+                            ),
+                          ),
+                        ),
+                        onPressed: _isImporting ? null : _importWorkFormats,
+                        icon: _isImporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: CoresApp.primaria,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.file_upload_outlined,
+                                color: CoresApp.primaria,
+                              ),
+                        label: const Text(
+                          'Importar',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                      elevation: 4,
-                      shadowColor: CoresApp.primaria.withOpacity(0.4),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+
+                      const SizedBox(width: 10),
+
+                      // =============================================
+                      // EXPORTAR
+                      // =============================================
+
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: CoresApp.textoPrincipal,
+                          side: const BorderSide(
+                            color: CoresApp.borda,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              10,
+                            ),
+                          ),
+                        ),
+                        onPressed: _isExporting ? null : _exportWorkFormats,
+                        icon: _isExporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: CoresApp.primaria,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.file_download_outlined,
+                                color: CoresApp.primaria,
+                              ),
+                        label: const Text(
+                          'Exportar',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
-                    onPressed: () => _openFormatDetailDialog(),
-                    icon: const Icon(Icons.add_rounded,
-                        color: CoresApp.textoPrincipal),
-                    label: const Text(
-                      'Novo Modelo',
-                      style: TextStyle(
-                        color: CoresApp.textoPrincipal,
-                        fontWeight: FontWeight.bold,
+
+                      const SizedBox(width: 10),
+
+                      // =============================================
+                      // NOVO MODELO
+                      // =============================================
+
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: CoresApp.primaria,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 16,
+                          ),
+                          elevation: 4,
+                          shadowColor: CoresApp.primaria.withOpacity(0.4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              10,
+                            ),
+                          ),
+                        ),
+                        onPressed: () {
+                          _openFormatDetailDialog();
+                        },
+                        icon: const Icon(
+                          Icons.add_rounded,
+                          color: CoresApp.textoPrincipal,
+                        ),
+                        label: const Text(
+                          'Novo Modelo',
+                          style: TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
+
               const SizedBox(height: 24),
 
-              // Container principal da tabela com efeito de card elevado e borda suave
+              // =================================================
+              // TABELA
+              // =================================================
+
               Container(
                 decoration: BoxDecoration(
                   color: CoresDashboard.card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: CoresApp.borda, width: 1),
+                  borderRadius: BorderRadius.circular(
+                    16,
+                  ),
+                  border: Border.all(
+                    color: CoresApp.borda,
+                    width: 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.2),
@@ -759,19 +1479,23 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Cabeçalho refinado das colunas da tabela
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
                         vertical: 16,
                       ),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: CoresDashboard.cabecalhoTabela,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(16),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(
+                            16,
+                          ),
                         ),
-                        border: const Border(
-                          bottom: BorderSide(color: CoresApp.borda, width: 1),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: CoresApp.borda,
+                            width: 1,
+                          ),
                         ),
                       ),
                       child: const Row(
@@ -827,11 +1551,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                         ],
                       ),
                     ),
-
-                    // Conteúdo da Tabela
                     _isLoading
                         ? const Padding(
-                            padding: EdgeInsets.all(50.0),
+                            padding: EdgeInsets.all(
+                              50.0,
+                            ),
                             child: Center(
                               child: CircularProgressIndicator(
                                 color: CoresApp.primaria,
@@ -840,7 +1564,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                           )
                         : _workFormats.isEmpty
                             ? const Padding(
-                                padding: EdgeInsets.all(50.0),
+                                padding: EdgeInsets.all(
+                                  50.0,
+                                ),
                                 child: Center(
                                   child: Text(
                                     'Nenhum modelo cadastrado no momento.',
@@ -855,18 +1581,28 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: _workFormats.length,
-                                separatorBuilder: (_, __) => const Divider(
+                                separatorBuilder: (
+                                  _,
+                                  __,
+                                ) =>
+                                    const Divider(
                                   color: CoresApp.bordaSuave,
                                   height: 1,
                                 ),
-                                itemBuilder: (context, index) {
+                                itemBuilder: (
+                                  context,
+                                  index,
+                                ) {
                                   final item = _workFormats[index];
+
                                   return Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      onTap: () => _openFormatDetailDialog(
-                                        format: item,
-                                      ),
+                                      onTap: () {
+                                        _openFormatDetailDialog(
+                                          format: item,
+                                        );
+                                      },
                                       hoverColor: CoresDashboard.cardHover,
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
@@ -880,15 +1616,19 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                               child: Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 3),
+                                                  horizontal: 8,
+                                                  vertical: 3,
+                                                ),
                                                 decoration: BoxDecoration(
                                                   color:
                                                       CoresApp.fundoSecundario,
                                                   borderRadius:
-                                                      BorderRadius.circular(6),
+                                                      BorderRadius.circular(
+                                                    6,
+                                                  ),
                                                   border: Border.all(
-                                                      color: CoresApp.borda),
+                                                    color: CoresApp.borda,
+                                                  ),
                                                 ),
                                                 child: Text(
                                                   item.id,
@@ -909,14 +1649,18 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                                   Container(
                                                     padding: const EdgeInsets
                                                         .symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 4),
+                                                      horizontal: 10,
+                                                      vertical: 4,
+                                                    ),
                                                     decoration: BoxDecoration(
                                                       color: CoresApp.primaria
-                                                          .withOpacity(0.1),
+                                                          .withOpacity(
+                                                        0.1,
+                                                      ),
                                                       borderRadius:
                                                           BorderRadius.circular(
-                                                              12),
+                                                        12,
+                                                      ),
                                                     ),
                                                     child: Text(
                                                       '${item.workCount}',
@@ -957,10 +1701,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                                           .textoSecundario,
                                                       size: 18,
                                                     ),
-                                                    onPressed: () =>
-                                                        _openFormatDetailDialog(
-                                                      format: item,
-                                                    ),
+                                                    onPressed: () {
+                                                      _openFormatDetailDialog(
+                                                        format: item,
+                                                      );
+                                                    },
                                                   ),
                                                   IconButton(
                                                     tooltip: 'Excluir',
@@ -969,8 +1714,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                                       color: CoresApp.erro,
                                                       size: 18,
                                                     ),
-                                                    onPressed: () =>
-                                                        _deleteFormat(item.id),
+                                                    onPressed: () {
+                                                      _deleteFormat(
+                                                        item.id,
+                                                      );
+                                                    },
                                                   ),
                                                 ],
                                               ),

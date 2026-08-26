@@ -1,6 +1,10 @@
 name: gerenciador_horas
-description: "A new Flutter project."
+description: "Gerenciador de Horas e Projetos"
 publish_to: 'none'
+
+# Versionamento do aplicativo
+# Formato: versão + número do build
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -8,48 +12,63 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # Localização
+  flutter_localizations:
+    sdk: flutter
+
+  # Interface e utilitários
+  cupertino_icons: ^1.0.8
   file_picker: ^8.0.0
   url_launcher: ^6.2.5
-  pdf: ^3.11.0
-  printing: ^5.13.2
   image_picker: ^1.0.7
   pasteboard: ^0.5.0
-  
-  # Dependências existentes
-  cupertino_icons: ^1.0.8
+  path_provider: ^2.1.6
+
+  # PDF e impressão
+  pdf: ^3.11.0
+  printing: ^5.13.2
+
+  # Gráficos
   fl_chart: ^1.2.0
 
-  # Novas dependências do Firebase
+  # Firebase
   firebase_core: ^3.15.2
   firebase_auth: ^5.4.1
   cloud_firestore: ^5.6.12
-  path_provider: ^2.1.6
-  flutter_localizations:
-    sdk: flutter
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
+# ============================================================
+# CONFIGURAÇÃO DOS ÍCONES
+# ============================================================
+
 flutter_launcher_icons:
   image_path: "assets/images/Logo.png"
+
   android: true
   ios: true
+
   windows:
     generate: true
     image_path: "assets/images/Logo.png"
+
   macos:
     generate: true
     image_path: "assets/images/Logo.png"
 
-flutter_localizations:
-  sdk: flutter
-
+# ============================================================
+# FLUTTER
+# ============================================================
 
 flutter:
   uses-material-design: true
+
   assets:
     - assets/images/Logo_H.png
     - assets/images/Logo.png

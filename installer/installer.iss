@@ -63,7 +63,7 @@ DisableProgramGroupPage=yes
 ; Ícone do aplicativo
 ; ------------------------------------------------------------
 
-SetupIconFile=..\assets\images\Logo.png
+SetupIconFile=..\assets\images\Logo.ico
 
 UninstallDisplayIcon={app}\{#MyAppExeName}
 

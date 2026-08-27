@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/user_cache.dart';
+// Importação do diálogo sobre e verificação de atualizações
+import 'package:gerenciador_horas/shared/widgets/about_dialog_widget.dart';
 
 class Cabecalho extends StatefulWidget implements PreferredSizeWidget {
   final int selectedIndex;
@@ -300,44 +302,13 @@ class _CabecalhoState extends State<Cabecalho> {
   // REALIZAR LOGOUT
   // ============================================================
 
-  // ============================================================
-// REALIZAR LOGOUT
-// ============================================================
-
-  // ============================================================
-// REALIZAR LOGOUT
-// ============================================================
-
   Future<void> _realizarLogout() async {
     try {
-      // ----------------------------------------------------------
-      // 1. FAZ LOGOUT NO FIREBASE
-      // ----------------------------------------------------------
-
       await FirebaseAuth.instance.signOut();
-
-      // ----------------------------------------------------------
-      // 2. LIMPA O CACHE DA FOTO E DO NOME
-      // ----------------------------------------------------------
 
       _cache.carregado = false;
       _cache.userName = '';
       _cache.fotoPerfilProvider = null;
-
-      // ----------------------------------------------------------
-      // 3. NÃO PRECISAMOS NAVEGAR MANUALMENTE
-      // ----------------------------------------------------------
-      //
-      // O authStateChanges() do app.dart detectará o signOut()
-      // e automaticamente trocará:
-      //
-      // MainNavigationScreen
-      //
-      // por:
-      //
-      // LoginScreen
-      //
-      // ----------------------------------------------------------
 
       debugPrint('Logout realizado com sucesso.');
     } catch (e) {
@@ -452,38 +423,14 @@ class _CabecalhoState extends State<Cabecalho> {
                               widget.onSelectTab(index);
                             },
                             itemBuilder: (BuildContext context) => [
-                              _buildPopupMenuItem(
-                                0,
-                                'Projetos',
-                              ),
-                              _buildPopupMenuItem(
-                                1,
-                                'Cadastro de Trabalho',
-                              ),
-                              _buildPopupMenuItem(
-                                2,
-                                'Métricas',
-                              ),
-                              _buildPopupMenuItem(
-                                3,
-                                'Projetos Finalizados',
-                              ),
-                              _buildPopupMenuItem(
-                                4,
-                                'Orientações',
-                              ),
-                              _buildPopupMenuItem(
-                                5,
-                                'Tarefas Executadas',
-                              ),
-                              _buildPopupMenuItem(
-                                6,
-                                'Check List',
-                              ),
-                              _buildPopupMenuItem(
-                                7,
-                                'Solicitações',
-                              ),
+                              _buildPopupMenuItem(0, 'Projetos'),
+                              _buildPopupMenuItem(1, 'Cadastro de Trabalho'),
+                              _buildPopupMenuItem(2, 'Métricas'),
+                              _buildPopupMenuItem(3, 'Projetos Finalizados'),
+                              _buildPopupMenuItem(4, 'Orientações'),
+                              _buildPopupMenuItem(5, 'Tarefas Executadas'),
+                              _buildPopupMenuItem(6, 'Check List'),
+                              _buildPopupMenuItem(7, 'Solicitações'),
                             ],
                           ),
                         )
@@ -540,7 +487,7 @@ class _CabecalhoState extends State<Cabecalho> {
             ),
 
             // ====================================================
-            // ÁREA DO USUÁRIO
+            // ÁREA DO USUÁRIO E SOBRE
             // ====================================================
 
             actions: [
@@ -612,6 +559,26 @@ class _CabecalhoState extends State<Cabecalho> {
                     ),
 
                     const SizedBox(width: 14),
+
+                    // ============================================
+                    // BOTÃO "SOBRE / ATUALIZAÇÕES"
+                    // ============================================
+
+                    Tooltip(
+                      message: 'Sobre o Desenvolvedor e Atualizações',
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.info_outline_rounded,
+                          color: CoresApp.textoSecundario,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          showCustomAuthorDialog(context);
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(width: 6),
 
                     // ============================================
                     // FOTO DO USUÁRIO

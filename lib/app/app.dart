@@ -13,19 +13,31 @@ class GerenciadorHorasApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // ==========================================================
+      // CONFIGURAÇÕES GERAIS
+      // ==========================================================
+
       title: 'Gestão de Horas e Projetos',
+
       debugShowCheckedModeBanner: false,
 
       // ==========================================================
-      // LOCALIZAÇÃO DO FLUTTER
+      // LOCALIZAÇÃO
       // ==========================================================
       //
-      // Necessário para componentes como:
-      // - DatePicker
-      // - TimePicker
-      // - AlertDialog
-      // - mensagens e textos internos do Material
+      // IMPORTANTE:
       //
+      // O DatePicker, TimePicker e outros componentes Material
+      // precisam de MaterialLocalizations.
+      //
+      // Sem essa configuração, ao abrir o DatePicker o Flutter
+      // pode gerar:
+      //
+      // "No MaterialLocalizations found"
+      //
+      // e apresentar a tela vermelha.
+      // ==========================================================
+
       locale: const Locale('pt', 'BR'),
 
       localizationsDelegates: const [
@@ -52,9 +64,9 @@ class GerenciadorHorasApp extends StatelessWidget {
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // ------------------------------------------------------
-          // ENQUANTO O FIREBASE ESTÁ VERIFICANDO O USUÁRIO
-          // ------------------------------------------------------
+          // ======================================================
+          // AGUARDANDO FIREBASE
+          // ======================================================
 
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
@@ -64,26 +76,45 @@ class GerenciadorHorasApp extends StatelessWidget {
             );
           }
 
-          // ------------------------------------------------------
+          // ======================================================
+          // ERRO
+          // ======================================================
+
+          if (snapshot.hasError) {
+            return Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'Erro ao verificar autenticação:\n\n'
+                    '${snapshot.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          // ======================================================
           // USUÁRIO LOGADO
-          // ------------------------------------------------------
+          // ======================================================
 
           if (snapshot.hasData && snapshot.data != null) {
             return const MainNavigationScreen();
           }
 
-          // ------------------------------------------------------
+          // ======================================================
           // USUÁRIO NÃO LOGADO
-          // ------------------------------------------------------
+          // ======================================================
 
           return LoginScreen(
             onLoginSuccess: () {
-              // --------------------------------------------------
-              // NÃO PRECISAMOS MAIS FAZER pushReplacement AQUI.
+              // ==================================================
+              // NÃO É NECESSÁRIO NAVEGAR MANUALMENTE.
               //
-              // O authStateChanges() detectará automaticamente
-              // quando o usuário estiver autenticado.
-              // --------------------------------------------------
+              // O FirebaseAuth.authStateChanges() detectará
+              // automaticamente o login e reconstruirá esta tela.
+              // ==================================================
             },
           );
         },

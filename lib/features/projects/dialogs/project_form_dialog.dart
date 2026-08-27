@@ -97,15 +97,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
   bool get _isEditing => widget.projectToEdit != null;
 
+  // ============================================================
+  // INIT STATE
+  // ============================================================
+
   @override
   void initState() {
     super.initState();
 
     final project = widget.projectToEdit;
 
-    // ------------------------------------------------------------
+    // ----------------------------------------------------------
     // VALORES DO PROJETO
-    // ------------------------------------------------------------
+    // ----------------------------------------------------------
 
     if (project != null) {
       _idController.text = project.id;
@@ -118,9 +122,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       _excelLinkController.text = project.excelLink ?? '';
       _folderPathController.text = project.folderPath ?? '';
 
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
       // DATA INICIAL
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
 
       _startDate = _onlyDate(project.startDate);
 
@@ -154,9 +158,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         }
       }
 
-      // ----------------------------------------------------------
-      // CARREGA CHECKLIST EXISTENTE
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
+      // CHECKLIST EXISTENTE
+      // --------------------------------------------------------
 
       if (project.checklist != null && project.checklist!.isNotEmpty) {
         _checklistItems = project.checklist!
@@ -170,9 +174,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         );
       }
     } else {
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
       // NOVO PROJETO
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
 
       final now = DateTime.now();
 
@@ -206,14 +210,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     }
 
     // ------------------------------------------------------------
-    // CARREGA MODELOS DE CHECKLIST
+    // CHECKLIST
     // ------------------------------------------------------------
 
     _loadChecklistFormats();
   }
 
   // ============================================================
-  // CARREGAR MODELOS DE CHECKLIST
+  // CHECKLIST - CARREGAR MODELOS
   // ============================================================
 
   Future<void> _loadChecklistFormats() async {
@@ -281,7 +285,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // ENCONTRA MODELO COMPATÍVEL COM CHECKLIST EXISTENTE
+  // CHECKLIST - ENCONTRAR MODELO
   // ============================================================
 
   ChecklistFormat? _findMatchingChecklistFormat(
@@ -324,13 +328,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // APLICAR MODELO DE CHECKLIST
+  // CHECKLIST - APLICAR MODELO
   // ============================================================
 
   void _applyChecklistFormat(
     ChecklistFormat? format,
   ) {
-    if (format == null) {
+    if (format == null || !mounted) {
       return;
     }
 
@@ -377,7 +381,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // ADICIONAR ITEM MANUAL
+  // CHECKLIST - ADICIONAR ITEM
   // ============================================================
 
   Future<void> _addChecklistItem() async {
@@ -477,20 +481,16 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         },
       );
     });
-
-    debugPrint(
-      'ITEM MANUAL ADICIONADO: $itemName',
-    );
   }
 
   // ============================================================
-  // REMOVER ITEM DO CHECKLIST
+  // CHECKLIST - REMOVER ITEM
   // ============================================================
 
   void _removeChecklistItem(
     int index,
   ) {
-    if (index < 0 || index >= _checklistItems.length) {
+    if (index < 0 || index >= _checklistItems.length || !mounted) {
       return;
     }
 
@@ -513,14 +513,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // MARCAR CHECKLIST
+  // CHECKLIST - MARCAR
   // ============================================================
 
   void _toggleChecklistItem(
     int index,
     bool? value,
   ) {
-    if (index < 0 || index >= _checklistItems.length) {
+    if (index < 0 || index >= _checklistItems.length || !mounted) {
       return;
     }
 
@@ -530,7 +530,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // CONVERTER CHECKLIST PARA SALVAMENTO
+  // CHECKLIST - PREPARAR PARA SALVAR
   // ============================================================
 
   List<Map<String, dynamic>> _buildChecklistForSave() {
@@ -563,7 +563,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // CONVERTER ETAPA DO WORK FORMAT
+  // TRABALHO - OBTER NOME
   // ============================================================
 
   String _getWorkName(
@@ -633,23 +633,16 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     );
   }
 
-  // ============================================================
-  // SELETOR DE DATA
-  //
-  // CORRIGIDO:
-  // - normaliza a data;
-  // - garante que initialDate esteja entre firstDate/lastDate;
-  // - não força locale diretamente no showDatePicker;
-  // - protege contra exceções;
-  // - retorna a data sem horário.
-  // ============================================================
+// ============================================================
+// SELETOR DE DATA
+//
+// IMPLEMENTAÇÃO ROBUSTA COM LOCALIZATION OVERRIDE
+// ============================================================
 
   Future<DateTime?> _selectDate({
     required DateTime initialDate,
   }) async {
-    DateTime normalizedInitialDate = _onlyDate(
-      initialDate,
-    );
+    DateTime selectedDate = _onlyDate(initialDate);
 
     final DateTime firstDate = DateTime(
       2000,
@@ -663,73 +656,200 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       31,
     );
 
-    // ----------------------------------------------------------
-    // Garante que initialDate esteja dentro do intervalo.
-    // ----------------------------------------------------------
-
-    if (normalizedInitialDate.isBefore(firstDate)) {
-      normalizedInitialDate = firstDate;
+    if (selectedDate.isBefore(firstDate)) {
+      selectedDate = firstDate;
     }
 
-    if (normalizedInitialDate.isAfter(lastDate)) {
-      normalizedInitialDate = lastDate;
+    if (selectedDate.isAfter(lastDate)) {
+      selectedDate = lastDate;
     }
 
     try {
-      final DateTime? picked = await showDatePicker(
+      final DateTime? result = await showDialog<DateTime>(
         context: context,
-        initialDate: normalizedInitialDate,
-        firstDate: firstDate,
-        lastDate: lastDate,
+        barrierDismissible: true,
+        builder: (BuildContext dialogContext) {
+          DateTime temporaryDate = selectedDate;
 
-        // IMPORTANTE:
-        // Não usamos:
-        //
-        // locale: const Locale('pt', 'BR'),
-        //
-        // diretamente aqui.
-        //
-        // A localização deve ser configurada no MaterialApp.
-
-        builder: (
-          BuildContext dialogContext,
-          Widget? child,
-        ) {
-          if (child == null) {
-            return const SizedBox.shrink();
-          }
-
-          return Theme(
-            data: Theme.of(dialogContext).copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary: Color(0xFF00FFCC),
-                onPrimary: Colors.black,
-                surface: Color(0xFF2D2D44),
-                onSurface: Colors.white,
+          return Localizations.override(
+            context: dialogContext,
+            locale: const Locale('pt', 'BR'),
+            child: Dialog(
+              backgroundColor: const Color(0xFF2D2D44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
               ),
-              dialogTheme: const DialogThemeData(
-                backgroundColor: Color(0xFF2D2D44),
+              child: StatefulBuilder(
+                builder: (
+                  BuildContext context,
+                  StateSetter setDialogState,
+                ) {
+                  return ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 320,
+                      maxWidth: 420,
+                      minHeight: 430,
+                      maxHeight: 560,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFFFF5252,
+                                  ).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.calendar_month,
+                                  color: Color(0xFFFF5252),
+                                  size: 21,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Selecionar data',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Fechar',
+                                onPressed: () {
+                                  Navigator.of(dialogContext).pop();
+                                },
+                                icon: const Icon(
+                                  Icons.close,
+                                  color: Colors.white54,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF232338),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white12,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.event,
+                                  color: Color(0xFFFF5252),
+                                  size: 19,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _formatDate(temporaryDate),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 330,
+                            child: CalendarDatePicker(
+                              initialDate: temporaryDate,
+                              firstDate: firstDate,
+                              lastDate: lastDate,
+                              onDateChanged: (DateTime date) {
+                                setDialogState(() {
+                                  temporaryDate = _onlyDate(date);
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(dialogContext).pop();
+                                },
+                                child: const Text(
+                                  'Cancelar',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(dialogContext).pop(
+                                    _onlyDate(temporaryDate),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.check,
+                                  size: 18,
+                                ),
+                                label: const Text(
+                                  'Confirmar',
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF00FFCC),
+                                  foregroundColor: Colors.black,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 11,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-            child: child,
           );
         },
       );
 
-      if (picked == null) {
+      if (result == null) {
         return null;
       }
 
-      return _onlyDate(
-        picked,
-      );
+      return _onlyDate(result);
     } catch (e, stackTrace) {
       debugPrint('==========================================');
-      debugPrint('ERRO AO ABRIR SELETOR DE DATA');
+      debugPrint('ERRO AO ABRIR CALENDÁRIO');
       debugPrint('DATA RECEBIDA: $initialDate');
-      debugPrint(
-        'DATA NORMALIZADA: $normalizedInitialDate',
-      );
+      debugPrint('DATA NORMALIZADA: $selectedDate');
       debugPrint('ERRO: $e');
       debugPrint('STACK TRACE: $stackTrace');
       debugPrint('==========================================');
@@ -761,35 +881,23 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final dynamic rawStartDate = work['startDate'];
     final dynamic rawEndDate = work['endDate'];
 
-    // ----------------------------------------------------------
-    // Proteção contra dados inválidos.
-    // ----------------------------------------------------------
-
     if (rawStartDate is! DateTime || rawEndDate is! DateTime) {
       debugPrint(
         'ERRO: datas inválidas no trabalho ${work['name']}',
       );
 
-      debugPrint(
-        'startDate: $rawStartDate '
-        '(${rawStartDate.runtimeType})',
-      );
-
-      debugPrint(
-        'endDate: $rawEndDate '
-        '(${rawEndDate.runtimeType})',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Não foi possível editar a data desta etapa.',
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+      if (!mounted) {
+        return;
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível editar a data desta etapa.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
 
       return;
     }
@@ -809,10 +917,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     if (picked == null || !mounted) {
       return;
     }
-
-    // ----------------------------------------------------------
-    // Valida início x término.
-    // ----------------------------------------------------------
 
     if (picked.isAfter(endDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -850,35 +954,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final dynamic rawStartDate = work['startDate'];
     final dynamic rawEndDate = work['endDate'];
 
-    // ----------------------------------------------------------
-    // Proteção contra dados inválidos.
-    // ----------------------------------------------------------
-
     if (rawStartDate is! DateTime || rawEndDate is! DateTime) {
-      debugPrint(
-        'ERRO: datas inválidas no trabalho ${work['name']}',
-      );
-
-      debugPrint(
-        'startDate: $rawStartDate '
-        '(${rawStartDate.runtimeType})',
-      );
-
-      debugPrint(
-        'endDate: $rawEndDate '
-        '(${rawEndDate.runtimeType})',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Não foi possível editar a data desta etapa.',
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+      if (!mounted) {
+        return;
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível editar a data desta etapa.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
 
       return;
     }
@@ -898,10 +986,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     if (picked == null || !mounted) {
       return;
     }
-
-    // ----------------------------------------------------------
-    // Valida término x início.
-    // ----------------------------------------------------------
 
     if (picked.isBefore(startDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -954,29 +1038,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final List<TaskModel> existingTasks =
         existingProject?.subTasks ?? <TaskModel>[];
 
-    debugPrint('==========================================');
-    debugPrint('CARREGANDO TRABALHOS INTERNOS');
-    debugPrint('PROJETO: ${existingProject?.id}');
-    debugPrint(
-      'ETAPAS DO FORMATO: ${workFormat.steps.length}',
-    );
-    debugPrint(
-      'SUBTASKS DO PROJETO: ${existingTasks.length}',
-    );
-
-    for (final task in existingTasks) {
-      debugPrint(
-        'TASK -> '
-        'stage=${task.stage} | '
-        'start=${task.startDate} | '
-        'planStart=${task.planStart} | '
-        'planEnd=${task.planEnd} | '
-        'hours=${task.estimatedHours}',
-      );
-    }
-
-    debugPrint('==========================================');
-
     _internalWorks = List.generate(
       workFormat.steps.length,
       (index) {
@@ -985,14 +1046,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         final String workName = _getWorkName(
           rawStep,
           index,
-        );
-
-        debugPrint(
-          'ETAPA FIRESTORE [$index]: $rawStep',
-        );
-
-        debugPrint(
-          'NOME NORMALIZADO: $workName',
         );
 
         DateTime stepStart = baseDate;
@@ -1032,31 +1085,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           if (hoursText.isEmpty) {
             hoursText = '00:00';
           }
-
-          debugPrint(
-            'ETAPA CARREGADA: $workName',
-          );
-
-          debugPrint(
-            '  INÍCIO: $stepStart',
-          );
-
-          debugPrint(
-            '  TÉRMINO: $stepEnd',
-          );
-
-          debugPrint(
-            '  HORAS: $hoursText',
-          );
-        } else {
-          debugPrint(
-            'ETAPA SEM DADOS EXISTENTES: $workName',
-          );
         }
-
-        // --------------------------------------------------------
-        // Normaliza as datas.
-        // --------------------------------------------------------
 
         stepStart = _onlyDate(
           stepStart,
@@ -1065,10 +1094,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         stepEnd = _onlyDate(
           stepEnd,
         );
-
-        // --------------------------------------------------------
-        // Proteção contra término anterior ao início.
-        // --------------------------------------------------------
 
         if (stepEnd.isBefore(stepStart)) {
           stepEnd = stepStart.add(
@@ -1088,27 +1113,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     );
 
     if (_internalWorks.isNotEmpty) {
-      _startDate = _internalWorks.first['startDate'] as DateTime;
+      final dynamic firstStart = _internalWorks.first['startDate'];
+
+      if (firstStart is DateTime) {
+        _startDate = _onlyDate(firstStart);
+      }
     }
-
-    debugPrint('==========================================');
-    debugPrint('RESULTADO FINAL DO EDITAR');
-    debugPrint(
-      'TOTAL DE ETAPAS: ${_internalWorks.length}',
-    );
-
-    for (final work in _internalWorks) {
-      final DateTime start = work['startDate'] as DateTime;
-
-      final DateTime end = work['endDate'] as DateTime;
-
-      debugPrint(
-        '${work['name']} -> '
-        '${_formatDate(start)} até ${_formatDate(end)}',
-      );
-    }
-
-    debugPrint('==========================================');
   }
 
   // ============================================================
@@ -1119,7 +1129,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     int totalMinutes = 0;
 
     for (final work in _internalWorks) {
-      final controller = work['controller'] as TextEditingController;
+      final controller = work['controller'];
+
+      if (controller is! TextEditingController) {
+        continue;
+      }
 
       final String text = controller.text.replaceAll(
         RegExp(r'\D'),
@@ -1142,7 +1156,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     }
 
     final int finalHours = totalMinutes ~/ 60;
-
     final int finalMinutes = totalMinutes % 60;
 
     return '${finalHours.toString().padLeft(2, '0')}:'
@@ -1150,7 +1163,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   }
 
   // ============================================================
-  // ARQUIVO
+  // SELECIONAR ARQUIVO
   // ============================================================
 
   Future<void> _pickExcelFile() async {
@@ -1167,13 +1180,15 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         ],
       );
 
-      if (result != null && result.files.single.path != null) {
+      if (result != null && result.files.single.path != null && mounted) {
         setState(() {
           _excelLinkController.text = result.files.single.path!;
         });
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1194,7 +1209,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     String? caminho,
   ) async {
     if (caminho == null || caminho.trim().isEmpty) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1226,7 +1243,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       }
 
       final File file = File(path);
-
       final Directory directory = Directory(path);
 
       Uri? uri;
@@ -1258,7 +1274,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         throw 'Não foi possível abrir o arquivo ou pasta.';
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1276,12 +1294,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   // ============================================================
 
   Future<void> _saveProject() async {
-    if (_isSaving) {
+    if (_isSaving || !mounted) {
       return;
     }
 
     final String id = _idController.text.trim();
-
     final String client = _clientController.text.trim();
 
     if (id.isEmpty || client.isEmpty) {
@@ -1296,10 +1313,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
       return;
     }
-
-    // ==========================================================
-    // VALIDA DATAS
-    // ==========================================================
 
     for (final work in _internalWorks) {
       final dynamic rawStartDate = work['startDate'];
@@ -1319,7 +1332,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       }
 
       final DateTime startDate = _onlyDate(rawStartDate);
-
       final DateTime endDate = _onlyDate(rawEndDate);
 
       if (endDate.isBefore(startDate)) {
@@ -1337,21 +1349,24 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       }
     }
 
-    // ==========================================================
-    // CRIA SUBTASKS
-    // ==========================================================
-
     final List<TaskModel> customSubTasks = [];
 
     for (int index = 0; index < _internalWorks.length; index++) {
       final work = _internalWorks[index];
 
-      final TextEditingController controller =
-          work['controller'] as TextEditingController;
+      final dynamic rawController = work['controller'];
 
-      final DateTime stepStart = _onlyDate(work['startDate'] as DateTime);
+      if (rawController is! TextEditingController) {
+        continue;
+      }
 
-      final DateTime stepEnd = _onlyDate(work['endDate'] as DateTime);
+      final DateTime stepStart = _onlyDate(
+        work['startDate'] as DateTime,
+      );
+
+      final DateTime stepEnd = _onlyDate(
+        work['endDate'] as DateTime,
+      );
 
       customSubTasks.add(
         TaskModel(
@@ -1361,17 +1376,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           startDate: stepStart,
           planStart: stepStart,
           planEnd: stepEnd,
-          estimatedHours: controller.text.trim().isNotEmpty
-              ? controller.text.trim()
+          estimatedHours: rawController.text.trim().isNotEmpty
+              ? rawController.text.trim()
               : '00:00',
           hourType: _hourType,
         ),
       );
     }
-
-    // ==========================================================
-    // DATA INICIAL DO PROJETO
-    // ==========================================================
 
     final DateTime globalStartDate = _internalWorks.isNotEmpty
         ? _onlyDate(
@@ -1379,35 +1390,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           )
         : _onlyDate(_startDate);
 
-    // ==========================================================
-    // CHECKLIST
-    // ==========================================================
-
     final List<Map<String, dynamic>> checklistToSave = _buildChecklistForSave();
-
-    debugPrint('==========================================');
-    debugPrint('SALVANDO CHECKLIST');
-    debugPrint(
-      'MODELO: ${_selectedChecklistFormat?.name ?? 'Nenhum'}',
-    );
-    debugPrint(
-      'ITENS: ${checklistToSave.length}',
-    );
-
-    for (final item in checklistToSave) {
-      debugPrint(
-        '${item['order']} - '
-        '${item['name']} - '
-        'concluído=${item['completed']} - '
-        'source=${item['source']}',
-      );
-    }
-
-    debugPrint('==========================================');
-
-    // ==========================================================
-    // PROJETO
-    // ==========================================================
 
     final ProjectModel savedProject = ProjectModel(
       id: id,
@@ -1435,10 +1418,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       checklist: checklistToSave,
     );
 
-    // ==========================================================
-    // SALVA NO FIREBASE
-    // ==========================================================
-
     setState(() {
       _isSaving = true;
     });
@@ -1449,13 +1428,17 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         savedProject.id,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       Navigator.of(context).pop(
         savedProject,
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _isSaving = false;
@@ -1534,10 +1517,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ==================================================
-              // ID + STATUS
-              // ==================================================
-
               Row(
                 children: [
                   Expanded(
@@ -1597,6 +1576,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ),
                       ],
                       onChanged: (value) {
+                        if (!mounted) {
+                          return;
+                        }
+
                         setState(() {
                           _status = value ?? 'INI_PRI';
                         });
@@ -1605,13 +1588,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
-
-              // ==================================================
-              // CLIENTE + TIPO SERVIÇO
-              // ==================================================
-
               Row(
                 children: [
                   Expanded(
@@ -1661,7 +1638,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                           )
                           .toList(),
                       onChanged: (val) {
-                        if (val == null) {
+                        if (val == null || !mounted) {
                           return;
                         }
 
@@ -1678,13 +1655,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
-
-              // ==================================================
-              // PASTA + ARQUIVO
-              // ==================================================
-
               Row(
                 children: [
                   Expanded(
@@ -1719,9 +1690,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 _folderPathController.text,
                               );
                             } else {
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(
+                              ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
                                     'Nenhuma pasta cadastrada.',
@@ -1768,13 +1737,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 18),
-
-              // ==================================================
-              // CHECK LIST
-              // ==================================================
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1806,28 +1769,16 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(
-                          0xFF00FFCC,
-                        ).withOpacity(
-                          0.10,
-                        ),
-                        borderRadius: BorderRadius.circular(
-                          20,
-                        ),
+                        color: const Color(0xFF00FFCC).withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: const Color(
-                            0xFF00FFCC,
-                          ).withOpacity(
-                            0.30,
-                          ),
+                          color: const Color(0xFF00FFCC).withOpacity(0.30),
                         ),
                       ),
                       child: Text(
                         '${_checklistItems.where((item) => item['completed'] == true).length}/${_checklistItems.length}',
                         style: const TextStyle(
-                          color: Color(
-                            0xFF00FFCC,
-                          ),
+                          color: Color(0xFF00FFCC),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -1835,22 +1786,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     ),
                 ],
               ),
-
               const SizedBox(height: 8),
-
-              // ==================================================
-              // SELEÇÃO DO MODELO
-              // ==================================================
-
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFF232338,
-                  ),
-                  borderRadius: BorderRadius.circular(
-                    8,
-                  ),
+                  color: const Color(0xFF232338),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: Colors.white24,
                   ),
@@ -1872,9 +1813,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Color(
-                                      0xFF00FFCC,
-                                    ),
+                                    color: Color(0xFF00FFCC),
                                   ),
                                 ),
                                 SizedBox(width: 10),
@@ -1890,9 +1829,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                           : DropdownButtonFormField<ChecklistFormat>(
                               value: _selectedChecklistFormat,
                               isExpanded: true,
-                              dropdownColor: const Color(
-                                0xFF2D2D44,
-                              ),
+                              dropdownColor: const Color(0xFF2D2D44),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
@@ -1913,9 +1850,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               ),
                               items: _checklistFormats
                                   .map(
-                                    (
-                                      format,
-                                    ) =>
+                                    (format) =>
                                         DropdownMenuItem<ChecklistFormat>(
                                       value: format,
                                       child: Row(
@@ -1926,7 +1861,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
+                                          const SizedBox(
+                                            width: 8,
+                                          ),
                                           Text(
                                             '${format.items.length} itens',
                                             style: const TextStyle(
@@ -1953,22 +1890,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 8),
-
-              // ==================================================
-              // ITENS DO CHECKLIST
-              // ==================================================
-
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFF232338,
-                  ),
-                  borderRadius: BorderRadius.circular(
-                    8,
-                  ),
+                  color: const Color(0xFF232338),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: Colors.white24,
                   ),
@@ -2002,9 +1929,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 Icons.add,
                                 size: 18,
                               ),
-                              label: const Text(
-                                'Adicionar',
-                              ),
+                              label: const Text('Adicionar'),
                               style: TextButton.styleFrom(
                                 foregroundColor: const Color(
                                   0xFF00FFCC,
@@ -2041,12 +1966,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                   color: completed
                                       ? const Color(
                                           0xFF00FFCC,
-                                        ).withOpacity(
-                                          0.06,
-                                        )
-                                      : Colors.white.withOpacity(
-                                          0.02,
-                                        ),
+                                        ).withOpacity(0.06)
+                                      : Colors.white.withOpacity(0.02),
                                   borderRadius: BorderRadius.circular(
                                     6,
                                   ),
@@ -2054,12 +1975,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     color: completed
                                         ? const Color(
                                             0xFF00FFCC,
-                                          ).withOpacity(
-                                            0.25,
-                                          )
-                                        : Colors.white.withOpacity(
-                                            0.08,
-                                          ),
+                                          ).withOpacity(0.25)
+                                        : Colors.white.withOpacity(0.08),
                                   ),
                                 ),
                                 child: Row(
@@ -2133,7 +2050,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(
+                                      width: 4,
+                                    ),
                                     IconButton(
                                       tooltip: 'Remover item deste trabalho',
                                       icon: const Icon(
@@ -2171,9 +2090,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 side: BorderSide(
                                   color: const Color(
                                     0xFF00FFCC,
-                                  ).withOpacity(
-                                    0.50,
-                                  ),
+                                  ).withOpacity(0.50),
                                 ),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
@@ -2185,13 +2102,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ],
                       ),
               ),
-
               const SizedBox(height: 18),
-
-              // ==================================================
-              // TÍTULO TRABALHOS INTERNOS
-              // ==================================================
-
               const Text(
                 'Trabalhos Internos do Serviço',
                 style: TextStyle(
@@ -2200,9 +2111,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 3),
-
               const Text(
                 'Clique nas datas em vermelho para editar o início e o término de cada etapa.',
                 style: TextStyle(
@@ -2210,22 +2119,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   fontSize: 11,
                 ),
               ),
-
               const SizedBox(height: 8),
-
-              // ==================================================
-              // TABELA DE TRABALHOS
-              // ==================================================
-
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFF232338,
-                  ),
-                  borderRadius: BorderRadius.circular(
-                    8,
-                  ),
+                  color: const Color(0xFF232338),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: Colors.white24,
                   ),
@@ -2244,10 +2143,21 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     : Column(
                         children: _internalWorks.map(
                           (work) {
-                            final DateTime sDate =
-                                work['startDate'] as DateTime;
+                            final dynamic rawStart = work['startDate'];
+                            final dynamic rawEnd = work['endDate'];
 
-                            final DateTime eDate = work['endDate'] as DateTime;
+                            if (rawStart is! DateTime || rawEnd is! DateTime) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final DateTime sDate = _onlyDate(rawStart);
+                            final DateTime eDate = _onlyDate(rawEnd);
+
+                            final dynamic rawController = work['controller'];
+
+                            if (rawController is! TextEditingController) {
+                              return const SizedBox.shrink();
+                            }
 
                             return Padding(
                               padding: const EdgeInsets.symmetric(
@@ -2255,22 +2165,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               ),
                               child: Row(
                                 children: [
-                                  // NOME
                                   Expanded(
                                     flex: 3,
                                     child: Text(
-                                      work['name'] as String,
+                                      work['name']?.toString() ?? 'Etapa',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 13,
                                         fontWeight: FontWeight.w500,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-
                                   const SizedBox(width: 8),
-
-                                  // INÍCIO
                                   Expanded(
                                     flex: 2,
                                     child: InkWell(
@@ -2302,9 +2209,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                           ),
                                         ),
                                         child: Text(
-                                          _formatDate(
-                                            sDate,
-                                          ),
+                                          _formatDate(sDate),
                                           style: const TextStyle(
                                             color: Color(
                                               0xFFFF5252,
@@ -2316,10 +2221,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       ),
                                     ),
                                   ),
-
                                   const SizedBox(width: 8),
-
-                                  // TÉRMINO
                                   Expanded(
                                     flex: 2,
                                     child: InkWell(
@@ -2351,9 +2253,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                           ),
                                         ),
                                         child: Text(
-                                          _formatDate(
-                                            eDate,
-                                          ),
+                                          _formatDate(eDate),
                                           style: const TextStyle(
                                             color: Color(
                                               0xFFFF5252,
@@ -2365,15 +2265,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       ),
                                     ),
                                   ),
-
                                   const SizedBox(width: 8),
-
-                                  // HORAS
                                   SizedBox(
                                     width: 100,
                                     child: TextField(
-                                      controller: work['controller']
-                                          as TextEditingController,
+                                      controller: rawController,
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 13,
@@ -2385,9 +2281,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         HoursInputFormatter(),
                                       ],
                                       onChanged: (_) {
-                                        setState(
-                                          () {},
-                                        );
+                                        if (!mounted) {
+                                          return;
+                                        }
+
+                                        setState(() {});
                                       },
                                       decoration: const InputDecoration(
                                         labelText: 'Horas',
@@ -2415,13 +2313,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ).toList(),
                       ),
               ),
-
               const SizedBox(height: 16),
-
-              // ==================================================
-              // TOTAL + TIPO HORAS + LÍDER
-              // ==================================================
-
               Row(
                 children: [
                   Expanded(
@@ -2449,9 +2341,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     child: DropdownButtonFormField<String>(
                       value: _hourType,
                       isExpanded: true,
-                      dropdownColor: const Color(
-                        0xFF2D2D44,
-                      ),
+                      dropdownColor: const Color(0xFF2D2D44),
                       style: const TextStyle(
                         color: Colors.white,
                       ),
@@ -2508,6 +2398,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ),
                       ],
                       onChanged: (value) {
+                        if (!mounted) {
+                          return;
+                        }
+
                         setState(() {
                           _hourType = value ?? 'Hs Cobradas';
                         });
@@ -2537,11 +2431,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           ),
         ),
       ),
-
-      // ============================================================
-      // BOTÕES
-      // ============================================================
-
       actions: [
         TextButton(
           onPressed: _isSaving ? null : () => Navigator.of(context).pop(),

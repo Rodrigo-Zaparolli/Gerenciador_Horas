@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
@@ -1376,16 +1377,38 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                           sub.startDate,
                                                       firstDate: DateTime(2020),
                                                       lastDate: DateTime(2030),
-                                                      // Adicione este builder para injetar o suporte a localização no diálogo
+                                                      locale: const Locale(
+                                                          'pt', 'BR'),
                                                       builder:
                                                           (BuildContext context,
                                                               Widget? child) {
-                                                        return Localizations
-                                                            .override(
-                                                          context: context,
-                                                          locale: const Locale(
-                                                              'pt', 'BR'),
-                                                          child: child!,
+                                                        return Theme(
+                                                          data: ThemeData.dark()
+                                                              .copyWith(
+                                                            colorScheme:
+                                                                ColorScheme
+                                                                    .dark(
+                                                              primary: CoresApp
+                                                                  .destaque,
+                                                              onPrimary:
+                                                                  Colors.black,
+                                                              surface: CoresTelas
+                                                                  .fundoModal,
+                                                              onSurface: CoresApp
+                                                                  .textoPrincipal,
+                                                            ),
+                                                            dialogBackgroundColor:
+                                                                CoresTelas
+                                                                    .fundoModal,
+                                                          ),
+                                                          child: Localizations
+                                                              .override(
+                                                            context: context,
+                                                            locale:
+                                                                const Locale(
+                                                                    'pt', 'BR'),
+                                                            child: child!,
+                                                          ),
                                                         );
                                                       },
                                                     );
@@ -1442,25 +1465,48 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                         await showDatePicker(
                                                       context: context,
                                                       initialDate:
-                                                          sub.startDate,
+                                                          sub.planEnd ??
+                                                              sub.startDate,
                                                       firstDate: DateTime(2020),
                                                       lastDate: DateTime(2030),
-                                                      // Adicione este builder para injetar o suporte a localização no diálogo
+                                                      locale: const Locale(
+                                                          'pt', 'BR'),
                                                       builder:
                                                           (BuildContext context,
                                                               Widget? child) {
-                                                        return Localizations
-                                                            .override(
-                                                          context: context,
-                                                          locale: const Locale(
-                                                              'pt', 'BR'),
-                                                          child: child!,
+                                                        return Theme(
+                                                          data: ThemeData.dark()
+                                                              .copyWith(
+                                                            colorScheme:
+                                                                ColorScheme
+                                                                    .dark(
+                                                              primary: CoresApp
+                                                                  .destaque,
+                                                              onPrimary:
+                                                                  Colors.black,
+                                                              surface: CoresTelas
+                                                                  .fundoModal,
+                                                              onSurface: CoresApp
+                                                                  .textoPrincipal,
+                                                            ),
+                                                            dialogBackgroundColor:
+                                                                CoresTelas
+                                                                    .fundoModal,
+                                                          ),
+                                                          child: Localizations
+                                                              .override(
+                                                            context: context,
+                                                            locale:
+                                                                const Locale(
+                                                                    'pt', 'BR'),
+                                                            child: child!,
+                                                          ),
                                                         );
                                                       },
                                                     );
                                                     if (picked != null) {
                                                       setDialogState(() {
-                                                        sub.startDate = picked;
+                                                        sub.planEnd = picked;
                                                       });
                                                     }
                                                   },
@@ -1485,7 +1531,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                               .spaceBetween,
                                                       children: [
                                                         Text(
-                                                          'Início: ${_formatDate(sub.startDate)}',
+                                                          'Fim: ${sub.planEnd != null ? _formatDate(sub.planEnd!) : '-'}',
                                                           style: TextStyle(
                                                               color: CoresApp
                                                                   .textoPrincipal,
@@ -2567,7 +2613,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           color: CoresApp.erro,
           tooltip: 'Excluir Subtrabalho',
           onPressed: () async {
-            // Exibe o diálogo de confirmação antes de excluir
             final bool? confirmar = await showDialog<bool>(
               context: context,
               builder: (BuildContext dialogContext) {
@@ -2613,7 +2658,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
               },
             );
 
-            // Se o usuário não confirmar, encerra a execução
             if (confirmar != true) return;
 
             project.subTasks?.removeWhere((s) => s.subId == task.subId);

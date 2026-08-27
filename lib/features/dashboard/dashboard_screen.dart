@@ -3134,7 +3134,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // Substituído ConstrainedBox por Container simples para ajustar de forma dinâmica
                       Container(
                         decoration: BoxDecoration(
                           color: CoresDashboard.card,

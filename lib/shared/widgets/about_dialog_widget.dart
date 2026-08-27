@@ -92,9 +92,13 @@ Future<void> _checkForUpdatesFromDialog(
   );
 
   try {
-    // Substitua pelo link real do seu arquivo version.json hospedado na internet
-    final response =
-        await http.get(Uri.parse('https://seu-site.com/version.json'));
+    // URL corrigida (sem parênteses extras e com timeout de segurança)
+    final response = await http
+        .get(
+          Uri.parse(
+              'https://raw.githubusercontent.com/Rodrigo-Zaparolli/Gerenciador_Horas/main/version.json'),
+        )
+        .timeout(const Duration(seconds: 10));
 
     // Fecha o indicador de carregamento
     if (context.mounted) Navigator.pop(context);
@@ -149,9 +153,11 @@ Future<void> _checkForUpdatesFromDialog(
           ),
         );
       }
+    } else {
+      throw Exception('Erro ao carregar versão');
     }
   } catch (e) {
-    // Fecha o carregamento caso dê erro de rede
+    // Fecha o carregamento caso dê erro de rede ou timeout
     if (context.mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(

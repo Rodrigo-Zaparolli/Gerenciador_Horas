@@ -151,6 +151,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         for (final task in project.subTasks!) {
           debugPrint(
             'ETAPA: ${task.stage} | '
+            'subId: ${task.subId} | '
             'startDate: ${task.startDate} | '
             'planStart: ${task.planStart} | '
             'planEnd: ${task.planEnd}',
@@ -633,11 +634,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     );
   }
 
-// ============================================================
-// SELETOR DE DATA
-//
-// IMPLEMENTAÇÃO ROBUSTA COM LOCALIZATION OVERRIDE
-// ============================================================
+  // ============================================================
+  // SELETOR DE DATA
+  // ============================================================
 
   Future<DateTime?> _selectDate({
     required DateTime initialDate,
@@ -1031,9 +1030,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       }
     }
 
-    DateTime baseDate = _onlyDate(
-      _startDate,
-    );
+    DateTime baseDate = _onlyDate(_startDate);
 
     final List<TaskModel> existingTasks =
         existingProject?.subTasks ?? <TaskModel>[];
@@ -1048,13 +1045,18 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           index,
         );
 
+        // ATENÇÃO: Agora utilizamos exatamente a mesma data base
+        // (ou a data específica salva na tarefa) sem adicionar
+        // somas automáticas arbitrárias de 15/30 dias.
         DateTime stepStart = baseDate;
-
-        DateTime stepEnd = baseDate.add(
-          const Duration(days: 15),
-        );
+        DateTime stepEnd = baseDate;
 
         String hoursText = '00:00';
+
+        // --------------------------------------------------------
+        // NÚMERO DA ATIVIDADE
+        // --------------------------------------------------------
+        String subId = (index + 1).toString();
 
         TaskModel? existingTask;
 
@@ -1074,34 +1076,29 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
         if (existingTask != null) {
           stepStart = existingTask.planStart ?? existingTask.startDate;
-
-          stepEnd = existingTask.planEnd ??
-              stepStart.add(
-                const Duration(days: 15),
-              );
+          stepEnd = existingTask.planEnd ?? stepStart;
 
           hoursText = existingTask.estimatedHours.trim();
 
           if (hoursText.isEmpty) {
             hoursText = '00:00';
           }
+
+          // Preserva o número já salvo no Firebase.
+          if (existingTask.subId.trim().isNotEmpty) {
+            subId = existingTask.subId.trim();
+          }
         }
 
-        stepStart = _onlyDate(
-          stepStart,
-        );
-
-        stepEnd = _onlyDate(
-          stepEnd,
-        );
+        stepStart = _onlyDate(stepStart);
+        stepEnd = _onlyDate(stepEnd);
 
         if (stepEnd.isBefore(stepStart)) {
-          stepEnd = stepStart.add(
-            const Duration(days: 15),
-          );
+          stepEnd = stepStart;
         }
 
         return <String, dynamic>{
+          'subId': subId,
           'name': workName,
           'controller': TextEditingController(
             text: hoursText,
@@ -1315,6 +1312,22 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     }
 
     for (final work in _internalWorks) {
+      final dynamic rawSubId = work['subId'];
+      final String subId = rawSubId?.toString().trim() ?? '';
+
+      if (subId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Informe o número da atividade "${work['name']}".',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+
+        return;
+      }
+
       final dynamic rawStartDate = work['startDate'];
       final dynamic rawEndDate = work['endDate'];
 
@@ -1368,9 +1381,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         work['endDate'] as DateTime,
       );
 
+      final String subId = work['subId']?.toString().trim().isNotEmpty == true
+          ? work['subId'].toString().trim()
+          : (index + 1).toString();
+
       customSubTasks.add(
         TaskModel(
-          subId: (index + 1).toString(),
+          // AGORA O NÚMERO É O INFORMADO NO MODAL.
+          subId: subId,
           stage: work['name'] as String,
           status: _status,
           startDate: stepStart,
@@ -2113,7 +2131,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               ),
               const SizedBox(height: 3),
               const Text(
-                'Clique nas datas em vermelho para editar o início e o término de cada etapa.',
+                'Edite o número e clique nas datas em vermelho para editar o início e o término de cada etapa.',
                 style: TextStyle(
                   color: Colors.white38,
                   fontSize: 11,
@@ -2165,6 +2183,47 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               ),
                               child: Row(
                                 children: [
+                                  // ------------------------------------------------
+                                  // NÚMERO DA ATIVIDADE - EDITÁVEL
+                                  // ------------------------------------------------
+                                  SizedBox(
+                                    width: 70,
+                                    child: TextField(
+                                      controller: TextEditingController(
+                                        text: work['subId']?.toString() ?? '',
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      onChanged: (value) {
+                                        work['subId'] = value;
+                                      },
+                                      decoration: const InputDecoration(
+                                        labelText: 'Nº',
+                                        labelStyle: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 11,
+                                        ),
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+
+                                  // ------------------------------------------------
+                                  // ETAPA
+                                  // ------------------------------------------------
                                   Expanded(
                                     flex: 3,
                                     child: Text(
@@ -2178,6 +2237,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
+
+                                  // ------------------------------------------------
+                                  // DATA DE INÍCIO
+                                  // ------------------------------------------------
                                   Expanded(
                                     flex: 2,
                                     child: InkWell(
@@ -2222,6 +2285,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
+
+                                  // ------------------------------------------------
+                                  // DATA DE TÉRMINO
+                                  // ------------------------------------------------
                                   Expanded(
                                     flex: 2,
                                     child: InkWell(
@@ -2266,6 +2333,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
+
+                                  // ------------------------------------------------
+                                  // HORAS
+                                  // ------------------------------------------------
                                   SizedBox(
                                     width: 100,
                                     child: TextField(

@@ -26,17 +26,23 @@ class HoraInputFormatter extends TextInputFormatter {
       String hours = parts[0];
       String minutes = parts.length > 1 ? parts[1] : '';
 
-      if (hours.length > 4) hours = hours.substring(0, 4);
-      if (minutes.length > 2) minutes = minutes.substring(0, 2);
+      if (hours.length > 4) {
+        hours = hours.substring(0, 4);
+      }
+
+      if (minutes.length > 2) {
+        minutes = minutes.substring(0, 2);
+      }
 
       text = '$hours:$minutes';
     } else {
       if (text.length > 6) {
         text = text.substring(0, 6);
       }
+
       if (text.length > 2) {
-        String hours = text.substring(0, text.length - 2);
-        String minutes = text.substring(text.length - 2);
+        final hours = text.substring(0, text.length - 2);
+        final minutes = text.substring(text.length - 2);
         text = '$hours:$minutes';
       }
     }
@@ -53,6 +59,7 @@ class TabelaProjetosWidget extends StatefulWidget {
   final List<String> statusList;
   final Set<String> expandedProjectIds;
   final String? selectedTargetId;
+  final List<String> idsEmAlerta;
 
   final List<TimeLog> timeLogs;
   final String? activeTimerTargetId;
@@ -96,6 +103,7 @@ class TabelaProjetosWidget extends StatefulWidget {
     required this.statusList,
     required this.expandedProjectIds,
     required this.selectedTargetId,
+    this.idsEmAlerta = const [],
     required this.timeLogs,
     required this.activeTimerTargetId,
     required this.activeStartTime,
@@ -132,6 +140,7 @@ class TabelaProjetosWidget extends StatefulWidget {
 class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   final Map<String, TextEditingController> _inlineControllers = {};
   final Map<String, TextEditingController> _logCommentControllers = {};
+
   late List<TimeLog> _localTimeLogs;
 
   final List<String> _tiposHsOpcoes = const [
@@ -152,6 +161,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   @override
   void didUpdateWidget(covariant TabelaProjetosWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+
     if (widget.timeLogs != oldWidget.timeLogs) {
       _localTimeLogs = List.from(widget.timeLogs);
     }
@@ -159,40 +169,49 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
 
   @override
   void dispose() {
-    for (var controller in _inlineControllers.values) {
+    for (final controller in _inlineControllers.values) {
       controller.dispose();
     }
-    for (var controller in _logCommentControllers.values) {
+
+    for (final controller in _logCommentControllers.values) {
       controller.dispose();
     }
+
     super.dispose();
   }
 
   TextEditingController _getInlineController(ProjectModel project) {
     if (!_inlineControllers.containsKey(project.id)) {
-      _inlineControllers[project.id] =
-          TextEditingController(text: project.observacao ?? '');
+      _inlineControllers[project.id] = TextEditingController(
+        text: project.observacao ?? '',
+      );
     } else {
       final controller = _inlineControllers[project.id]!;
+
       if (controller.text != (project.observacao ?? '')) {
         controller.text = project.observacao ?? '';
       }
     }
+
     return _inlineControllers[project.id]!;
   }
 
   TextEditingController _getLogCommentController(TimeLog log) {
     final key =
         '${log.targetId}_${log.date.toIso8601String()}_${log.startTime}';
+
     if (!_logCommentControllers.containsKey(key)) {
-      _logCommentControllers[key] =
-          TextEditingController(text: log.description ?? '');
+      _logCommentControllers[key] = TextEditingController(
+        text: log.description ?? '',
+      );
     } else {
       final controller = _logCommentControllers[key]!;
+
       if (controller.text != (log.description ?? '')) {
         controller.text = log.description ?? '';
       }
     }
+
     return _logCommentControllers[key]!;
   }
 
@@ -200,39 +219,56 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     switch (status) {
       case 'INI_PRO':
         return CoresDashboard.statusInicial;
+
       case 'TRAB':
         return CoresDashboard.statusTrabalhando;
+
       case 'EA':
         return CoresDashboard.statusAndamento;
+
       case 'TRAB_FIM':
         return CoresDashboard.statusFinalizado;
+
       default:
         return CoresApp.textoSecundario;
     }
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'INI_PRO':
-        return CoresDashboard.statusInicial;
-      case 'TRAB':
-        return CoresDashboard.statusTrabalhando;
-      case 'EA':
-        return CoresDashboard.statusAndamento;
-      case 'TRAB_FIM':
-        return CoresDashboard.statusFinalizado;
-      default:
-        return CoresApp.textoSecundario;
+  bool _projectHasDeadlineAlert(ProjectModel project) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (project.subTasks != null && project.subTasks!.isNotEmpty) {
+      return project.subTasks!.any((task) {
+        if (task.status == 'TRAB_FIM') return false;
+
+        final planEnd = task.planEnd ?? task.startDate;
+        final normalizedEnd =
+            DateTime(planEnd.year, planEnd.month, planEnd.day);
+        final differenceDays = normalizedEnd.difference(today).inDays;
+
+        return differenceDays <= 5;
+      });
     }
+
+    if (project.status == 'TRAB_FIM') return false;
+
+    final planEnd = project.startDate;
+    final normalizedEnd = DateTime(planEnd.year, planEnd.month, planEnd.day);
+    final differenceDays = normalizedEnd.difference(today).inDays;
+
+    return differenceDays <= 5;
   }
 
   int _parseHoursToMinutes(String rawValue) {
-    String cleanVal = rawValue.replaceAll(RegExp(r'[^0-9:]'), '');
+    final cleanVal = rawValue.replaceAll(RegExp(r'[^0-9:]'), '');
+
     int hours = 0;
     int minutes = 0;
 
     if (cleanVal.contains(':')) {
       final parts = cleanVal.split(':');
+
       if (parts.length >= 2) {
         hours = int.tryParse(parts[0]) ?? 0;
         minutes = int.tryParse(parts[1]) ?? 0;
@@ -240,7 +276,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     } else {
       if (cleanVal.length >= 3) {
         final splitIndex = cleanVal.length - 2;
+
         hours = int.tryParse(cleanVal.substring(0, splitIndex)) ?? 0;
+
         minutes = int.tryParse(cleanVal.substring(splitIndex)) ?? 0;
       } else {
         hours = int.tryParse(cleanVal) ?? 0;
@@ -253,7 +291,21 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
   String _formatMinutesToHHMM(int totalMinutes) {
     final h = totalMinutes ~/ 60;
     final m = totalMinutes % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+
+    return '${h.toString().padLeft(2, '0')}:'
+        '${m.toString().padLeft(2, '0')}';
+  }
+
+  String _calculateTotalEstimatedHours(
+    List<TextEditingController> controllers,
+  ) {
+    int totalMinutes = 0;
+
+    for (final controller in controllers) {
+      totalMinutes += _parseHoursToMinutes(controller.text);
+    }
+
+    return _formatMinutesToHHMM(totalMinutes);
   }
 
   String _formatDate(DateTime date) {
@@ -266,10 +318,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     setState(() {
       log.isRegistered = true;
     });
+
     widget.onRegisterLog(log);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Tempo cadastrado e contabilizado com sucesso!'),
+        content: const Text(
+          'Tempo cadastrado e contabilizado com sucesso!',
+        ),
         backgroundColor: CoresApp.sucesso,
       ),
     );
@@ -292,6 +348,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     Color? color,
     FontWeight fontWeight = FontWeight.normal,
     double? fontSize,
+    TextDecoration? decoration,
+    Color? decorationColor,
   }) {
     return Text(
       text,
@@ -301,14 +359,22 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
         color: color ?? CoresApp.textoSecundario,
         fontSize: fontSize ?? TamanhosApp.tabelaFonte,
         fontWeight: fontWeight,
+        decoration: decoration,
+        decorationColor: decorationColor,
+        decorationThickness: 2.0,
       ),
     );
   }
 
+  /// =========================================================================
+  /// AJUSTE 1: AQUI VOCÊ CONFIGURA O BADGE DO ID DO PROJETO E A SETA DE EXPANSAO
+  /// (Item circulado/apontado à esquerda na imagem)
+  /// =========================================================================
   Widget _buildProjectIdBadge(
     ProjectModel project,
     bool hasSubtasks,
     bool isExpanded,
+    bool emAlerta,
   ) {
     return InkWell(
       borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
@@ -323,25 +389,37 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                     isExpanded
                         ? Icons.keyboard_arrow_down_rounded
                         : Icons.keyboard_arrow_right_rounded,
-                    color: CoresApp.destaque,
+                    color:
+                        emAlerta ? CoresApp.destaqueAmarelo : CoresApp.destaque,
                     size: TamanhosApp.iconeTabela,
                   )
                 : null,
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 9,
+              vertical: 5,
+            ),
             decoration: BoxDecoration(
-              color: CoresApp.destaque.withOpacity(0.09),
-              borderRadius: BorderRadius.circular(TamanhosApp.raioBadge),
+              color: emAlerta
+                  ? CoresApp.destaque.withOpacity(0.09)
+                  : CoresApp.destaque.withOpacity(0.09),
+              borderRadius: BorderRadius.circular(
+                TamanhosApp.raioBadge,
+              ),
               border: Border.all(
-                color: CoresApp.destaque.withOpacity(0.35),
-                width: TamanhosApp.espessuraBorda,
+                color: emAlerta
+                    ? CoresApp.destaque.withOpacity(0.35)
+                    : CoresApp.destaque.withOpacity(0.35),
+                width: emAlerta ? 1.5 : TamanhosApp.espessuraBorda,
               ),
             ),
             child: Text(
               project.id,
               style: TextStyle(
-                color: CoresApp.destaque,
+                color: emAlerta
+                    ? CoresApp.destaqueAmarelo
+                    : CoresApp.textoPrincipal,
                 fontSize: TamanhosApp.tabelaFonte,
                 fontWeight: FontWeight.w800,
               ),
@@ -356,7 +434,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     required String status,
     required ValueChanged<String?> onChanged,
   }) {
-    final color = _getStatusColor(status);
+    final color = _getStageColor(status);
+
     final currentValue = widget.statusList.contains(status)
         ? status
         : widget.statusList.isNotEmpty
@@ -364,10 +443,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             : null;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 7,
+        vertical: 2,
+      ),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(TamanhosApp.raioBadge),
+        borderRadius: BorderRadius.circular(
+          TamanhosApp.raioBadge,
+        ),
         border: Border.all(
           color: color.withOpacity(0.55),
           width: TamanhosApp.espessuraBorda,
@@ -419,26 +503,39 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
         fontSize: TamanhosApp.tabelaFonteSecundaria,
       ),
       prefixIcon: icon != null
-          ? Icon(icon, color: CoresApp.destaque, size: TamanhosApp.iconeTabela)
+          ? Icon(
+              icon,
+              color: CoresApp.destaque,
+              size: TamanhosApp.iconeTabela,
+            )
           : null,
       suffixIcon: suffix,
       filled: true,
       fillColor: CoresTelas.campoFormulario,
       isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 12,
+      ),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
+        borderRadius: BorderRadius.circular(
+          TamanhosApp.raioBotao,
+        ),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
+        borderRadius: BorderRadius.circular(
+          TamanhosApp.raioBotao,
+        ),
         borderSide: BorderSide(
           color: CoresApp.bordaSuave,
           width: TamanhosApp.espessuraBorda,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
+        borderRadius: BorderRadius.circular(
+          TamanhosApp.raioBotao,
+        ),
         borderSide: BorderSide(
           color: CoresApp.destaque,
           width: TamanhosApp.espessuraBorda,
@@ -449,8 +546,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
 
   void _showCheckListDialog(ProjectModel project) {
     final newItemController = TextEditingController();
+
     String? selectedFormatId;
+
     List<ChecklistFormat> availableFormats = [];
+
     bool isLoadingFormats = true;
 
     showDialog(
@@ -476,12 +576,16 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             }
 
             final checklistItems = project.checklist ?? [];
+
             final int totalItems = checklistItems.length;
+
             final int completedItems = checklistItems
                 .where((item) => item['completed'] == true)
                 .length;
+
             final double progressValue =
                 totalItems > 0 ? completedItems / totalItems : 0.0;
+
             final int progressPercent = (progressValue * 100).round();
 
             return AlertDialog(
@@ -492,12 +596,17 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
               ),
               title: Row(
                 children: [
-                  Icon(Icons.checklist_rounded, color: CoresApp.destaque),
+                  Icon(
+                    Icons.checklist_rounded,
+                    color: CoresApp.destaque,
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     'Check List - Projeto ${project.id}',
-                    style:
-                        TextStyle(color: CoresApp.textoPrincipal, fontSize: 16),
+                    style: TextStyle(
+                      color: CoresApp.textoPrincipal,
+                      fontSize: 16,
+                    ),
                   ),
                 ],
               ),
@@ -516,7 +625,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                     height: 25,
                                     width: 25,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2),
+                                      strokeWidth: 2,
+                                    ),
                                   ),
                                 )
                               : DropdownButtonFormField<String>(
@@ -529,11 +639,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   hint: Text(
                                     'Selecione um modelo...',
                                     style: TextStyle(
-                                        color: CoresApp.textoSecundario,
-                                        fontSize: 13),
+                                      color: CoresApp.textoSecundario,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                   items: availableFormats.map((format) {
                                     final String formatId = format.id;
+
                                     final String formatName =
                                         format.name.trim().isNotEmpty
                                             ? format.name
@@ -544,8 +656,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                       child: Text(
                                         formatName,
                                         style: TextStyle(
-                                            color: CoresApp.textoPrincipal,
-                                            fontSize: 13),
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 13,
+                                        ),
                                       ),
                                     );
                                   }).toList(),
@@ -562,12 +675,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                             backgroundColor: CoresApp.destaque,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 14),
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
                           ),
                           onPressed: selectedFormatId == null
                               ? null
                               : () async {
                                   ChecklistFormat? chosenFormat;
+
                                   for (final format in availableFormats) {
                                     if (format.id == selectedFormatId) {
                                       chosenFormat = format;
@@ -585,7 +701,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                               ?.toString()
                                               .trim() ??
                                           '';
+
                                       if (name.isEmpty) continue;
+
                                       project.checklist!.add({
                                         'order':
                                             formatItem['order']?.toString() ??
@@ -598,16 +716,20 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                     try {
                                       await widget.firebaseService
                                           .salvarProjeto(project);
+
                                       widget.onEditProject(project);
+
                                       setDialogState(() {
                                         selectedFormatId = null;
                                       });
+
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           SnackBar(
                                             content: const Text(
-                                                'Modelo importado com sucesso!'),
+                                              'Modelo importado com sucesso!',
+                                            ),
                                             backgroundColor: CoresApp.sucesso,
                                           ),
                                         );
@@ -618,7 +740,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                             .showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                                'Erro ao importar modelo: $e'),
+                                              'Erro ao importar modelo: $e',
+                                            ),
                                             backgroundColor: CoresApp.erro,
                                           ),
                                         );
@@ -626,8 +749,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                     }
                                   }
                                 },
-                          child: const Text('Aplicar',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text(
+                            'Aplicar',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -640,7 +767,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                           child: TextField(
                             controller: newItemController,
                             style: TextStyle(
-                                color: CoresApp.textoPrincipal, fontSize: 13),
+                              color: CoresApp.textoPrincipal,
+                              fontSize: 13,
+                            ),
                             decoration: _dialogInputDecoration(
                               label: 'Nova tarefa manual',
                               icon: Icons.add_task_rounded,
@@ -653,25 +782,33 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                             backgroundColor: CoresApp.destaque,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 12),
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
                           ),
                           onPressed: () async {
                             final text = newItemController.text.trim();
+
                             if (text.isNotEmpty) {
                               project.checklist ??= [];
+
                               final nextOrder =
                                   (project.checklist!.length + 1).toString();
+
                               project.checklist!.add({
                                 'order': nextOrder,
                                 'name': text,
                                 'completed': false,
                               });
+
                               newItemController.clear();
 
                               try {
                                 await widget.firebaseService
                                     .salvarProjeto(project);
+
                                 widget.onEditProject(project);
+
                                 setDialogState(() {});
                               } catch (e) {
                                 if (context.mounted) {
@@ -685,8 +822,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               }
                             }
                           },
-                          child: const Text('Adicionar',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text(
+                            'Adicionar',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -701,8 +842,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                 child: Text(
                                   'Nenhum item cadastrado no checklist.',
                                   style: TextStyle(
-                                      color: CoresApp.textoSecundario,
-                                      fontSize: 13),
+                                    color: CoresApp.textoSecundario,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
                             )
@@ -713,10 +855,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final item = project.checklist![index];
+
                                 final bool isCompleted =
                                     item['completed'] == true;
+
                                 final String order =
                                     item['order']?.toString() ?? '${index + 1}';
+
                                 final String name =
                                     item['name']?.toString() ?? '';
 
@@ -738,14 +883,20 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        icon: Icon(Icons.delete_outline_rounded,
-                                            color: CoresApp.erro, size: 20),
+                                        icon: Icon(
+                                          Icons.delete_outline_rounded,
+                                          color: CoresApp.erro,
+                                          size: 20,
+                                        ),
                                         onPressed: () async {
                                           project.checklist!.removeAt(index);
+
                                           try {
                                             await widget.firebaseService
                                                 .salvarProjeto(project);
+
                                             widget.onEditProject(project);
+
                                             setDialogState(() {});
                                           } catch (e) {
                                             if (context.mounted) {
@@ -753,7 +904,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                   .showSnackBar(
                                                 SnackBar(
                                                   content: Text(
-                                                      'Erro ao excluir item: $e'),
+                                                    'Erro ao excluir item: $e',
+                                                  ),
                                                   backgroundColor:
                                                       CoresApp.erro,
                                                 ),
@@ -774,6 +926,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                           try {
                                             await widget.firebaseService
                                                 .salvarProjeto(project);
+
                                             widget.onEditProject(project);
                                           } catch (e) {
                                             if (context.mounted) {
@@ -781,7 +934,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                   .showSnackBar(
                                                 SnackBar(
                                                   content: Text(
-                                                      'Erro ao atualizar checklist: $e'),
+                                                    'Erro ao atualizar checklist: $e',
+                                                  ),
                                                   backgroundColor:
                                                       CoresApp.erro,
                                                 ),
@@ -812,15 +966,17 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               Text(
                                 'Progresso',
                                 style: TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 12),
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 12,
+                                ),
                               ),
                               Text(
                                 '$progressPercent%',
                                 style: TextStyle(
-                                    color: CoresApp.destaque,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12),
+                                  color: CoresApp.destaque,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
@@ -831,7 +987,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               value: progressValue,
                               backgroundColor: CoresApp.borda,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                  CoresApp.destaque),
+                                CoresApp.destaque,
+                              ),
                               minHeight: 8,
                             ),
                           ),
@@ -841,12 +998,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                     const SizedBox(width: 16),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: CoresApp.destaque),
+                        backgroundColor: CoresApp.destaque,
+                      ),
                       onPressed: () => Navigator.pop(dialogContext),
                       child: const Text(
                         'Fechar',
                         style: TextStyle(
-                            color: Colors.black, fontWeight: FontWeight.bold),
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -875,44 +1035,43 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
 
     List<TaskModel> tempSubTasks = project.subTasks != null
         ? project.subTasks!
-            .map((s) => TaskModel(
-                  subId: s.subId,
-                  stage: s.stage,
-                  status: s.status,
-                  startDate: s.startDate,
-                  planEnd: s.planEnd,
-                  estimatedHours: s.estimatedHours,
-                  hourType: _tiposHsOpcoes.contains(s.hourType)
-                      ? s.hourType
-                      : _tiposHsOpcoes.first,
-                ))
+            .map(
+              (s) => TaskModel(
+                subId: s.subId,
+                stage: s.stage,
+                status: s.status,
+                startDate: s.startDate,
+                planStart: s.planStart,
+                planEnd: s.planEnd,
+                estimatedHours: s.estimatedHours,
+                hourType: _tiposHsOpcoes.contains(s.hourType)
+                    ? s.hourType
+                    : _tiposHsOpcoes.first,
+              ),
+            )
             .toList()
         : [];
 
     final estimatedHoursController = TextEditingController();
-
-    String calculateTotalEstimatedHours(
-        List<TextEditingController> controllers) {
-      int totalMinutes = 0;
-      for (final controller in controllers) {
-        totalMinutes += _parseHoursToMinutes(controller.text);
-      }
-      return _formatMinutesToHHMM(totalMinutes);
-    }
-
     final List<TextEditingController> subHoursControllers = [];
+
     for (final s in tempSubTasks) {
       final ctrl = TextEditingController(text: s.estimatedHours);
+
       ctrl.addListener(() {
-        estimatedHoursController.text =
-            calculateTotalEstimatedHours(subHoursControllers);
+        estimatedHoursController.text = _calculateTotalEstimatedHours(
+          subHoursControllers,
+        );
       });
+
       subHoursControllers.add(ctrl);
     }
 
     estimatedHoursController.text = project.estimatedHours.isNotEmpty
         ? project.estimatedHours
-        : calculateTotalEstimatedHours(subHoursControllers);
+        : _calculateTotalEstimatedHours(
+            subHoursControllers,
+          );
 
     String selectedStatus = widget.statusList.contains(project.status)
         ? project.status
@@ -928,15 +1087,19 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           builder: (context, setDialogState) {
             return Dialog(
               backgroundColor: Colors.transparent,
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 30, vertical: 25),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 30,
+                vertical: 25,
+              ),
               child: Container(
                 width: 950,
                 constraints: const BoxConstraints(maxHeight: 820),
                 decoration: BoxDecoration(
                   color: CoresTelas.fundoModal,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: CoresApp.borda),
+                  border: Border.all(
+                    color: CoresApp.borda,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: CoresApp.overlay,
@@ -949,13 +1112,22 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.fromLTRB(22, 18, 14, 18),
+                      padding: const EdgeInsets.fromLTRB(
+                        22,
+                        18,
+                        14,
+                        18,
+                      ),
                       decoration: BoxDecoration(
                         color: CoresTelas.fundoModalSecundario,
                         borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(18)),
+                          top: Radius.circular(18),
+                        ),
                         border: Border(
-                            bottom: BorderSide(color: CoresApp.bordaSuave)),
+                          bottom: BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -988,9 +1160,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                           ),
                           IconButton(
                             tooltip: 'Fechar',
-                            icon: Icon(Icons.close_rounded,
-                                color: CoresApp.textoSecundario),
-                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: CoresApp.textoSecundario,
+                            ),
+                            onPressed: () => Navigator.of(
+                              dialogContext,
+                            ).pop(),
                           ),
                         ],
                       ),
@@ -1008,18 +1184,21 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: idController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 13),
-                                    decoration:
-                                        _dialogInputDecoration(label: 'ID'),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 13,
+                                    ),
+                                    decoration: _dialogInputDecoration(
+                                      label: 'ID',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   flex: 2,
                                   child: InputDecorator(
-                                    decoration:
-                                        _dialogInputDecoration(label: 'Status'),
+                                    decoration: _dialogInputDecoration(
+                                      label: 'Status',
+                                    ),
                                     child: DropdownButtonHideUnderline(
                                       child: DropdownButton<String>(
                                         value: selectedStatus.isNotEmpty
@@ -1029,19 +1208,24 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                         isDense: true,
                                         isExpanded: true,
                                         style: TextStyle(
-                                            color: CoresApp.textoPrincipal,
-                                            fontSize: 13),
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 13,
+                                        ),
                                         icon: Icon(
-                                            Icons.keyboard_arrow_down_rounded,
-                                            color: CoresApp.textoSecundario),
+                                          Icons.keyboard_arrow_down_rounded,
+                                          color: CoresApp.textoSecundario,
+                                        ),
                                         items: widget.statusList.map((st) {
                                           return DropdownMenuItem<String>(
-                                              value: st, child: Text(st));
+                                            value: st,
+                                            child: Text(st),
+                                          );
                                         }).toList(),
                                         onChanged: (value) {
                                           if (value != null) {
                                             setDialogState(
-                                                () => selectedStatus = value);
+                                              () => selectedStatus = value,
+                                            );
                                           }
                                         },
                                       ),
@@ -1058,11 +1242,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: clientController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 13),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 13,
+                                    ),
                                     decoration: _dialogInputDecoration(
-                                        label: 'Cliente',
-                                        icon: Icons.business_rounded),
+                                      label: 'Cliente',
+                                      icon: Icons.business_rounded,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -1071,10 +1257,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: serviceTypeController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 13),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 13,
+                                    ),
                                     decoration: _dialogInputDecoration(
-                                        label: 'Tipo de Serviço'),
+                                      label: 'Tipo de Serviço',
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1083,7 +1271,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                             TextField(
                               controller: observacaoController,
                               style: TextStyle(
-                                  color: CoresApp.textoPrincipal, fontSize: 13),
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                              ),
                               decoration: _dialogInputDecoration(
                                 label: 'Informações Úteis / Descritivo',
                                 icon: Icons.description_rounded,
@@ -1097,14 +1287,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: folderController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 12),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 12,
+                                    ),
                                     decoration: _dialogInputDecoration(
                                       label: 'Pasta de Documentos',
                                       icon: Icons.folder_rounded,
                                       suffix: IconButton(
-                                        icon: Icon(Icons.search_rounded,
-                                            color: CoresApp.destaque, size: 18),
+                                        icon: Icon(
+                                          Icons.search_rounded,
+                                          color: CoresApp.destaque,
+                                          size: 18,
+                                        ),
                                         tooltip: 'Selecionar Pasta',
                                         onPressed: () async {
                                           try {
@@ -1114,6 +1308,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                               dialogTitle:
                                                   'Selecione a Pasta do Projeto',
                                             );
+
                                             if (selectedDirectory != null) {
                                               setDialogState(() {
                                                 folderController.text =
@@ -1122,7 +1317,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                             }
                                           } catch (e) {
                                             debugPrint(
-                                                'Erro ao abrir seletor de pastas: $e');
+                                              'Erro ao abrir seletor de pastas: $e',
+                                            );
                                           }
                                         },
                                       ),
@@ -1134,14 +1330,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: excelController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 12),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 12,
+                                    ),
                                     decoration: _dialogInputDecoration(
                                       label: 'Arquivo / Link',
                                       icon: Icons.insert_drive_file_rounded,
                                       suffix: IconButton(
-                                        icon: Icon(Icons.attach_file_rounded,
-                                            color: CoresApp.destaque, size: 18),
+                                        icon: Icon(
+                                          Icons.attach_file_rounded,
+                                          color: CoresApp.destaque,
+                                          size: 18,
+                                        ),
                                         tooltip: 'Selecionar Arquivo',
                                         onPressed: () async {
                                           final result = await FilePicker
@@ -1156,9 +1356,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                               'doc',
                                               'docx',
                                               'pdf',
-                                              'txt'
+                                              'txt',
                                             ],
                                           );
+
                                           if (result != null &&
                                               result.files.single.path !=
                                                   null) {
@@ -1208,47 +1409,64 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                       foregroundColor: CoresApp.destaque,
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 8),
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
                                         side: BorderSide(
-                                            color: CoresApp.destaque
-                                                .withOpacity(0.5)),
+                                          color: CoresApp.destaque
+                                              .withOpacity(0.5),
+                                        ),
                                       ),
                                     ),
                                     icon: const Icon(
-                                        Icons.create_new_folder_rounded,
-                                        size: 18),
+                                      Icons.create_new_folder_rounded,
+                                      size: 18,
+                                    ),
                                     label: const Text(
                                       'Criar Pasta',
                                       style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                     onPressed: () async {
                                       try {
                                         if (kIsWeb) {
                                           throw Exception(
-                                              'A criação automática de pastas via sistema de arquivos não é suportada na versão Web.');
+                                            'A criação automática de pastas via sistema de arquivos não é suportada na versão Web.',
+                                          );
                                         }
 
                                         final userProfile = Platform
                                                 .environment['USERPROFILE'] ??
                                             'C:\\Users\\Public';
+
                                         final documentsPath =
                                             '$userProfile${Platform.pathSeparator}Documents';
+
                                         final baseDir = Directory(
-                                            '$documentsPath${Platform.pathSeparator}Projetos');
+                                          '$documentsPath${Platform.pathSeparator}Projetos',
+                                        );
 
                                         final sanitizedClient = clientController
                                             .text
                                             .trim()
                                             .replaceAll(
-                                                RegExp(r'[<>:"/\\|?*]'), '');
-                                        final sanitizedId = idController.text
-                                            .trim()
-                                            .replaceAll(
-                                                RegExp(r'[<>:"/\\|?*]'), '');
+                                              RegExp(
+                                                r'[<>:"/\\|?*]',
+                                              ),
+                                              '',
+                                            );
+
+                                        final sanitizedId =
+                                            idController.text.trim().replaceAll(
+                                                  RegExp(
+                                                    r'[<>:"/\\|?*]',
+                                                  ),
+                                                  '',
+                                                );
 
                                         final folderName = sanitizedClient
                                                 .isNotEmpty
@@ -1258,11 +1476,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                         final newFolderPath =
                                             '${baseDir.path}${Platform.pathSeparator}$folderName';
 
-                                        final newFolder =
-                                            Directory(newFolderPath);
+                                        final newFolder = Directory(
+                                          newFolderPath,
+                                        );
+
                                         if (!await newFolder.exists()) {
                                           await newFolder.create(
-                                              recursive: true);
+                                            recursive: true,
+                                          );
                                         }
 
                                         setDialogState(() {
@@ -1274,7 +1495,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                               .showSnackBar(
                                             SnackBar(
                                               content: Text(
-                                                  'Pasta criada com sucesso: $newFolderPath'),
+                                                'Pasta criada com sucesso: $newFolderPath',
+                                              ),
                                               backgroundColor: CoresApp.sucesso,
                                             ),
                                           );
@@ -1285,7 +1507,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                               .showSnackBar(
                                             SnackBar(
                                               content: Text(
-                                                  'Erro ao criar pasta: $e'),
+                                                'Erro ao criar pasta: $e',
+                                              ),
                                               backgroundColor: CoresApp.erro,
                                             ),
                                           );
@@ -1302,7 +1525,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               decoration: BoxDecoration(
                                 color: CoresTelas.fundoModalSecundario,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: CoresApp.bordaSuave),
+                                border: Border.all(
+                                  color: CoresApp.bordaSuave,
+                                ),
                               ),
                               child: tempSubTasks.isEmpty
                                   ? Padding(
@@ -1311,8 +1536,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                         child: Text(
                                           'Este projeto não possui etapas cadastradas.',
                                           style: TextStyle(
-                                              color: CoresApp.textoSecundario,
-                                              fontSize: 12),
+                                            color: CoresApp.textoSecundario,
+                                            fontSize: 12,
+                                          ),
                                         ),
                                       ),
                                     )
@@ -1322,9 +1548,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                           const NeverScrollableScrollPhysics(),
                                       itemCount: tempSubTasks.length,
                                       separatorBuilder: (_, __) =>
-                                          const SizedBox(height: 10),
+                                          const SizedBox(
+                                        height: 10,
+                                      ),
                                       itemBuilder: (context, index) {
                                         final sub = tempSubTasks[index];
+
                                         return Container(
                                           padding: const EdgeInsets.all(10),
                                           decoration: BoxDecoration(
@@ -1332,19 +1561,34 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                             borderRadius:
                                                 BorderRadius.circular(8),
                                             border: Border.all(
-                                                color: CoresApp.bordaSuave),
+                                              color: CoresApp.bordaSuave,
+                                            ),
                                           ),
                                           child: Row(
                                             children: [
                                               SizedBox(
-                                                width: 30,
-                                                child: Text(
-                                                  sub.subId,
+                                                width: 60,
+                                                child: TextFormField(
+                                                  initialValue: sub.subId,
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter
+                                                        .digitsOnly,
+                                                  ],
+                                                  textAlign: TextAlign.center,
                                                   style: TextStyle(
                                                     color: CoresApp.destaque,
                                                     fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
+                                                    fontSize: 12,
                                                   ),
+                                                  decoration:
+                                                      _dialogInputDecoration(
+                                                    label: 'Nº',
+                                                  ),
+                                                  onChanged: (value) {
+                                                    sub.subId = value.trim();
+                                                  },
                                                 ),
                                               ),
                                               const SizedBox(width: 6),
@@ -1353,13 +1597,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                 child: TextFormField(
                                                   initialValue: sub.stage,
                                                   style: TextStyle(
-                                                      color: CoresApp
-                                                          .textoPrincipal,
-                                                      fontSize: 12),
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 12,
+                                                  ),
                                                   decoration:
                                                       _dialogInputDecoration(
-                                                          label:
-                                                              'Nome da Etapa'),
+                                                    label: 'Nome da Etapa',
+                                                  ),
                                                   onChanged: (val) {
                                                     sub.stage = val;
                                                   },
@@ -1378,10 +1623,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                       firstDate: DateTime(2020),
                                                       lastDate: DateTime(2030),
                                                       locale: const Locale(
-                                                          'pt', 'BR'),
-                                                      builder:
-                                                          (BuildContext context,
-                                                              Widget? child) {
+                                                        'pt',
+                                                        'BR',
+                                                      ),
+                                                      builder: (
+                                                        BuildContext context,
+                                                        Widget? child,
+                                                      ) {
                                                         return Theme(
                                                           data: ThemeData.dark()
                                                               .copyWith(
@@ -1406,23 +1654,32 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                             context: context,
                                                             locale:
                                                                 const Locale(
-                                                                    'pt', 'BR'),
+                                                              'pt',
+                                                              'BR',
+                                                            ),
                                                             child: child!,
                                                           ),
                                                         );
                                                       },
                                                     );
+
                                                     if (picked != null) {
-                                                      setDialogState(() {
-                                                        sub.startDate = picked;
-                                                      });
+                                                      setDialogState(
+                                                        () {
+                                                          sub.startDate =
+                                                              picked;
+                                                          sub.planStart =
+                                                              picked;
+                                                        },
+                                                      );
                                                     }
                                                   },
                                                   child: Container(
                                                     padding: const EdgeInsets
                                                         .symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 8),
+                                                      horizontal: 10,
+                                                      vertical: 8,
+                                                    ),
                                                     decoration: BoxDecoration(
                                                       color: CoresTelas
                                                           .fundoModalSecundario,
@@ -1430,8 +1687,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                           BorderRadius.circular(
                                                               6),
                                                       border: Border.all(
-                                                          color: CoresApp
-                                                              .bordaSuave),
+                                                        color:
+                                                            CoresApp.bordaSuave,
+                                                      ),
                                                     ),
                                                     child: Row(
                                                       mainAxisAlignment:
@@ -1441,16 +1699,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                         Text(
                                                           'Início: ${_formatDate(sub.startDate)}',
                                                           style: TextStyle(
-                                                              color: CoresApp
-                                                                  .textoPrincipal,
-                                                              fontSize: 11),
+                                                            color: CoresApp
+                                                                .textoPrincipal,
+                                                            fontSize: 11,
+                                                          ),
                                                         ),
                                                         Icon(
-                                                            Icons
-                                                                .calendar_today_rounded,
-                                                            size: 14,
-                                                            color: CoresApp
-                                                                .destaque),
+                                                          Icons
+                                                              .calendar_today_rounded,
+                                                          size: 14,
+                                                          color:
+                                                              CoresApp.destaque,
+                                                        ),
                                                       ],
                                                     ),
                                                   ),
@@ -1470,10 +1730,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                       firstDate: DateTime(2020),
                                                       lastDate: DateTime(2030),
                                                       locale: const Locale(
-                                                          'pt', 'BR'),
-                                                      builder:
-                                                          (BuildContext context,
-                                                              Widget? child) {
+                                                        'pt',
+                                                        'BR',
+                                                      ),
+                                                      builder: (
+                                                        BuildContext context,
+                                                        Widget? child,
+                                                      ) {
                                                         return Theme(
                                                           data: ThemeData.dark()
                                                               .copyWith(
@@ -1498,23 +1761,29 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                             context: context,
                                                             locale:
                                                                 const Locale(
-                                                                    'pt', 'BR'),
+                                                              'pt',
+                                                              'BR',
+                                                            ),
                                                             child: child!,
                                                           ),
                                                         );
                                                       },
                                                     );
+
                                                     if (picked != null) {
-                                                      setDialogState(() {
-                                                        sub.planEnd = picked;
-                                                      });
+                                                      setDialogState(
+                                                        () {
+                                                          sub.planEnd = picked;
+                                                        },
+                                                      );
                                                     }
                                                   },
                                                   child: Container(
                                                     padding: const EdgeInsets
                                                         .symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 8),
+                                                      horizontal: 10,
+                                                      vertical: 8,
+                                                    ),
                                                     decoration: BoxDecoration(
                                                       color: CoresTelas
                                                           .fundoModalSecundario,
@@ -1522,8 +1791,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                           BorderRadius.circular(
                                                               6),
                                                       border: Border.all(
-                                                          color: CoresApp
-                                                              .bordaSuave),
+                                                        color:
+                                                            CoresApp.bordaSuave,
+                                                      ),
                                                     ),
                                                     child: Row(
                                                       mainAxisAlignment:
@@ -1533,16 +1803,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                         Text(
                                                           'Fim: ${sub.planEnd != null ? _formatDate(sub.planEnd!) : '-'}',
                                                           style: TextStyle(
-                                                              color: CoresApp
-                                                                  .textoPrincipal,
-                                                              fontSize: 11),
+                                                            color: CoresApp
+                                                                .textoPrincipal,
+                                                            fontSize: 11,
+                                                          ),
                                                         ),
                                                         Icon(
-                                                            Icons
-                                                                .calendar_today_rounded,
-                                                            size: 14,
-                                                            color: CoresApp
-                                                                .destaque),
+                                                          Icons
+                                                              .calendar_today_rounded,
+                                                          size: 14,
+                                                          color:
+                                                              CoresApp.destaque,
+                                                        ),
                                                       ],
                                                     ),
                                                   ),
@@ -1561,12 +1833,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                     HoraInputFormatter(),
                                                   ],
                                                   style: TextStyle(
-                                                      color: CoresApp
-                                                          .textoPrincipal,
-                                                      fontSize: 12),
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 12,
+                                                  ),
                                                   decoration:
                                                       _dialogInputDecoration(
-                                                          label: 'Horas'),
+                                                    label: 'Horas',
+                                                  ),
                                                   onChanged: (_) {
                                                     setDialogState(() {});
                                                   },
@@ -1578,8 +1852,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                 child: InputDecorator(
                                                   decoration:
                                                       _dialogInputDecoration(
-                                                          label:
-                                                              'Tipo de Horas'),
+                                                    label: 'Tipo de Horas',
+                                                  ),
                                                   child:
                                                       DropdownButtonHideUnderline(
                                                     child:
@@ -1595,32 +1869,38 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                                       isDense: true,
                                                       isExpanded: true,
                                                       style: TextStyle(
-                                                          color: CoresApp
-                                                              .textoPrincipal,
-                                                          fontSize: 11),
+                                                        color: CoresApp
+                                                            .textoPrincipal,
+                                                        fontSize: 11,
+                                                      ),
                                                       icon: Icon(
-                                                          Icons
-                                                              .keyboard_arrow_down_rounded,
-                                                          color: CoresApp
-                                                              .textoSecundario,
-                                                          size: 16),
+                                                        Icons
+                                                            .keyboard_arrow_down_rounded,
+                                                        color: CoresApp
+                                                            .textoSecundario,
+                                                        size: 16,
+                                                      ),
                                                       items: _tiposHsOpcoes
                                                           .map((tipo) {
                                                         return DropdownMenuItem<
                                                             String>(
                                                           value: tipo,
-                                                          child: Text(tipo,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis),
+                                                          child: Text(
+                                                            tipo,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
                                                         );
                                                       }).toList(),
                                                       onChanged: (newValue) {
                                                         if (newValue != null) {
-                                                          setDialogState(() {
-                                                            sub.hourType =
-                                                                newValue;
-                                                          });
+                                                          setDialogState(
+                                                            () {
+                                                              sub.hourType =
+                                                                  newValue;
+                                                            },
+                                                          );
                                                         }
                                                       },
                                                     ),
@@ -1641,10 +1921,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                     controller: estimatedHoursController,
                                     readOnly: true,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 12),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 12,
+                                    ),
                                     decoration: _dialogInputDecoration(
-                                        label: 'Hs Estimadas (Calc.)'),
+                                      label: 'Hs Estimadas (Calc.)',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -1652,10 +1934,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: hourTypeController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 12),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 12,
+                                    ),
                                     decoration: _dialogInputDecoration(
-                                        label: 'Tipo de Horas Geral'),
+                                      label: 'Tipo de Horas Geral',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -1663,10 +1947,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   child: TextField(
                                     controller: leaderController,
                                     style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 12),
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 12,
+                                    ),
                                     decoration: _dialogInputDecoration(
-                                        label: 'Líder Prj'),
+                                      label: 'Líder Prj',
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1676,22 +1962,36 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.fromLTRB(22, 13, 22, 13),
+                      padding: const EdgeInsets.fromLTRB(
+                        22,
+                        13,
+                        22,
+                        13,
+                      ),
                       decoration: BoxDecoration(
                         color: CoresTelas.fundoModalSecundario,
                         borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(18)),
-                        border:
-                            Border(top: BorderSide(color: CoresApp.bordaSuave)),
+                          bottom: Radius.circular(18),
+                        ),
+                        border: Border(
+                          top: BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           TextButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            child: Text('Cancelar',
-                                style:
-                                    TextStyle(color: CoresApp.textoSecundario)),
+                            onPressed: () => Navigator.of(
+                              dialogContext,
+                            ).pop(),
+                            child: Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                color: CoresApp.textoSecundario,
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 10),
                           ElevatedButton.icon(
@@ -1699,21 +1999,31 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                               backgroundColor: CoresApp.destaque,
                               foregroundColor: Colors.black,
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 18, vertical: 12),
+                                horizontal: 18,
+                                vertical: 12,
+                              ),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(
-                                    TamanhosApp.raioBotao),
+                                  TamanhosApp.raioBotao,
+                                ),
                               ),
                             ),
-                            icon: const Icon(Icons.save_rounded, size: 17),
+                            icon: const Icon(
+                              Icons.save_rounded,
+                              size: 17,
+                            ),
                             label: const Text(
                               'Salvar alterações',
                               style: TextStyle(
-                                  fontWeight: FontWeight.w800, fontSize: 12),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                              ),
                             ),
                             onPressed: () async {
-                              Navigator.of(dialogContext).pop();
+                              Navigator.of(
+                                dialogContext,
+                              ).pop();
 
                               for (int i = 0; i < tempSubTasks.length; i++) {
                                 tempSubTasks[i].estimatedHours =
@@ -1732,8 +2042,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   observacaoController.text.trim();
 
                               if (tempSubTasks.isNotEmpty) {
-                                tempSubTasks.sort((a, b) =>
-                                    a.startDate.compareTo(b.startDate));
                                 project.startDate =
                                     tempSubTasks.first.startDate;
                               }
@@ -1742,10 +2050,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   folderController.text.trim().isEmpty
                                       ? null
                                       : folderController.text.trim();
+
                               project.excelLink =
                                   excelController.text.trim().isEmpty
                                       ? null
                                       : excelController.text.trim();
+
                               project.leader = leaderController.text.trim();
                               project.hourType = hourTypeController.text.trim();
 
@@ -1761,7 +2071,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: const Text(
-                                          'Trabalho salvo com sucesso no banco de dados!'),
+                                        'Trabalho salvo com sucesso no banco de dados!',
+                                      ),
                                       backgroundColor: CoresApp.sucesso,
                                     ),
                                   );
@@ -1771,7 +2082,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                          'Erro ao salvar no Firebase: $e'),
+                                        'Erro ao salvar no Firebase: $e',
+                                      ),
                                       backgroundColor: CoresApp.erro,
                                     ),
                                   );
@@ -1792,22 +2104,65 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     );
   }
 
-  List<DataRow> _generateRows(List<ProjectModel> projects) {
+  List<DataRow> _generateRows(
+    List<ProjectModel> projects,
+  ) {
     final List<DataRow> rows = [];
+
     final now = DateTime.now();
+
     final todayFormatted = '${now.day.toString().padLeft(2, '0')}/'
         '${now.month.toString().padLeft(2, '0')}/'
         '${now.year.toString().substring(2)}';
 
+    final listaAlertasNormalizada = widget.idsEmAlerta
+        .map(
+          (id) => id.toString().trim(),
+        )
+        .toList();
+
     for (final project in projects) {
       final isExpanded = widget.expandedProjectIds.contains(project.id);
       final isRowSelected = widget.selectedTargetId == project.id;
+
+      final bool emAlerta =
+          listaAlertasNormalizada.contains(project.id.toString().trim()) ||
+              _projectHasDeadlineAlert(project);
+
       final hasSubtasks = project.subTasks?.isNotEmpty ?? false;
       final startFormatted = _formatDate(project.startDate);
 
       final endFormatted = hasSubtasks && project.subTasks!.isNotEmpty
-          ? project.subTasks!.last.planEnd != null
-              ? _formatDate(project.subTasks!.last.planEnd!)
+          ? project.subTasks!
+                      .where(
+                        (task) => task.planEnd != null,
+                      )
+                      .map(
+                        (task) => task.planEnd!,
+                      )
+                      .fold<DateTime?>(
+                    null,
+                    (latest, date) {
+                      if (latest == null || date.isAfter(latest)) {
+                        return date;
+                      }
+
+                      return latest;
+                    },
+                  ) !=
+                  null
+              ? _formatDate(
+                  project.subTasks!
+                      .where(
+                        (task) => task.planEnd != null,
+                      )
+                      .map(
+                        (task) => task.planEnd!,
+                      )
+                      .reduce(
+                        (a, b) => a.isAfter(b) ? a : b,
+                      ),
+                )
               : startFormatted
           : startFormatted;
 
@@ -1815,21 +2170,56 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
         DataRow(
           selected: isRowSelected,
           onSelectChanged: (_) => widget.onSelectTarget(project.id),
-          color: WidgetStateProperty.resolveWith((states) {
-            if (isRowSelected) return CoresDashboard.tabelaLinhaSelecionada;
-            if (isExpanded) return CoresDashboard.tabelaLinhaExpandida;
-            return null;
-          }),
+          color: WidgetStateProperty.resolveWith<Color?>(
+            (states) {
+              if (isRowSelected) {
+                return CoresDashboard.tabelaLinhaSelecionada;
+              }
+
+              if (isExpanded) {
+                return CoresDashboard.tabelaLinhaExpandida;
+              }
+
+              return null;
+            },
+          ),
           cells: [
-            DataCell(_buildProjectIdBadge(project, hasSubtasks, isExpanded)),
             DataCell(
-                _buildCellText(project.id2, color: CoresApp.textoSecundario)),
-            DataCell(_buildCellText(project.client,
-                color: CoresApp.textoPrincipal, fontWeight: FontWeight.w600)),
-            DataCell(_buildCellText(project.serviceType,
-                color: CoresApp.textoSecundario)),
+              _buildProjectIdBadge(
+                project,
+                hasSubtasks,
+                isExpanded,
+                emAlerta,
+              ),
+            ),
+            DataCell(
+              DataCell(
+                _buildCellText(
+                  project.id2,
+                  color: CoresApp.textoSecundario,
+                ),
+              ).child,
+            ),
+            DataCell(
+              Container(
+                child: _buildCellText(
+                  project.client,
+                  color: emAlerta
+                      ? CoresApp.destaqueAmarelo
+                      : CoresApp.textoPrincipal,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            DataCell(
+              _buildCellText(
+                project.serviceType,
+                color: emAlerta ? Colors.white70 : CoresApp.textoSecundario,
+              ),
+            ),
             DataCell(
               SizedBox(
+                width: 150,
                 height: 30,
                 child: TextField(
                   controller: _getInlineController(project),
@@ -1844,8 +2234,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                       fontSize: 11,
                     ),
                     isDense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
                     filled: true,
                     fillColor: CoresTelas.campoFormulario.withOpacity(0.5),
                     border: OutlineInputBorder(
@@ -1872,12 +2264,17 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                   ),
                   onSubmitted: (value) async {
                     project.observacao = value.trim();
+
                     try {
                       await widget.firebaseService.salvarProjeto(project);
+
                       widget.onEditProject(project);
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text('Informação salva com sucesso!'),
+                          content: const Text(
+                            'Informação salva com sucesso!',
+                          ),
                           backgroundColor: CoresApp.sucesso,
                           duration: const Duration(seconds: 1),
                         ),
@@ -1894,38 +2291,76 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                 ),
               ),
             ),
-            DataCell(_buildStatusBadge(
-              status: project.status,
-              onChanged: (newStatus) async {
-                if (newStatus != null) {
-                  project.status = newStatus;
-                  try {
-                    await widget.firebaseService.salvarProjeto(project);
-                    widget.onProjectStatusChanged(project, newStatus);
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao atualizar status: $e'),
-                        backgroundColor: CoresApp.erro,
-                      ),
-                    );
+            DataCell(
+              _buildStatusBadge(
+                status: project.status,
+                onChanged: (newStatus) async {
+                  if (newStatus != null) {
+                    project.status = newStatus;
+
+                    try {
+                      await widget.firebaseService.salvarProjeto(project);
+
+                      widget.onProjectStatusChanged(
+                        project,
+                        newStatus,
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Erro ao atualizar status: $e',
+                          ),
+                          backgroundColor: CoresApp.erro,
+                        ),
+                      );
+                    }
                   }
-                }
-              },
-            )),
-            DataCell(_buildCellText('$startFormatted - $endFormatted',
-                color: CoresApp.textoSecundario)),
-            DataCell(_buildCellText(project.estimatedHours,
-                color: CoresApp.textoSecundario)),
-            DataCell(_buildCellText(project.leader,
-                color: CoresApp.textoSecundario)),
-            DataCell(_buildCellText(project.hourType,
-                color: CoresApp.textoSecundario)),
-            DataCell(_buildProjectActionControls(
-              project: project,
-              onDelete: () => widget.onDeleteProject(project),
-              onAddSubTask: () => widget.onAddSubTask(project),
-            )),
+                },
+              ),
+            ),
+
+            /// ===============================================================
+            /// AJUSTE 2: AQUI VOCÊ CONFIGURA A COLUNA DE DATA INÍCIO / FIM
+            /// (Item circulado à direita na imagem)
+            /// ===============================================================
+            DataCell(
+              _buildCellText(
+                '$startFormatted - $endFormatted',
+                color: emAlerta
+                    ? CoresApp.destaqueAmarelo
+                    : CoresApp.textoSecundario,
+                fontWeight: emAlerta ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+
+            DataCell(
+              _buildCellText(
+                project.estimatedHours,
+                color: emAlerta
+                    ? CoresApp.destaqueAmarelo
+                    : CoresApp.textoSecundario,
+              ),
+            ),
+            DataCell(
+              _buildCellText(
+                project.leader,
+                color: emAlerta ? Colors.white70 : CoresApp.textoSecundario,
+              ),
+            ),
+            DataCell(
+              _buildCellText(
+                project.hourType,
+                color: emAlerta ? Colors.white70 : CoresApp.textoSecundario,
+              ),
+            ),
+            DataCell(
+              _buildProjectActionControls(
+                project: project,
+                onDelete: () => widget.onDeleteProject(project),
+                onAddSubTask: () => widget.onAddSubTask(project),
+              ),
+            ),
           ],
         ),
       );
@@ -1935,6 +2370,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           final subTargetId = '${project.id}_${sub.subId}';
           final isSubTargetActive = widget.activeTimerTargetId == subTargetId;
           final isSubRowSelected = widget.selectedTargetId == subTargetId;
+
           final subStartFormatted = _formatDate(sub.startDate);
           final subEndFormatted = sub.planEnd != null
               ? _formatDate(sub.planEnd!)
@@ -1943,81 +2379,129 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           rows.add(
             DataRow(
               selected: isSubRowSelected || isSubTargetActive,
-              onSelectChanged: (_) => widget.onSelectTarget(subTargetId),
-              color: WidgetStateProperty.resolveWith((states) {
-                if (isSubTargetActive) {
-                  return CoresDashboard.tabelaLinhaExecucao;
-                }
-                if (isSubRowSelected) {
-                  return CoresDashboard.tabelaLinhaSelecionada;
-                }
-                return CoresDashboard.tabelaLinhaEtapa;
-              }),
+              onSelectChanged: (_) => widget.onSelectTarget(
+                subTargetId,
+              ),
+              color: WidgetStateProperty.resolveWith<Color?>(
+                (states) {
+                  if (isSubTargetActive) {
+                    return CoresDashboard.tabelaLinhaExecucao;
+                  }
+
+                  if (isSubRowSelected) {
+                    return CoresDashboard.tabelaLinhaSelecionada;
+                  }
+
+                  return CoresDashboard.tabelaLinhaEtapa;
+                },
+              ),
               cells: [
-                const DataCell(SizedBox(width: 24)),
-                DataCell(Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: CoresApp.textoPrincipal.withOpacity(0.035),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    sub.subId,
-                    style: TextStyle(
-                      color: CoresApp.textoSecundario,
-                      fontSize: TamanhosApp.tabelaFonteSecundaria,
-                      fontWeight: FontWeight.w600,
+                const DataCell(
+                  SizedBox(width: 24),
+                ),
+                DataCell(
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CoresApp.textoPrincipal.withOpacity(0.035),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      sub.subId,
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: TamanhosApp.tabelaFonteSecundaria,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                )),
-                DataCell(Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child: _buildCellText(project.client,
-                      color: CoresApp.textoSecundario.withOpacity(0.65)),
-                )),
-                DataCell(_buildCellText(project.serviceType,
-                    color: CoresApp.textoSecundario.withOpacity(0.65))),
-                const DataCell(SizedBox.shrink()),
-                DataCell(_buildCellText(
-                  sub.stage,
-                  color: _getStageColor(sub.status),
-                  fontWeight: sub.status != 'TRAB_FIM'
-                      ? FontWeight.w700
-                      : FontWeight.normal,
-                )),
-                DataCell(_buildStatusBadge(
-                  status: sub.status,
-                  onChanged: (newStatus) async {
-                    if (newStatus != null) {
-                      sub.status = newStatus;
-                      try {
-                        await widget.firebaseService.salvarProjeto(project);
-                        widget.onSubTaskStatusChanged(sub, newStatus);
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content:
-                                Text('Erro ao atualizar status da etapa: $e'),
-                            backgroundColor: CoresApp.erro,
-                          ),
-                        );
+                ),
+                DataCell(
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 12,
+                    ),
+                    child: _buildCellText(
+                      project.client,
+                      color: CoresApp.textoSecundario.withOpacity(0.65),
+                    ),
+                  ),
+                ),
+                DataCell(
+                  _buildCellText(
+                    project.serviceType,
+                    color: CoresApp.textoSecundario.withOpacity(0.65),
+                  ),
+                ),
+                const DataCell(
+                  SizedBox.shrink(),
+                ),
+                DataCell(
+                  _buildCellText(
+                    sub.stage,
+                    color: _getStageColor(sub.status),
+                    fontWeight: sub.status != 'TRAB_FIM'
+                        ? FontWeight.w700
+                        : FontWeight.normal,
+                  ),
+                ),
+                DataCell(
+                  _buildStatusBadge(
+                    status: sub.status,
+                    onChanged: (newStatus) async {
+                      if (newStatus != null) {
+                        sub.status = newStatus;
+
+                        try {
+                          await widget.firebaseService.salvarProjeto(project);
+
+                          widget.onSubTaskStatusChanged(
+                            sub,
+                            newStatus,
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Erro ao atualizar status da etapa: $e',
+                              ),
+                              backgroundColor: CoresApp.erro,
+                            ),
+                          );
+                        }
                       }
-                    }
-                  },
-                )),
-                DataCell(_buildCellText('$subStartFormatted - $subEndFormatted',
-                    color: CoresApp.textoSecundario)),
-                DataCell(_buildCellText(sub.estimatedHours,
-                    color: CoresApp.textoSecundario)),
-                DataCell(_buildCellText(sub.hourType,
-                    color: CoresApp.textoSecundario)),
-                DataCell(_buildSubTaskActionControls(
-                  project: project,
-                  task: sub,
-                  targetId: subTargetId,
-                  title: 'Etapa ${sub.subId} - ${sub.stage}',
-                )),
+                    },
+                  ),
+                ),
+                DataCell(
+                  _buildCellText(
+                    '$subStartFormatted - $subEndFormatted',
+                    color: CoresApp.textoSecundario,
+                  ),
+                ),
+                DataCell(
+                  _buildCellText(
+                    sub.estimatedHours,
+                    color: CoresApp.textoSecundario,
+                  ),
+                ),
+                DataCell(
+                  _buildCellText(
+                    sub.hourType,
+                    color: CoresApp.textoSecundario,
+                  ),
+                ),
+                DataCell(
+                  _buildSubTaskActionControls(
+                    project: project,
+                    task: sub,
+                    targetId: subTargetId,
+                    title: 'Etapa ${sub.subId} - ${sub.stage}',
+                  ),
+                ),
               ],
             ),
           );
@@ -2028,37 +2512,47 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                     '${widget.activeStartTime!.minute.toString().padLeft(2, '0')}'
                 : '';
 
-            rows.add(_buildActiveRecordRow(
-              project: project,
-              task: sub,
-              id: project.id,
-              id2: sub.subId,
-              client: project.client,
-              serviceType: project.serviceType,
-              todayFormatted: todayFormatted,
-              startTimeFormatted: startTimeFormatted,
-              durationFormatted: widget.formatDuration(widget.secondsElapsed),
-              targetId: subTargetId,
-              title: 'Etapa ${sub.subId} - ${sub.stage}',
-            ));
+            rows.add(
+              _buildActiveRecordRow(
+                project: project,
+                task: sub,
+                id: project.id,
+                id2: sub.subId,
+                client: project.client,
+                serviceType: project.serviceType,
+                todayFormatted: todayFormatted,
+                startTimeFormatted: startTimeFormatted,
+                durationFormatted: widget.formatDuration(
+                  widget.secondsElapsed,
+                ),
+                targetId: subTargetId,
+                title: 'Etapa ${sub.subId} - ${sub.stage}',
+              ),
+            );
           }
 
-          final completedLogsSub =
-              _localTimeLogs.where((l) => l.targetId == subTargetId).toList();
+          final completedLogsSub = _localTimeLogs
+              .where(
+                (l) => l.targetId == subTargetId,
+              )
+              .toList();
+
           for (final log in completedLogsSub) {
             if (log.isRegistered) continue;
 
-            rows.add(_buildSavedRecordRow(
-              project: project,
-              id: project.id,
-              id2: sub.subId,
-              client: project.client,
-              serviceType: project.serviceType,
-              log: log,
-              estimatedHours: sub.estimatedHours,
-              hourType: sub.hourType,
-              targetId: subTargetId,
-            ));
+            rows.add(
+              _buildSavedRecordRow(
+                project: project,
+                id: project.id,
+                id2: sub.subId,
+                client: project.client,
+                serviceType: project.serviceType,
+                log: log,
+                estimatedHours: sub.estimatedHours,
+                hourType: sub.hourType,
+                targetId: subTargetId,
+              ),
+            );
           }
         }
       }
@@ -2085,149 +2579,223 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     return DataRow(
       color: WidgetStateProperty.all(activeColor),
       cells: [
-        DataCell(Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-          decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: CoresApp.destaque.withOpacity(0.65)),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 7,
+              vertical: 4,
+            ),
+            decoration: BoxDecoration(
+              color: CoresApp.destaque.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: CoresApp.destaque.withOpacity(0.65),
+              ),
+            ),
+            child: Text(
+              id,
+              style: TextStyle(
+                color: CoresApp.destaque,
+                fontSize: TamanhosApp.tabelaFonteSecundaria,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
-          child: Text(
-            id,
+        ),
+        DataCell(
+          Text(
+            id2,
             style: TextStyle(
               color: CoresApp.destaque,
               fontSize: TamanhosApp.tabelaFonteSecundaria,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        )),
-        DataCell(Text(
-          id2,
-          style: TextStyle(
-            color: CoresApp.destaque,
-            fontSize: TamanhosApp.tabelaFonteSecundaria,
-            fontWeight: FontWeight.bold,
+        ),
+        DataCell(
+          _buildCellText(
+            client,
+            color: CoresApp.textoPrincipal,
           ),
-        )),
-        DataCell(_buildCellText(client, color: CoresApp.textoPrincipal)),
-        DataCell(_buildCellText(serviceType, color: CoresApp.textoPrincipal)),
-        const DataCell(SizedBox.shrink()),
-        DataCell(Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(
-            color: CoresApp.destaque,
-            borderRadius: BorderRadius.circular(5),
+        ),
+        DataCell(
+          _buildCellText(
+            serviceType,
+            color: CoresApp.textoPrincipal,
           ),
-          child: const Text(
-            'EA',
-            style: TextStyle(
-                color: Colors.black, fontSize: 11, fontWeight: FontWeight.w900),
-          ),
-        )),
-        DataCell(Tooltip(
-          message: 'Início: $startTimeFormatted | Tempo: $durationFormatted',
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        ),
+        const DataCell(
+          SizedBox.shrink(),
+        ),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 9,
+              vertical: 4,
+            ),
             decoration: BoxDecoration(
-              color: CoresApp.aviso,
+              color: CoresApp.destaque,
               borderRadius: BorderRadius.circular(5),
             ),
-            child: Text(
-              'EM EXECUÇÃO  $startTimeFormatted | $durationFormatted',
-              style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900),
+            child: const Text(
+              'EA',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-        )),
-        DataCell(Text('-', style: TextStyle(color: CoresApp.textoFraco))),
-        DataCell(Text('-', style: TextStyle(color: CoresApp.textoFraco))),
-        DataCell(_buildCellText('-', color: CoresApp.textoSecundario)),
-        DataCell(Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.timerState == TimerState.running) ...[
+        ),
+        DataCell(
+          Tooltip(
+            message: 'Início: $startTimeFormatted | Tempo: $durationFormatted',
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 9,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: CoresApp.aviso,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                'EM EXECUÇÃO  $startTimeFormatted | $durationFormatted',
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            '-',
+            style: TextStyle(
+              color: CoresApp.textoFraco,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            '-',
+            style: TextStyle(
+              color: CoresApp.textoFraco,
+            ),
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            '-',
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.timerState == TimerState.running) ...[
+                _buildActionIconButton(
+                  icon: Icons.pause_circle_filled_rounded,
+                  color: CoresApp.destaqueAmarelo,
+                  tooltip: 'Pausar',
+                  onPressed: widget.onPauseTimer,
+                ),
+                _buildActionIconButton(
+                  icon: Icons.stop_circle_rounded,
+                  color: CoresApp.erro,
+                  tooltip: 'Stop',
+                  onPressed: widget.onStopTimer,
+                ),
+              ] else if (widget.timerState == TimerState.paused) ...[
+                _buildActionIconButton(
+                  icon: Icons.play_circle_fill_rounded,
+                  color: CoresDashboard.statusTrabalhando,
+                  tooltip: 'Retomar',
+                  onPressed: () => widget.onStartTimer(
+                    targetId,
+                  ),
+                ),
+                _buildActionIconButton(
+                  icon: Icons.stop_circle_rounded,
+                  color: CoresApp.erro,
+                  tooltip: 'Stop',
+                  onPressed: widget.onStopTimer,
+                ),
+              ],
               _buildActionIconButton(
-                icon: Icons.pause_circle_filled_rounded,
-                color: CoresApp.destaqueAmarelo,
-                tooltip: 'Pausar',
-                onPressed: widget.onPauseTimer,
+                icon: Icons.more_time_rounded,
+                color: CoresApp.destaque,
+                tooltip: 'Adicionar Horas Manualmente',
+                onPressed: () => widget.onManualTime(
+                  title,
+                ),
               ),
               _buildActionIconButton(
-                icon: Icons.stop_circle_rounded,
+                icon: Icons.delete_outline_rounded,
                 color: CoresApp.erro,
-                tooltip: 'Stop',
-                onPressed: widget.onStopTimer,
+                tooltip: 'Descartar Execução Atual',
+                onPressed: () {
+                  widget.onStopTimer();
+                  setState(() {});
+                },
               ),
-            ] else if (widget.timerState == TimerState.paused) ...[
-              _buildActionIconButton(
-                icon: Icons.play_circle_fill_rounded,
-                color: CoresDashboard.statusTrabalhando,
-                tooltip: 'Retomar',
-                onPressed: () => widget.onStartTimer(targetId),
+              const SizedBox(width: 2),
+              IconButton(
+                icon: Icon(
+                  Icons.task_alt_rounded,
+                  color: CoresApp.destaque,
+                  size: TamanhosApp.iconeAcao,
+                ),
+                tooltip: 'Marcar Etapa como Realizada',
+                onPressed: () async {
+                  task.status = 'TRAB';
+
+                  try {
+                    await widget.firebaseService.salvarProjeto(project);
+
+                    widget.onMarkTaskCompleted(
+                      task,
+                    );
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Etapa ${task.subId} marcada como realizada e salva!',
+                          ),
+                          backgroundColor: CoresApp.sucesso,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Erro ao salvar no Firebase: $e',
+                          ),
+                          backgroundColor: CoresApp.erro,
+                        ),
+                      );
+                    }
+                  }
+                },
               ),
-              _buildActionIconButton(
-                icon: Icons.stop_circle_rounded,
-                color: CoresApp.erro,
-                tooltip: 'Stop',
+              IconButton(
+                icon: Icon(
+                  Icons.playlist_add_check_rounded,
+                  color: CoresDashboard.statusTrabalhando,
+                  size: 21,
+                ),
+                tooltip: 'Adicionar e Salvar Tempo',
                 onPressed: widget.onStopTimer,
               ),
             ],
-            _buildActionIconButton(
-              icon: Icons.more_time_rounded,
-              color: CoresApp.destaque,
-              tooltip: 'Adicionar Horas Manualmente',
-              onPressed: () => widget.onManualTime(title),
-            ),
-            _buildActionIconButton(
-              icon: Icons.delete_outline_rounded,
-              color: CoresApp.erro,
-              tooltip: 'Descartar Execução Atual',
-              onPressed: () {
-                widget.onStopTimer();
-                setState(() {});
-              },
-            ),
-            const SizedBox(width: 2),
-            IconButton(
-              icon: Icon(Icons.task_alt_rounded,
-                  color: CoresApp.destaque, size: TamanhosApp.iconeAcao),
-              tooltip: 'Marcar Etapa como Realizada',
-              onPressed: () async {
-                task.status = 'TRAB';
-                try {
-                  await widget.firebaseService.salvarProjeto(project);
-                  widget.onMarkTaskCompleted(task);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            'Etapa ${task.subId} marcada como realizada e salva!'),
-                        backgroundColor: CoresApp.sucesso,
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao salvar no Firebase: $e'),
-                        backgroundColor: CoresApp.erro,
-                      ),
-                    );
-                  }
-                }
-              },
-            ),
-            IconButton(
-              icon: Icon(Icons.playlist_add_check_rounded,
-                  color: CoresDashboard.statusTrabalhando, size: 21),
-              tooltip: 'Adicionar e Salvar Tempo',
-              onPressed: widget.onStopTimer,
-            ),
-          ],
-        )),
+          ),
+        ),
       ],
     );
   }
@@ -2247,17 +2815,42 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     final bool showCadastrarHere = !log.isRegistered;
 
     return DataRow(
-      color: WidgetStateProperty.all(CoresDashboard.tabelaLinhaRegistrada),
+      color: WidgetStateProperty.all(
+        CoresDashboard.tabelaLinhaRegistrada,
+      ),
       cells: [
-        DataCell(_buildCellText(id, color: CoresApp.textoSecundario)),
-        DataCell(_buildCellText(id2, color: CoresApp.textoSecundario)),
-        DataCell(_buildCellText(client, color: CoresApp.textoSecundario)),
-        DataCell(_buildCellText(serviceType, color: CoresApp.textoSecundario)),
+        DataCell(
+          _buildCellText(
+            id,
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            id2,
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            client,
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            serviceType,
+            color: CoresApp.textoSecundario,
+          ),
+        ),
         DataCell(
           SizedBox(
+            width: 150,
             height: 30,
             child: TextField(
-              controller: _getLogCommentController(log),
+              controller: _getLogCommentController(
+                log,
+              ),
               style: TextStyle(
                 color: CoresApp.textoPrincipal,
                 fontSize: TamanhosApp.tabelaFonte,
@@ -2269,8 +2862,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                   fontSize: 11,
                 ),
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
                 filled: true,
                 fillColor: CoresTelas.campoFormulario.withOpacity(0.5),
                 border: OutlineInputBorder(
@@ -2297,21 +2892,29 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
               ),
               onSubmitted: (value) async {
                 log.description = value.trim();
+
                 try {
                   await widget.firebaseService.salvarProjeto(project);
+
                   widget.onEditLog(log);
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: const Text(
-                          'Comentário do registro salvo com sucesso!'),
+                        'Comentário do registro salvo com sucesso!',
+                      ),
                       backgroundColor: CoresApp.sucesso,
-                      duration: const Duration(seconds: 1),
+                      duration: const Duration(
+                        seconds: 1,
+                      ),
                     ),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Erro ao salvar comentário: $e'),
+                      content: Text(
+                        'Erro ao salvar comentário: $e',
+                      ),
                       backgroundColor: CoresApp.erro,
                     ),
                   );
@@ -2320,82 +2923,135 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             ),
           ),
         ),
-        DataCell(Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: CoresApp.sucesso.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: CoresApp.sucesso.withOpacity(0.7)),
-          ),
-          child: Text(
-            'TRAB',
-            style: TextStyle(
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: CoresApp.sucesso.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: CoresApp.sucesso.withOpacity(0.7),
+              ),
+            ),
+            child: Text(
+              'TRAB',
+              style: TextStyle(
                 color: CoresDashboard.statusTrabalhando,
                 fontSize: 10,
-                fontWeight: FontWeight.w800),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
-        )),
-        DataCell(Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$dateFormatted (${log.startTime} - ${log.endTime} | ${log.durationFormatted})',
-              style: TextStyle(
+        ),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$dateFormatted (${log.startTime} - ${log.endTime} | ${log.durationFormatted})',
+                style: TextStyle(
                   color: CoresDashboard.statusTrabalhando,
                   fontSize: 11,
-                  fontWeight: FontWeight.bold),
-            ),
-            if (showCadastrarHere) ...[
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CoresApp.primaria,
-                  foregroundColor: CoresApp.textoPrincipal,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                  minimumSize: const Size(0, 28),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(TamanhosApp.raioBotao),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (showCadastrarHere) ...[
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CoresApp.primaria,
+                    foregroundColor: CoresApp.textoPrincipal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    minimumSize: const Size(0, 28),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        TamanhosApp.raioBotao,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.cloud_upload_outlined,
+                    size: 14,
+                  ),
+                  label: const Text(
+                    'Cadastrar',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () => _handleRegisterLog(
+                    log,
                   ),
                 ),
-                icon: const Icon(Icons.cloud_upload_outlined, size: 14),
-                label: const Text('Cadastrar',
-                    style:
-                        TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                onPressed: () => _handleRegisterLog(log),
+              ],
+            ],
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            estimatedHours,
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            '-',
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          _buildCellText(
+            hourType,
+            color: CoresApp.textoSecundario,
+          ),
+        ),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_rounded,
+                color: CoresApp.sucesso,
+                size: 19,
+              ),
+              const SizedBox(width: 5),
+              IconButton(
+                icon: Icon(
+                  Icons.edit_rounded,
+                  color: CoresApp.destaqueAmarelo,
+                  size: 18,
+                ),
+                tooltip: 'Editar Horário',
+                onPressed: () => widget.onEditLog(
+                  log,
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: CoresApp.erro,
+                  size: 18,
+                ),
+                tooltip: 'Excluir Apontamento',
+                onPressed: () {
+                  setState(() {
+                    _localTimeLogs.remove(log);
+                  });
+
+                  widget.onDeleteLog(log);
+                },
               ),
             ],
-          ],
-        )),
-        DataCell(
-            _buildCellText(estimatedHours, color: CoresApp.textoSecundario)),
-        DataCell(_buildCellText('-', color: CoresApp.textoSecundario)),
-        DataCell(_buildCellText(hourType, color: CoresApp.textoSecundario)),
-        DataCell(Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle_rounded, color: CoresApp.sucesso, size: 19),
-            const SizedBox(width: 5),
-            IconButton(
-              icon: Icon(Icons.edit_rounded,
-                  color: CoresApp.destaqueAmarelo, size: 18),
-              tooltip: 'Editar Horário',
-              onPressed: () => widget.onEditLog(log),
-            ),
-            IconButton(
-              icon: Icon(Icons.delete_outline_rounded,
-                  color: CoresApp.erro, size: 18),
-              tooltip: 'Excluir Apontamento',
-              onPressed: () {
-                setState(() {
-                  _localTimeLogs.remove(log);
-                });
-                widget.onDeleteLog(log);
-              },
-            ),
-          ],
-        )),
+          ),
+        ),
       ],
     );
   }
@@ -2411,7 +3067,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
         project.excelLink != null && project.excelLink!.trim().isNotEmpty;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 3,
+        vertical: 2,
+      ),
       decoration: BoxDecoration(
         color: CoresApp.textoPrincipal.withOpacity(0.018),
         borderRadius: BorderRadius.circular(8),
@@ -2434,15 +3093,22 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             onPressed: hasFolder
                 ? () async {
                     try {
-                      final folderDir = Directory(project.folderPath!);
+                      final folderDir = Directory(
+                        project.folderPath!,
+                      );
+
                       if (await folderDir.exists()) {
-                        await Process.run('explorer', [project.folderPath!]);
+                        await Process.run(
+                          'explorer',
+                          [project.folderPath!],
+                        );
                       } else {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: const Text(
-                                  'A pasta informada não existe mais no disco.'),
+                                'A pasta informada não existe mais no disco.',
+                              ),
                               backgroundColor: CoresApp.erro,
                             ),
                           );
@@ -2452,7 +3118,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Erro ao abrir pasta: $e'),
+                            content: Text(
+                              'Erro ao abrir pasta: $e',
+                            ),
                             backgroundColor: CoresApp.erro,
                           ),
                         );
@@ -2477,23 +3145,37 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                 ? () async {
                     try {
                       final link = project.excelLink!;
+
                       if (link.startsWith('http://') ||
                           link.startsWith('https://')) {
                         final uri = Uri.parse(link);
+
                         if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri,
-                              mode: LaunchMode.externalApplication);
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
                         }
                       } else {
                         final file = File(link);
+
                         if (await file.exists()) {
-                          await Process.run('cmd', ['/c', 'start', '', link]);
+                          await Process.run(
+                            'cmd',
+                            [
+                              '/c',
+                              'start',
+                              '',
+                              link,
+                            ],
+                          );
                         } else {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: const Text(
-                                    'O arquivo informado não existe mais no disco.'),
+                                  'O arquivo informado não existe mais no disco.',
+                                ),
                                 backgroundColor: CoresApp.erro,
                               ),
                             );
@@ -2504,7 +3186,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Erro ao abrir arquivo/link: $e'),
+                            content: Text(
+                              'Erro ao abrir arquivo/link: $e',
+                            ),
                             backgroundColor: CoresApp.erro,
                           ),
                         );
@@ -2515,8 +3199,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.edit_rounded,
-                color: CoresApp.destaqueAmarelo, size: TamanhosApp.iconeAcao),
+            icon: Icon(
+              Icons.edit_rounded,
+              color: CoresApp.destaqueAmarelo,
+              size: TamanhosApp.iconeAcao,
+            ),
             tooltip: 'Editar Trabalho',
             onPressed: () => _showLinksDialog(project),
           ),
@@ -2533,8 +3220,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
           if (onAddSubTask != null)
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: Icon(Icons.playlist_add_rounded,
-                  color: CoresApp.destaque, size: TamanhosApp.iconeAcao),
+              icon: Icon(
+                Icons.playlist_add_rounded,
+                color: CoresApp.destaque,
+                size: TamanhosApp.iconeAcao,
+              ),
               tooltip: 'Adicionar Nova Etapa',
               onPressed: onAddSubTask,
             ),
@@ -2586,7 +3276,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             icon: Icons.play_circle_fill_rounded,
             color: CoresDashboard.statusTrabalhando,
             tooltip: 'Retomar',
-            onPressed: () => widget.onStartTimer(targetId),
+            onPressed: () => widget.onStartTimer(
+              targetId,
+            ),
           ),
           _buildActionIconButton(
             icon: Icons.stop_circle_rounded,
@@ -2599,14 +3291,18 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             icon: Icons.play_circle_fill_rounded,
             color: CoresDashboard.statusTrabalhando,
             tooltip: 'Iniciar Cronômetro',
-            onPressed: () => widget.onStartTimer(targetId),
+            onPressed: () => widget.onStartTimer(
+              targetId,
+            ),
           ),
         ],
         _buildActionIconButton(
           icon: Icons.more_time_rounded,
           color: CoresApp.destaque,
           tooltip: 'Adicionar Horas Manualmente',
-          onPressed: () => widget.onManualTime(title),
+          onPressed: () => widget.onManualTime(
+            title,
+          ),
         ),
         _buildActionIconButton(
           icon: Icons.delete_outline_rounded,
@@ -2619,39 +3315,62 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
                 return AlertDialog(
                   backgroundColor: CoresTelas.fundoModal,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: CoresApp.borda),
+                    borderRadius: BorderRadius.circular(
+                      16,
+                    ),
+                    side: BorderSide(
+                      color: CoresApp.borda,
+                    ),
                   ),
                   title: Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: CoresApp.erro),
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: CoresApp.erro,
+                      ),
                       const SizedBox(width: 10),
                       Text(
                         'Confirmar Exclusão',
                         style: TextStyle(
-                            color: CoresApp.textoPrincipal, fontSize: 16),
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 16,
+                        ),
                       ),
                     ],
                   ),
                   content: Text(
                     'Deseja realmente excluir a etapa "${task.subId} - ${task.stage}"? Esta ação não poderá ser desfeita.',
                     style: TextStyle(
-                        color: CoresApp.textoSecundario, fontSize: 13),
+                      color: CoresApp.textoSecundario,
+                      fontSize: 13,
+                    ),
                   ),
                   actions: [
                     TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: Text('Cancelar',
-                          style: TextStyle(color: CoresApp.textoSecundario)),
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(false),
+                      child: Text(
+                        'Cancelar',
+                        style: TextStyle(
+                          color: CoresApp.textoSecundario,
+                        ),
+                      ),
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: CoresApp.erro,
                         foregroundColor: Colors.white,
                       ),
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: const Text('Excluir',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(true),
+                      child: const Text(
+                        'Excluir',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 );
@@ -2660,19 +3379,25 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
 
             if (confirmar != true) return;
 
-            project.subTasks?.removeWhere((s) => s.subId == task.subId);
+            project.subTasks?.removeWhere(
+              (s) => s.subId == task.subId,
+            );
 
             setState(() {});
 
             try {
               await widget.firebaseService.salvarProjeto(project);
 
-              widget.onEditProject(project);
+              widget.onEditProject(
+                project,
+              );
 
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: const Text('Etapa excluída com sucesso!'),
+                    content: const Text(
+                      'Etapa excluída com sucesso!',
+                    ),
                     backgroundColor: CoresApp.sucesso,
                   ),
                 );
@@ -2681,7 +3406,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Erro ao excluir etapa: $e'),
+                    content: Text(
+                      'Erro ao excluir etapa: $e',
+                    ),
                     backgroundColor: CoresApp.erro,
                   ),
                 );
@@ -2702,8 +3429,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
     return IconButton(
       visualDensity: VisualDensity.compact,
       padding: const EdgeInsets.all(5),
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-      icon: Icon(icon, color: color, size: TamanhosApp.iconeAcao),
+      constraints: const BoxConstraints(
+        minWidth: 30,
+        minHeight: 30,
+      ),
+      icon: Icon(
+        icon,
+        color: color,
+        size: TamanhosApp.iconeAcao,
+      ),
       tooltip: tooltip,
       onPressed: onPressed,
     );
@@ -2717,7 +3451,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: CoresDashboard.tabelaFundo,
-        borderRadius: BorderRadius.circular(TamanhosApp.raioTabela),
+        borderRadius: BorderRadius.circular(
+          TamanhosApp.raioTabela,
+        ),
         border: Border.all(
           color: CoresDashboard.tabelaBorda,
           width: TamanhosApp.espessuraBorda,
@@ -2738,51 +3474,115 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget> {
             decoration: BoxDecoration(
               color: CoresApp.destaque,
               borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(TamanhosApp.raioTabela)),
+                top: Radius.circular(
+                  TamanhosApp.raioTabela,
+                ),
+              ),
             ),
           ),
           ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 350, maxHeight: 700),
+            constraints: const BoxConstraints(
+              minHeight: 350,
+              maxHeight: 700,
+            ),
             child: Scrollbar(
               controller: widget.verticalController,
               thumbVisibility: true,
               child: SingleChildScrollView(
                 controller: widget.verticalController,
                 scrollDirection: Axis.vertical,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: DataTable(
-                    showCheckboxColumn: false,
-                    columnSpacing: 16.0,
-                    horizontalMargin: 16.0,
-                    headingRowHeight: 48,
-                    dataRowMinHeight: 28,
-                    dataRowMaxHeight: 36,
-                    dividerThickness: 0.35,
-                    headingRowColor:
-                        WidgetStateProperty.all(CoresDashboard.tabelaCabecalho),
-                    dataRowColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.hovered)) {
-                        return CoresDashboard.tabelaHover;
-                      }
-                      return null;
-                    }),
-                    columns: [
-                      DataColumn(label: _buildTableHeader('ID')),
-                      DataColumn(label: _buildTableHeader('Nº')),
-                      DataColumn(label: _buildTableHeader('Cliente')),
-                      DataColumn(label: _buildTableHeader('Tipo de Serviço')),
-                      DataColumn(label: _buildTableHeader('Informações')),
-                      DataColumn(label: _buildTableHeader('Status')),
-                      DataColumn(label: _buildTableHeader('Data Início / Fim')),
-                      DataColumn(label: _buildTableHeader('Hs Estimadas')),
-                      DataColumn(label: _buildTableHeader('Líder Prj')),
-                      DataColumn(label: _buildTableHeader('Tipo HS')),
-                      DataColumn(
-                          label: _buildTableHeader(
-                              'Ações / Cronômetro / Check List')),
-                    ],
-                    rows: rows,
+                child: Scrollbar(
+                  controller: widget.horizontalController,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: widget.horizontalController,
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 1200,
+                      ),
+                      child: DataTable(
+                        showCheckboxColumn: false,
+                        columnSpacing: 16.0,
+                        horizontalMargin: 16.0,
+                        headingRowHeight: 48,
+                        dataRowMinHeight: 28,
+                        dataRowMaxHeight: 36,
+                        dividerThickness: 0.35,
+                        headingRowColor: WidgetStateProperty.all(
+                          CoresDashboard.tabelaCabecalho,
+                        ),
+                        dataRowColor: WidgetStateProperty.resolveWith(
+                          (states) {
+                            if (states.contains(
+                              WidgetState.hovered,
+                            )) {
+                              return CoresDashboard.tabelaHover;
+                            }
+
+                            return null;
+                          },
+                        ),
+                        columns: [
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'ID',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Nº',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Cliente',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Tipo de Serviço',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Informações',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Status',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Data Início / Fim',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Hs Estimadas',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Líder Prj',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Tipo HS',
+                            ),
+                          ),
+                          DataColumn(
+                            label: _buildTableHeader(
+                              'Ações / Cronômetro / Check List',
+                            ),
+                          ),
+                        ],
+                        rows: rows,
+                      ),
+                    ),
                   ),
                 ),
               ),

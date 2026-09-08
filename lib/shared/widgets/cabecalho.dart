@@ -9,7 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/user_cache.dart';
-// Importação do diálogo sobre e verificação de atualizações
+// Importação do diálogo do desenvolvedor
 import 'package:gerenciador_horas/shared/widgets/about_dialog_widget.dart';
 
 class Cabecalho extends StatefulWidget implements PreferredSizeWidget {
@@ -424,11 +424,11 @@ class _CabecalhoState extends State<Cabecalho> {
                             },
                             itemBuilder: (BuildContext context) => [
                               _buildPopupMenuItem(0, 'Projetos'),
-                              _buildPopupMenuItem(1, 'Cadastro de Trabalho'),
+                              _buildPopupMenuItem(1, 'Cadastro de Trabalhos'),
                               _buildPopupMenuItem(2, 'Métricas'),
                               _buildPopupMenuItem(3, 'Projetos Finalizados'),
                               _buildPopupMenuItem(4, 'Orientações'),
-                              _buildPopupMenuItem(5, 'Tarefas Executadas'),
+                              _buildPopupMenuItem(5, 'Tarefas'),
                               _buildPopupMenuItem(6, 'Check List'),
                               _buildPopupMenuItem(7, 'Solicitações'),
                             ],
@@ -446,7 +446,7 @@ class _CabecalhoState extends State<Cabecalho> {
                               ),
                               _buildTopTabItem(
                                 index: 1,
-                                label: 'Cadastro de Trabalho',
+                                label: 'Cadastro de Trabalhos',
                                 icon: Icons.work_outline,
                               ),
                               _buildTopTabItem(
@@ -466,7 +466,7 @@ class _CabecalhoState extends State<Cabecalho> {
                               ),
                               _buildTopTabItem(
                                 index: 5,
-                                label: 'Tarefas Executadas',
+                                label: 'Tarefas',
                                 icon: Icons.warning_rounded,
                               ),
                               _buildTopTabItem(
@@ -561,11 +561,11 @@ class _CabecalhoState extends State<Cabecalho> {
                     const SizedBox(width: 14),
 
                     // ============================================
-                    // BOTÃO "SOBRE / ATUALIZAÇÕES"
+                    // BOTÃO "SOBRE O DESENVOLVEDOR"
                     // ============================================
 
                     Tooltip(
-                      message: 'Sobre o Desenvolvedor e Atualizações',
+                      message: 'Sobre o Desenvolvedor',
                       child: IconButton(
                         icon: const Icon(
                           Icons.info_outline_rounded,

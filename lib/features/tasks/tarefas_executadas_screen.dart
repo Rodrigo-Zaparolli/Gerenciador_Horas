@@ -405,8 +405,24 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 ),
                 elevation: 0,
               ),
-              onPressed: () {},
-              child: const Text('E-Desk'),
+              onPressed: logsDoDia.isEmpty
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _abrirModalEdesk(logsDoDia);
+                        }
+                      });
+                    },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.send_rounded, size: 16),
+                  SizedBox(width: 6),
+                  Text('E-Desk'),
+                ],
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -422,6 +438,524 @@ class _TarefasScreenState extends State<TarefasScreen> {
           ],
         );
       },
+    );
+  }
+
+  void _abrirModalEdesk(List<TimeLog> logsDoDia) {
+    final drafts = logsDoDia.map((log) {
+      return _EdeskDraft(
+        log: log,
+        taskName: log.taskName ?? '',
+        description: log.description ?? '',
+        startTime: log.startTime,
+        endTime: log.endTime,
+      );
+    }).toList();
+
+    final taskControllers = <String, TextEditingController>{
+      for (final draft in drafts)
+        draft.log.id: TextEditingController(text: draft.taskName),
+    };
+    final descriptionControllers = <String, TextEditingController>{
+      for (final draft in drafts)
+        draft.log.id: TextEditingController(text: draft.description),
+    };
+
+    final dialogFuture = showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            int totalMinutes = 0;
+            for (final draft in drafts) {
+              totalMinutes += _calcularMinutos(draft.startTime, draft.endTime);
+            }
+
+            final totalFormatted =
+                '${(totalMinutes ~/ 60).toString().padLeft(2, '0')}:'
+                '${(totalMinutes % 60).toString().padLeft(2, '0')}';
+
+            Future<void> pickTime(_EdeskDraft draft, bool isStart) async {
+              final current = isStart ? draft.startTime : draft.endTime;
+              final parts = current.split(':');
+              final parsedHour =
+                  parts.length == 2 ? int.tryParse(parts[0]) : null;
+              final parsedMinute =
+                  parts.length == 2 ? int.tryParse(parts[1]) : null;
+              final hour =
+                  parsedHour == null ? 8 : parsedHour.clamp(0, 23).toInt();
+              final minute =
+                  parsedMinute == null ? 0 : parsedMinute.clamp(0, 59).toInt();
+
+              final picked = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay(hour: hour, minute: minute),
+                initialEntryMode:
+                    TimePickerEntryMode.input, // <--- MUDANÇA APLICADA AQUI
+                builder: (context, child) {
+                  return Theme(
+                    data: ThemeData.dark().copyWith(
+                      colorScheme: const ColorScheme.dark(
+                        primary: CoresApp.primaria,
+                        onPrimary: CoresApp.textoPrincipal,
+                        surface: CoresApp.superficie,
+                        onSurface: CoresApp.textoPrincipal,
+                      ),
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+
+              if (picked != null) {
+                final normalized = '${picked.hour.toString().padLeft(2, '0')}: '
+                        '${picked.minute.toString().padLeft(2, '0')}'
+                    .replaceFirst(
+                  ': ',
+                  ':',
+                );
+                setModalState(() {
+                  if (isStart) {
+                    draft.startTime = normalized;
+                  } else {
+                    draft.endTime = normalized;
+                  }
+                });
+              }
+            }
+
+            Future<void> salvarAlteracoes() async {
+              try {
+                for (final draft in drafts) {
+                  draft.taskName = taskControllers[draft.log.id]?.text.trim() ??
+                      draft.taskName.trim();
+                  draft.description =
+                      descriptionControllers[draft.log.id]?.text.trim() ??
+                          draft.description.trim();
+
+                  final minutes = _calcularMinutos(
+                    draft.startTime,
+                    draft.endTime,
+                  );
+
+                  final hours = minutes / 60.0;
+                  final duration =
+                      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+                      '${(minutes % 60).toString().padLeft(2, '0')}';
+
+                  draft.log.taskName = draft.taskName.trim();
+                  draft.log.description = draft.description.trim();
+                  draft.log.startTime = draft.startTime;
+                  draft.log.endTime = draft.endTime;
+                  draft.log.durationMinutes = minutes;
+                  draft.log.durationFormatted = duration;
+                  draft.log.hours = hours;
+
+                  await widget.timeLogStore.updateFirebaseLog(draft.log);
+                }
+
+                if (!mounted) return;
+                setModalState(() {});
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '${drafts.length} trabalho(s) preparado(s) para o E-Desk.',
+                    ),
+                    backgroundColor: CoresApp.primaria,
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erro ao salvar alterações: $e'),
+                    backgroundColor: CoresApp.erro,
+                  ),
+                );
+              }
+            }
+
+            return Dialog(
+              backgroundColor: CoresApp.superficie,
+              insetPadding: const EdgeInsets.all(24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: CoresApp.borda.withOpacity(0.7),
+                ),
+              ),
+              child: SizedBox(
+                width: 900,
+                height: 700,
+                child: Column(
+                  children: [
+                    Container(
+                      height: 64,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: CoresApp.superficie,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(16),
+                        ),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: CoresApp.borda.withOpacity(0.7),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: CoresApp.primaria.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.send_rounded,
+                              color: CoresApp.destaque,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Conferência para E-Desk',
+                                  style: TextStyle(
+                                    color: CoresApp.textoPrincipal,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${drafts.length} trabalho(s) • Total: $totalFormatted',
+                                  style: const TextStyle(
+                                    color: CoresApp.textoSecundario,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Fechar',
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: CoresApp.textoSecundario,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: drafts.length,
+                        itemBuilder: (context, index) {
+                          final draft = drafts[index];
+                          final minutes = _calcularMinutos(
+                            draft.startTime,
+                            draft.endTime,
+                          );
+                          final duration =
+                              '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+                              '${(minutes % 60).toString().padLeft(2, '0')}';
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: CoresApp.fundo,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: CoresApp.borda.withOpacity(0.6),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 28,
+                                      height: 28,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            CoresApp.primaria.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(7),
+                                      ),
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: const TextStyle(
+                                          color: CoresApp.secundaria,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        draft.log.projectName
+                                                    ?.trim()
+                                                    .isNotEmpty ==
+                                                true
+                                            ? draft.log.projectName!
+                                            : 'Projeto não informado',
+                                        style: const TextStyle(
+                                          color: CoresApp.textoPrincipal,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      'Duração: $duration',
+                                      style: const TextStyle(
+                                        color: CoresApp.secundaria,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller:
+                                            taskControllers[draft.log.id],
+                                        style: const TextStyle(
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 13,
+                                        ),
+                                        decoration:
+                                            _edeskInputDecoration('Tarefa'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: InkWell(
+                                              onTap: () =>
+                                                  pickTime(draft, true),
+                                              child: InputDecorator(
+                                                decoration:
+                                                    _edeskInputDecoration(
+                                                        'Início'),
+                                                child: Text(
+                                                  draft.startTime,
+                                                  style: const TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: InkWell(
+                                              onTap: () =>
+                                                  pickTime(draft, false),
+                                              child: InputDecorator(
+                                                decoration:
+                                                    _edeskInputDecoration(
+                                                        'Término'),
+                                                child: Text(
+                                                  draft.endTime,
+                                                  style: const TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller:
+                                      descriptionControllers[draft.log.id],
+                                  minLines: 2,
+                                  maxLines: 4,
+                                  style: const TextStyle(
+                                    color: CoresApp.textoPrincipal,
+                                    fontSize: 13,
+                                  ),
+                                  decoration: _edeskInputDecoration(
+                                    'Descrição / Descritivo',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Tipo: ${draft.log.typeHs?.trim().isNotEmpty == true ? draft.log.typeHs! : 'Não informado'}',
+                                      style: const TextStyle(
+                                        color: CoresApp.textoSecundario,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      _formatShortDate(draft.log.date),
+                                      style: const TextStyle(
+                                        color: CoresApp.textoSecundario,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      decoration: BoxDecoration(
+                        color: CoresApp.superficie,
+                        border: Border(
+                          top: BorderSide(
+                            color: CoresApp.borda.withOpacity(0.7),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                color: CoresApp.textoSecundario,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: CoresApp.fundo,
+                              foregroundColor: CoresApp.textoPrincipal,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: const BorderSide(
+                                  color: CoresApp.borda,
+                                ),
+                              ),
+                            ),
+                            onPressed: salvarAlteracoes,
+                            icon: const Icon(Icons.save_outlined, size: 18),
+                            label: const Text('Salvar alterações'),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: CoresApp.primaria,
+                              foregroundColor: CoresApp.textoPrincipal,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: () {
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'A integração com o E-Desk será conectada na próxima etapa.',
+                                  ),
+                                  backgroundColor: CoresApp.primaria,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.send_rounded, size: 18),
+                            label: const Text('Enviar para E-Desk'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    dialogFuture.whenComplete(() {
+      for (final controller in taskControllers.values) {
+        controller.dispose();
+      }
+      for (final controller in descriptionControllers.values) {
+        controller.dispose();
+      }
+    });
+  }
+
+  int _calcularMinutos(String inicio, String fim) {
+    try {
+      final inicioPartes = inicio.split(':');
+      final fimPartes = fim.split(':');
+      if (inicioPartes.length != 2 || fimPartes.length != 2) return 0;
+
+      final inicioMinutos =
+          int.parse(inicioPartes[0]) * 60 + int.parse(inicioPartes[1]);
+      final fimMinutos = int.parse(fimPartes[0]) * 60 + int.parse(fimPartes[1]);
+
+      var diferenca = fimMinutos - inicioMinutos;
+      if (diferenca < 0) diferenca += 24 * 60;
+      return diferenca;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  InputDecoration _edeskInputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(
+        color: CoresApp.textoSecundario,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: const BorderSide(
+          color: CoresApp.borda,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: const BorderSide(
+          color: CoresApp.primaria,
+        ),
+      ),
+      filled: true,
+      fillColor: CoresApp.superficie,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
     );
   }
 
@@ -457,6 +991,8 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   hour: initHour,
                   minute: initMinute,
                 ),
+                initialEntryMode:
+                    TimePickerEntryMode.input, // <--- MUDANÇA APLICADA AQUI
                 builder: (context, child) {
                   return Theme(
                     data: ThemeData.dark().copyWith(
@@ -915,10 +1451,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
     );
   }
 
-  // ============================================================
-  // GERAÇÃO E PRÉ-VISUALIZAÇÃO INTERNA DO PDF
-  // ============================================================
-
   Future<void> _gerarPdfComFiltroEspecifico(
     String filtroEscolhido,
     DateTime? inicio,
@@ -1250,7 +1782,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
       if (!mounted) return;
 
-      // Abre exclusivamente o modal interno com o PdfPreview embutido
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -1822,6 +2353,22 @@ class _TarefasScreenState extends State<TarefasScreen> {
       ),
     );
   }
+}
+
+class _EdeskDraft {
+  final TimeLog log;
+  String taskName;
+  String description;
+  String startTime;
+  String endTime;
+
+  _EdeskDraft({
+    required this.log,
+    required this.taskName,
+    required this.description,
+    required this.startTime,
+    required this.endTime,
+  });
 }
 
 extension on TimeLog {

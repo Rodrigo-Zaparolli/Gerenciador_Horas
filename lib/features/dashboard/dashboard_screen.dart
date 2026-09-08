@@ -81,6 +81,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<TimeLog> get _timeLogs => widget.timeLogStore.logs;
 
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: CoresApp.textoSecundario),
+      filled: true,
+      fillColor: CoresDashboard.fundoSecundario,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: CoresApp.borda),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: CoresApp.borda),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: CoresApp.primaria, width: 1.5),
+      ),
+      isDense: true,
+    );
+  }
+
   // ============================================================
   // CRIAÇÃO DO TIME LOG
   // ============================================================
@@ -516,6 +538,150 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return totalHours;
   }
 
+  Future<DateTime?> _selectCustomDate(DateTime initialDate) async {
+    int day = initialDate.day;
+    int month = initialDate.month;
+    int year = initialDate.year;
+
+    return showDialog<DateTime>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1B1B2A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.white.withOpacity(0.16)),
+              ),
+              title: const Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    color: Color(0xFF35D27F),
+                    size: 20,
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'Selecionar Data',
+                    style: TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 300,
+                height: 110,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildDateDropdown(
+                      label: 'Dia',
+                      value: day,
+                      values: List.generate(31, (index) => index + 1),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setStateDialog(() => day = value);
+                        }
+                      },
+                      padLeft: true,
+                    ),
+                    const Text(
+                      '/',
+                      style: TextStyle(color: Colors.white, fontSize: 20),
+                    ),
+                    _buildDateDropdown(
+                      label: 'Mês',
+                      value: month,
+                      values: List.generate(12, (index) => index + 1),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setStateDialog(() => month = value);
+                        }
+                      },
+                      padLeft: true,
+                    ),
+                    const Text(
+                      '/',
+                      style: TextStyle(color: Colors.white, fontSize: 20),
+                    ),
+                    _buildDateDropdown(
+                      label: 'Ano',
+                      value: year,
+                      values: List.generate(11, (index) => 2020 + index),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setStateDialog(() => year = value);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(null),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(color: Color(0xFFBDBDC7)),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF35D27F),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () {
+                    final novaData = DateTime(year, month, day);
+                    Navigator.of(dialogContext).pop(novaData);
+                  },
+                  child: const Text(
+                    'Confirmar',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDateDropdown({
+    required String label,
+    required int value,
+    required List<int> values,
+    required ValueChanged<int?> onChanged,
+    bool padLeft = false,
+  }) {
+    return Expanded(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 5),
+          DropdownButton<int>(
+            value: value,
+            dropdownColor: const Color(0xFF1B1B2A),
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            items: values.map((item) {
+              return DropdownMenuItem<int>(
+                value: item,
+                child: Text(
+                  padLeft ? item.toString().padLeft(2, '0') : item.toString(),
+                ),
+              );
+            }).toList(),
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
   // ============================================================
   // EDITAR SUBTRABALHO
   // ============================================================
@@ -557,126 +723,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     TextField(
                       controller: subIdController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Número (Nº)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Número (Nº)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: serviceTypeController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Tipo de Serviço',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Tipo de Serviço'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: stageController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Trabalho / Etapa',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Trabalho / Etapa'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: hoursController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Horas Estimadas (ex: 10:00)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration:
+                          _inputDecoration('Horas Estimadas (ex: 10:00)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: hourTypeController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Tipo de Horas (ex: Hs Cobradas)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration:
+                          _inputDecoration('Tipo de Horas (ex: Hs Cobradas)'),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -703,213 +776,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              int diaTemp = startDate.day;
-                              int mesTemp = startDate.month;
-                              int anoTemp = startDate.year;
-
                               final DateTime? picked =
-                                  await showDialog<DateTime>(
-                                context: context,
-                                builder: (BuildContext dialogContext) {
-                                  return StatefulBuilder(
-                                    builder: (context, setStateDialog) {
-                                      return AlertDialog(
-                                        backgroundColor:
-                                            const Color(0xFF1B1B2A),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          side: BorderSide(
-                                              color: Colors.white
-                                                  .withOpacity(0.16)),
-                                        ),
-                                        title: const Row(
-                                          children: [
-                                            Icon(Icons.calendar_today_outlined,
-                                                color: Color(0xFF35D27F),
-                                                size: 20),
-                                            SizedBox(width: 10),
-                                            Text(
-                                              'Selecionar Data',
-                                              style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 15),
-                                            ),
-                                          ],
-                                        ),
-                                        content: SizedBox(
-                                          width: 300,
-                                          height: 110,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              // DIA
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Dia',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: diaTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              31,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              diaTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // MÊS
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Mês',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: mesTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              12,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              mesTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // ANO
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Ano',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: anoTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              11,
-                                                              (index) =>
-                                                                  2020 + index)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              anoTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(dialogContext)
-                                                    .pop(null),
-                                            child: const Text('Cancelar',
-                                                style: TextStyle(
-                                                    color: Color(0xFFBDBDC7))),
-                                          ),
-                                          ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  const Color(0xFF35D27F),
-                                              foregroundColor: Colors.black,
-                                            ),
-                                            onPressed: () {
-                                              try {
-                                                final novaData = DateTime(
-                                                    anoTemp, mesTemp, diaTemp);
-                                                Navigator.of(dialogContext)
-                                                    .pop(novaData);
-                                              } catch (_) {
-                                                Navigator.of(dialogContext)
-                                                    .pop(null);
-                                              }
-                                            },
-                                            child: const Text('Confirmar',
-                                                style: TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                              );
+                                  await _selectCustomDate(startDate);
 
                               if (picked != null) {
                                 setDialogState(() {
@@ -942,217 +810,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              int diaTemp = startDate.day;
-                              int mesTemp = startDate.month;
-                              int anoTemp = startDate.year;
-
                               final DateTime? picked =
-                                  await showDialog<DateTime>(
-                                context: context,
-                                builder: (BuildContext dialogContext) {
-                                  return StatefulBuilder(
-                                    builder: (context, setStateDialog) {
-                                      return AlertDialog(
-                                        backgroundColor:
-                                            const Color(0xFF1B1B2A),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          side: BorderSide(
-                                              color: Colors.white
-                                                  .withOpacity(0.16)),
-                                        ),
-                                        title: const Row(
-                                          children: [
-                                            Icon(Icons.calendar_today_outlined,
-                                                color: Color(0xFF35D27F),
-                                                size: 20),
-                                            SizedBox(width: 10),
-                                            Text(
-                                              'Selecionar Data',
-                                              style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 15),
-                                            ),
-                                          ],
-                                        ),
-                                        content: SizedBox(
-                                          width: 300,
-                                          height: 110,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              // DIA
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Dia',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: diaTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              31,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              diaTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // MÊS
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Mês',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: mesTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              12,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              mesTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // ANO
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Ano',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: anoTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              11,
-                                                              (index) =>
-                                                                  2020 + index)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              anoTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(dialogContext)
-                                                    .pop(null),
-                                            child: const Text('Cancelar',
-                                                style: TextStyle(
-                                                    color: Color(0xFFBDBDC7))),
-                                          ),
-                                          ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  const Color(0xFF35D27F),
-                                              foregroundColor: Colors.black,
-                                            ),
-                                            onPressed: () {
-                                              try {
-                                                final novaData = DateTime(
-                                                    anoTemp, mesTemp, diaTemp);
-                                                Navigator.of(dialogContext)
-                                                    .pop(novaData);
-                                              } catch (_) {
-                                                Navigator.of(dialogContext)
-                                                    .pop(null);
-                                              }
-                                            },
-                                            child: const Text('Confirmar',
-                                                style: TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                              );
+                                  await _selectCustomDate(endDate);
 
                               if (picked != null) {
                                 setDialogState(() {
-                                  startDate = picked;
+                                  endDate = picked;
                                 });
                               }
                             },
@@ -1262,126 +925,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     TextField(
                       controller: subIdController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Número da Etapa (Nº)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Número da Etapa (Nº)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: stageController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Trabalho / Etapa',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Trabalho / Etapa'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: serviceTypeController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Tipo de Serviço',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Tipo de Serviço'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: hoursController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Horas Estimadas (ex: 10:00)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration:
+                          _inputDecoration('Horas Estimadas (ex: 10:00)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: hourTypeController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Tipo de Horas',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Tipo de Horas'),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -1408,213 +977,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              int diaTemp = startDate.day;
-                              int mesTemp = startDate.month;
-                              int anoTemp = startDate.year;
-
                               final DateTime? picked =
-                                  await showDialog<DateTime>(
-                                context: context,
-                                builder: (BuildContext dialogContext) {
-                                  return StatefulBuilder(
-                                    builder: (context, setStateDialog) {
-                                      return AlertDialog(
-                                        backgroundColor:
-                                            const Color(0xFF1B1B2A),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          side: BorderSide(
-                                              color: Colors.white
-                                                  .withOpacity(0.16)),
-                                        ),
-                                        title: const Row(
-                                          children: [
-                                            Icon(Icons.calendar_today_outlined,
-                                                color: Color(0xFF35D27F),
-                                                size: 20),
-                                            SizedBox(width: 10),
-                                            Text(
-                                              'Selecionar Data',
-                                              style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 15),
-                                            ),
-                                          ],
-                                        ),
-                                        content: SizedBox(
-                                          width: 300,
-                                          height: 110,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              // DIA
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Dia',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: diaTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              31,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              diaTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // MÊS
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Mês',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: mesTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              12,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              mesTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // ANO
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Ano',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: anoTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              11,
-                                                              (index) =>
-                                                                  2020 + index)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              anoTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(dialogContext)
-                                                    .pop(null),
-                                            child: const Text('Cancelar',
-                                                style: TextStyle(
-                                                    color: Color(0xFFBDBDC7))),
-                                          ),
-                                          ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  const Color(0xFF35D27F),
-                                              foregroundColor: Colors.black,
-                                            ),
-                                            onPressed: () {
-                                              try {
-                                                final novaData = DateTime(
-                                                    anoTemp, mesTemp, diaTemp);
-                                                Navigator.of(dialogContext)
-                                                    .pop(novaData);
-                                              } catch (_) {
-                                                Navigator.of(dialogContext)
-                                                    .pop(null);
-                                              }
-                                            },
-                                            child: const Text('Confirmar',
-                                                style: TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                              );
+                                  await _selectCustomDate(startDate);
 
                               if (picked != null) {
                                 setDialogState(() {
@@ -1647,213 +1011,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              int diaTemp = startDate.day;
-                              int mesTemp = startDate.month;
-                              int anoTemp = startDate.year;
-
                               final DateTime? picked =
-                                  await showDialog<DateTime>(
-                                context: context,
-                                builder: (BuildContext dialogContext) {
-                                  return StatefulBuilder(
-                                    builder: (context, setStateDialog) {
-                                      return AlertDialog(
-                                        backgroundColor:
-                                            const Color(0xFF1B1B2A),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          side: BorderSide(
-                                              color: Colors.white
-                                                  .withOpacity(0.16)),
-                                        ),
-                                        title: const Row(
-                                          children: [
-                                            Icon(Icons.calendar_today_outlined,
-                                                color: Color(0xFF35D27F),
-                                                size: 20),
-                                            SizedBox(width: 10),
-                                            Text(
-                                              'Selecionar Data',
-                                              style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 15),
-                                            ),
-                                          ],
-                                        ),
-                                        content: SizedBox(
-                                          width: 300,
-                                          height: 110,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              // DIA
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Dia',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: diaTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              31,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              diaTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // MÊS
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Mês',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: mesTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              12,
-                                                              (index) =>
-                                                                  index + 1)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()
-                                                                .padLeft(
-                                                                    2, '0')));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              mesTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Text('/',
-                                                  style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 20)),
-                                              // ANO
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Text('Ano',
-                                                        style: TextStyle(
-                                                            color: Colors.grey,
-                                                            fontSize: 12)),
-                                                    const SizedBox(height: 5),
-                                                    DropdownButton<int>(
-                                                      value: anoTemp,
-                                                      dropdownColor:
-                                                          const Color(
-                                                              0xFF1B1B2A),
-                                                      style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16),
-                                                      items: List.generate(
-                                                              11,
-                                                              (index) =>
-                                                                  2020 + index)
-                                                          .map((val) {
-                                                        return DropdownMenuItem(
-                                                            value: val,
-                                                            child: Text(val
-                                                                .toString()));
-                                                      }).toList(),
-                                                      onChanged: (val) {
-                                                        if (val != null)
-                                                          setStateDialog(() =>
-                                                              anoTemp = val);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(dialogContext)
-                                                    .pop(null),
-                                            child: const Text('Cancelar',
-                                                style: TextStyle(
-                                                    color: Color(0xFFBDBDC7))),
-                                          ),
-                                          ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  const Color(0xFF35D27F),
-                                              foregroundColor: Colors.black,
-                                            ),
-                                            onPressed: () {
-                                              try {
-                                                final novaData = DateTime(
-                                                    anoTemp, mesTemp, diaTemp);
-                                                Navigator.of(dialogContext)
-                                                    .pop(novaData);
-                                              } catch (_) {
-                                                Navigator.of(dialogContext)
-                                                    .pop(null);
-                                              }
-                                            },
-                                            child: const Text('Confirmar',
-                                                style: TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                              );
+                                  await _selectCustomDate(startDate);
 
                               if (picked != null) {
                                 setDialogState(() {
@@ -1975,26 +1134,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       controller: hoursController,
                       keyboardType: TextInputType.number,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Horas',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Horas'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -2003,26 +1143,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       controller: minutesController,
                       keyboardType: TextInputType.number,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Minutos',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Minutos'),
                     ),
                   ),
                 ],
@@ -2196,26 +1317,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     TextField(
                       controller: startController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Hora Início (ex: 14:00)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Hora Início (ex: 14:00)'),
                       onChanged: (_) {
                         calculateDuration();
                         setDialogState(() {});
@@ -2225,26 +1327,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     TextField(
                       controller: endController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Hora Fim (ex: 15:30)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Hora Fim (ex: 15:30)'),
                       onChanged: (_) {
                         calculateDuration();
                         setDialogState(() {});
@@ -2254,52 +1337,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     TextField(
                       controller: durationController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
-                      decoration: InputDecoration(
-                        labelText: 'Duração (ex: 01:30)',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Duração (ex: 01:30)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: descriptionController,
                       style: TextStyle(color: CoresApp.textoPrincipal),
                       maxLines: 2,
-                      decoration: InputDecoration(
-                        labelText: 'Descrição / Comentário',
-                        labelStyle: TextStyle(color: CoresApp.textoSecundario),
-                        filled: true,
-                        fillColor: CoresDashboard.fundoSecundario,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: CoresApp.borda),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: CoresApp.primaria, width: 1.5),
-                        ),
-                        isDense: true,
-                      ),
+                      decoration: _inputDecoration('Descrição / Comentário'),
                     ),
                   ],
                 ),
@@ -2728,41 +1773,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    final activeWorkFormats = _workFormatsFirebase.isNotEmpty
-        ? _workFormatsFirebase
-        : widget.workFormats;
-    final matchingFormats = activeWorkFormats.where(
-      (wf) => wf.name.toLowerCase() == newProject.serviceType.toLowerCase(),
-    );
+    // As atividades já foram criadas e configuradas dentro
+    // do ProjectFormDialog, incluindo:
+    // - Nº da atividade
+    // - Etapa
+    // - Data de início
+    // - Data de término
+    // - Horas estimadas
+    // - Tipo de horas
+    //
+    // Portanto, não recriamos as atividades aqui.
+    // Isso também evita sobrescrever as datas informadas
+    // pelo usuário com uma regra automática de +30 dias.
 
-    final matchingFormat =
-        matchingFormats.isNotEmpty ? matchingFormats.first : null;
-    final List<TaskModel> generatedTasks = [];
-
-    if (matchingFormat != null && matchingFormat.steps.isNotEmpty) {
-      int subIdCounter = 1;
-
-      for (final step in matchingFormat.steps) {
-        const stepHours = 10;
-
-        generatedTasks.add(
-          TaskModel(
-            subId: subIdCounter.toString(),
-            stage: step,
-            status: 'INI_PRO',
-            startDate: newProject.startDate,
-            planStart: newProject.startDate,
-            planEnd: newProject.startDate.add(const Duration(days: 30)),
-            estimatedHours: '${stepHours.toString().padLeft(2, '0')}:00',
-            hourType: newProject.hourType,
-          ),
-        );
-
-        subIdCounter++;
-      }
-    }
-
-    final projectWithSubtasks = ProjectModel(
+    final ProjectModel projectWithSubtasks = ProjectModel(
       id: newProject.id,
       id2: newProject.id2,
       client: newProject.client,
@@ -2774,8 +1798,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       estimatedHours: newProject.estimatedHours,
       leader: newProject.leader,
       hourType: newProject.hourType,
-      subTasks:
-          generatedTasks.isNotEmpty ? generatedTasks : newProject.subTasks,
+      subTasks: newProject.subTasks,
       checklist: newProject.checklist,
       observacao: newProject.observacao,
       excelLink: newProject.excelLink,
@@ -2800,16 +1823,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Projeto salvo no Firebase com sucesso!'),
+          content: const Text(
+            'Projeto salvo no Firebase com sucesso!',
+          ),
           backgroundColor: CoresApp.sucesso,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
   }
-
   // ============================================================
   // HORAS DOS ÚLTIMOS 10 DIAS
   // ============================================================

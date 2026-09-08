@@ -1,3 +1,4 @@
+// ignore_for_file: unnecessary_cast
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -22,10 +23,10 @@ void showCustomAuthorDialog(BuildContext context) async {
     builder: (context) {
       return AlertDialog(
         backgroundColor: const Color(0xFF2D2D44), // Padrão de cor do seu app
-        title: const Text(
+        /*title: const Text(
           'Sobre o Desenvolvedor',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        ),*/
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,7 +52,9 @@ void showCustomAuthorDialog(BuildContext context) async {
           ],
         ),
         actions: [
-          // Botão para verificar atualizações online
+          /* 
+          // BOTÃO DE VERIFICAR ATUALIZAÇÕES COMENTADO TEMPORARIAMENTE
+          // Para reativar no futuro, basta descomentar este bloco e a função abaixo.
           TextButton.icon(
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF00FFCC),
@@ -64,6 +67,7 @@ void showCustomAuthorDialog(BuildContext context) async {
             icon: const Icon(Icons.system_update, size: 18),
             label: const Text('Verificar Atualizações'),
           ),
+          */
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF00FFCC),
@@ -79,7 +83,10 @@ void showCustomAuthorDialog(BuildContext context) async {
   );
 }
 
-// Função auxiliar que faz a checagem da versão no servidor
+/* 
+// ============================================================
+// FUNÇÃO DE CHECAGEM COMENTADA PARA USO FUTURO
+// ============================================================
 Future<void> _checkForUpdatesFromDialog(
     BuildContext context, String currentVersion) async {
   // Mostra um indicador de carregamento rápido
@@ -170,3 +177,4 @@ Future<void> _checkForUpdatesFromDialog(
     }
   }
 }
+*/

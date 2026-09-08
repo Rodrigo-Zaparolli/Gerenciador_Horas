@@ -1,4 +1,5 @@
 import 'dart:convert';
+<<<<<<< HEAD
 
 import 'package:http/http.dart' as http;
 
@@ -54,6 +55,24 @@ class EdeskWorkData {
   final String? atendimento;
 
   /// Motivo, quando aplicável.
+=======
+import 'package:http/http.dart' as http;
+
+/// Dados necessários para registrar um trabalho no E-Desk.
+class EdeskWorkData {
+  final Uri pageUri;
+  final String solicitacao;
+  final String idTrabalho;
+  final String data;
+  final String horaInicio;
+  final String horaFim;
+  final String tipoRegistro;
+  final String tarefa;
+  final String descricao;
+  final String? gtt;
+  final String? equipamento;
+  final String? atendimento;
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   final String? motivo;
 
   const EdeskWorkData({
@@ -73,6 +92,7 @@ class EdeskWorkData {
   });
 }
 
+<<<<<<< HEAD
 /// ================================================================
 /// RESULTADO DO ENVIO
 /// ================================================================
@@ -94,6 +114,13 @@ class EdeskSendResult {
   ///
   /// Mantido para diagnóstico e para refinarmos posteriormente
   /// a confirmação da gravação.
+=======
+/// Resultado da tentativa de envio para o E-Desk.
+class EdeskSendResult {
+  final bool confirmed;
+  final int statusCode;
+  final String message;
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   final String responseBody;
 
   const EdeskSendResult({
@@ -104,6 +131,7 @@ class EdeskSendResult {
   });
 }
 
+<<<<<<< HEAD
 /// ================================================================
 /// SERVIÇO E-DESK
 /// ================================================================
@@ -146,6 +174,21 @@ class EdeskService {
   /// Não armazena credenciais permanentemente.
   /// Apenas mantém os cookies em memória durante a utilização
   /// deste serviço.
+=======
+/// Serviço de comunicação com o E-Desk.
+class EdeskService {
+  EdeskService({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
+
+  /// Cookies da sessão atual.
+  final Map<String, String> _cookies = {};
+
+  /// Retorna os cookies atuais sem permitir alteração externa.
+  Map<String, String> get cookies => Map.unmodifiable(_cookies);
+
+  /// Define os cookies de uma sessão já autenticada.
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   void setSessionCookies(
     Map<String, String> cookies,
   ) {
@@ -154,11 +197,16 @@ class EdeskService {
       ..addAll(cookies);
   }
 
+<<<<<<< HEAD
   /// Remove a sessão atual.
+=======
+  /// Limpa a sessão atual.
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   void clearSession() {
     _cookies.clear();
   }
 
+<<<<<<< HEAD
   /// Indica se existe alguma informação de sessão armazenada.
   bool get hasSession {
     return _cookies.isNotEmpty;
@@ -213,6 +261,23 @@ class EdeskService {
       );
     }
 
+=======
+  /// Envia um trabalho para o E-Desk.
+  Future<EdeskSendResult> sendWork(
+    EdeskWorkData work,
+  ) async {
+    // ==========================================================
+    // 1. ABRIR A PÁGINA DO TRABALHO
+    // ==========================================================
+
+    final getResponse = await _client.get(
+      work.pageUri,
+      headers: _headers(),
+    );
+
+    _storeCookies(getResponse);
+
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     if (getResponse.statusCode != 200) {
       throw EdeskException(
         'Não foi possível abrir a página do E-Desk. '
@@ -220,6 +285,7 @@ class EdeskService {
       );
     }
 
+<<<<<<< HEAD
     final html = _decodeResponse(getResponse);
 
     // ============================================================
@@ -247,12 +313,23 @@ class EdeskService {
     //
     // Esses valores podem mudar a cada carregamento.
     //
+=======
+    final html = utf8.decode(
+      getResponse.bodyBytes,
+      allowMalformed: true,
+    );
+
+    // ==========================================================
+    // 2. EXTRAIR CAMPOS HIDDEN DO ASP.NET WEB FORMS
+    // ==========================================================
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
     final hiddenFields = _extractHiddenFields(html);
 
     if (hiddenFields.isEmpty) {
       throw const EdeskAuthenticationException(
         'A página do E-Desk não retornou os campos '
+<<<<<<< HEAD
         'de estado do formulário. '
         'A sessão pode não estar autenticada ou a página '
         'retornada não é o formulário esperado.',
@@ -263,10 +340,17 @@ class EdeskService {
     // 6. PREPARAR FORMULÁRIO
     // ============================================================
 
+=======
+        'de estado. A sessão pode não estar autenticada.',
+      );
+    }
+
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     final form = <String, String>{
       ...hiddenFields,
     };
 
+<<<<<<< HEAD
     // ============================================================
     // 7. PREENCHER CAMPOS DO TRABALHO
     // ============================================================
@@ -287,6 +371,19 @@ class EdeskService {
     // 8. CAMPOS OPCIONAIS
     // ============================================================
 
+=======
+    // ==========================================================
+    // 3. CAMPOS DO TRABALHO
+    // ==========================================================
+
+    form[r'ctl00$cph1$txtDatTem'] = work.data;
+    form[r'ctl00$cph1$txtHorIni'] = work.horaInicio;
+    form[r'ctl00$cph1$txtHorFin'] = work.horaFim;
+    form[r'ctl00$cph1$ddlTipReg'] = work.tipoRegistro;
+    form[r'ctl00$cph1$txlTtr$txtDes'] = work.tarefa;
+    form[r'ctl00$cph1$txtDet'] = work.descricao;
+
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     if (work.gtt != null) {
       form[r'ctl00$cph1$txlGtt$txtDes'] = work.gtt!;
     }
@@ -303,6 +400,7 @@ class EdeskService {
       form[r'ctl00$cph1$txtRea'] = work.motivo!;
     }
 
+<<<<<<< HEAD
     // ============================================================
     // 9. CONFIGURAR ASP.NET AJAX / UPDATEPANEL
     // ============================================================
@@ -430,10 +528,61 @@ class EdeskService {
       confirmed: true,
       statusCode: postResponse.statusCode,
       message: 'O E-Desk aceitou a solicitação de salvamento.',
+=======
+    // ==========================================================
+    // 4. CONFIGURAÇÃO DO ASP.NET AJAX / UPDATEPANEL
+    // ==========================================================
+
+    form[r'ctl00$scmF'] = r'ctl00$cph1$uppG|ctl00$cph1$BtAtu';
+    form['__EVENTTARGET'] = '';
+    form['__EVENTARGUMENT'] = '';
+    form['__ASYNCPOST'] = 'true';
+
+    // Configurando o disparador do evento de clique do UpdatePanel
+    form[r'ctl00$cph1$BtAtu'] = 'Salvar';
+
+    // ==========================================================
+    // 5. ENVIAR POST
+    // ==========================================================
+
+    final postResponse = await _client.post(
+      work.pageUri,
+      headers: {
+        ..._headers(),
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Referer': work.pageUri.toString(),
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: form,
+    );
+
+    _storeCookies(postResponse);
+
+    // ==========================================================
+    // 6. ANALISAR RESPOSTA
+    // ==========================================================
+
+    final body = utf8.decode(
+      postResponse.bodyBytes,
+      allowMalformed: true,
+    );
+
+    final confirmed = postResponse.statusCode >= 200 &&
+        postResponse.statusCode < 300 &&
+        !_containsError(body);
+
+    return EdeskSendResult(
+      confirmed: confirmed,
+      statusCode: postResponse.statusCode,
+      message: confirmed
+          ? 'O E-Desk aceitou a solicitação HTTP.'
+          : 'O E-Desk retornou uma resposta que não pôde ser confirmada como gravação.',
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
       responseBody: body,
     );
   }
 
+<<<<<<< HEAD
   // ==============================================================
   // VALIDAÇÃO
   // ==============================================================
@@ -491,13 +640,29 @@ class EdeskService {
           'AppleWebKit/537.36 '
           '(KHTML, like Gecko) '
           'Chrome/140.0.0.0 Safari/537.36',
+=======
+  // ============================================================
+  // HEADERS
+  // ============================================================
+
+  Map<String, String> _headers() {
+    return {
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
       if (_cookies.isNotEmpty) 'Cookie': _cookieHeader(),
     };
   }
 
+<<<<<<< HEAD
   // ==============================================================
   // COOKIE HEADER
   // ==============================================================
+=======
+  // ============================================================
+  // COOKIE HEADER
+  // ============================================================
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
   String _cookieHeader() {
     return _cookies.entries
@@ -507,9 +672,15 @@ class EdeskService {
         .join('; ');
   }
 
+<<<<<<< HEAD
   // ==============================================================
   // ARMAZENAR COOKIES
   // ==============================================================
+=======
+  // ============================================================
+  // ARMAZENAR COOKIES
+  // ============================================================
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
   void _storeCookies(
     http.Response response,
@@ -520,7 +691,10 @@ class EdeskService {
       return;
     }
 
+<<<<<<< HEAD
     // Alguns servidores retornam múltiplos cookies no mesmo header.
+=======
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     final cookies = values.split(
       RegExp(
         r',(?=\s*[^;,=]+\s*=)',
@@ -540,6 +714,7 @@ class EdeskService {
 
       final value = firstPart.substring(separator + 1).trim();
 
+<<<<<<< HEAD
       if (name.isEmpty) {
         continue;
       }
@@ -568,6 +743,17 @@ class EdeskService {
   // ==============================================================
   // EXTRAIR CAMPOS HIDDEN
   // ==============================================================
+=======
+      if (name.isNotEmpty) {
+        _cookies[name] = value;
+      }
+    }
+  }
+
+  // ============================================================
+// EXTRAIR CAMPOS HIDDEN
+// ============================================================
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
   Map<String, String> _extractHiddenFields(
     String html,
@@ -587,15 +773,20 @@ class EdeskService {
         continue;
       }
 
+<<<<<<< HEAD
       final name = _attribute(
         tag,
         'name',
       );
+=======
+      final name = _attribute(tag, 'name');
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
       if (name == null || name.isEmpty) {
         continue;
       }
 
+<<<<<<< HEAD
       final value = _attribute(
             tag,
             'value',
@@ -603,14 +794,23 @@ class EdeskService {
           '';
 
       fields[name] = value;
+=======
+      fields[name] = _attribute(tag, 'value') ?? '';
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     }
 
     return fields;
   }
 
+<<<<<<< HEAD
   // ==============================================================
   // LER ATRIBUTO HTML
   // ==============================================================
+=======
+// ============================================================
+// LER ATRIBUTO HTML
+// ============================================================
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
   String? _attribute(
     String tag,
@@ -626,6 +826,7 @@ class EdeskService {
     return match?.group(1);
   }
 
+<<<<<<< HEAD
   // ==============================================================
   // VERIFICAR REDIRECIONAMENTO
   // ==============================================================
@@ -710,11 +911,19 @@ class EdeskService {
   // ==============================================================
 
   bool _containsServerError(
+=======
+  // ============================================================
+  // VERIFICAR ERROS NA RESPOSTA
+  // ============================================================
+
+  bool _containsError(
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     String body,
   ) {
     final normalized = body.toLowerCase();
 
     const markers = [
+<<<<<<< HEAD
       'server error',
       'http error 500',
       'exception details',
@@ -725,6 +934,14 @@ class EdeskService {
       'nao foi possivel salvar',
       'não foi possível gravar',
       'nao foi possivel gravar',
+=======
+      'exception',
+      'server error',
+      'erro ao salvar',
+      'não foi possível salvar',
+      'nao foi possivel salvar',
+      'alert(',
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
     ];
 
     return markers.any(
@@ -732,6 +949,7 @@ class EdeskService {
     );
   }
 
+<<<<<<< HEAD
   // ==============================================================
   // ANALISAR RESPOSTA ASP.NET AJAX
   // ==============================================================
@@ -783,6 +1001,11 @@ class EdeskService {
   // ==============================================================
   // DISPOSE
   // ==============================================================
+=======
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
   void dispose() {
     _client.close();
@@ -790,6 +1013,7 @@ class EdeskService {
 }
 
 // ================================================================
+<<<<<<< HEAD
 // ANÁLISE DA RESPOSTA AJAX
 // ================================================================
 
@@ -804,6 +1028,8 @@ class _AjaxResponseAnalysis {
 }
 
 // ================================================================
+=======
+>>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 // EXCEÇÃO GERAL DO E-DESK
 // ================================================================
 

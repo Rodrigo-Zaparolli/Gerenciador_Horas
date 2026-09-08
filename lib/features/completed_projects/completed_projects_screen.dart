@@ -1,7 +1,10 @@
 // ignore_for_file: unused_element
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
+import 'package:gerenciador_horas/data/services/time_log_store.dart';
+import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/core/theme/app_theme.dart';
@@ -36,6 +39,12 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   final Set<String> _expandedProjectIds = {};
 
   String _searchQuery = '';
+
+  // ============================================================
+  // SERVIÇO DE HORAS
+  // ============================================================
+
+  final TimeLogStore _timeLogStore = TimeLogStore();
 
   // ============================================================
   // CONVERSÃO DOS PROJETOS
@@ -195,6 +204,63 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         '${date.year.toString().substring(2)} '
         '${date.hour.toString().padLeft(2, '0')}:'
         '${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  // ============================================================
+  // CONVERSÃO DE HORAS
+  // ============================================================
+
+  int _timeToMinutes(String value) {
+    final text = value.trim();
+
+    if (text.isEmpty) {
+      return 0;
+    }
+
+    try {
+      final parts = text.split(':');
+
+      if (parts.length == 2) {
+        final hours = int.tryParse(parts[0]) ?? 0;
+        final minutes = int.tryParse(parts[1]) ?? 0;
+
+        return (hours * 60) + minutes;
+      }
+
+      final decimal = double.tryParse(text.replaceAll(',', '.')) ?? 0;
+
+      return (decimal * 60).round();
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String _minutesToTime(int totalMinutes) {
+    final safeMinutes = totalMinutes < 0 ? 0 : totalMinutes;
+
+    final hours = safeMinutes ~/ 60;
+    final minutes = safeMinutes % 60;
+
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}';
+  }
+
+  int _getLogMinutes(TimeLog log) {
+    final duration = log.durationFormatted.trim();
+
+    if (duration.isNotEmpty) {
+      final durationMinutes = _timeToMinutes(duration);
+
+      if (durationMinutes > 0) {
+        return durationMinutes;
+      }
+    }
+
+    if (log.hours != null) {
+      return (log.hours! * 60).round();
+    }
+
+    return 0;
   }
 
   // ============================================================
@@ -677,7 +743,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             ],
           ),
           content: Text(
-            'O projeto "$id" voltará para los projetos ativos.\n\n'
+            'O projeto "$id" voltará para os projetos ativos.\n\n'
             'As etapas, horários, arquivo Excel e pasta vinculada '
             'serão preservados.',
             style: TextStyle(
@@ -1401,8 +1467,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 ? _buildEmptyState()
                 : ConstrainedBox(
                     constraints: const BoxConstraints(
-                      maxHeight:
-                          500, // Altura máxima antes de habilitar o scroll vertical
+                      maxHeight: 500,
                     ),
                     child: Scrollbar(
                       controller: _verticalController,
@@ -1506,6 +1571,655 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
+  // CABEÇALHO DA SEÇÃO DE HORAS
+  // ============================================================
+
+  Widget _buildHoursSectionHeader({
+    required int totalMinutes,
+    required int totalLogs,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      decoration: BoxDecoration(
+        color: CoresApp.primaria.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: CoresApp.primaria.withOpacity(0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: CoresApp.primaria.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              Icons.schedule_rounded,
+              color: CoresApp.primaria,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Horas Trabalhadas',
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$totalLogs apontamento(s) cadastrado(s)',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: CoresApp.primaria.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: CoresApp.primaria.withOpacity(0.22),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'TOTAL',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _minutesToTime(totalMinutes),
+                  style: TextStyle(
+                    color: CoresApp.primaria,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // LINHA DE APONTAMENTO DE HORAS
+  // ============================================================
+
+  Widget _buildTimeLogRow(TimeLog log) {
+    final date = log.date;
+
+    final duration = log.durationFormatted.trim().isNotEmpty
+        ? log.durationFormatted.trim()
+        : log.hours != null
+            ? _minutesToTime(
+                (log.hours! * 60).round(),
+              )
+            : '00:00';
+
+    final taskName = log.taskName?.trim() ?? '';
+    final projectName = log.projectName?.trim() ?? '';
+    final typeHs = log.typeHs?.trim() ?? '';
+
+    final description = log.description?.trim() ?? '';
+
+    String taskText = taskName;
+
+    if (taskText.isEmpty) {
+      taskText = projectName;
+    }
+
+    if (taskText.isEmpty) {
+      taskText = description;
+    }
+
+    if (taskText.isEmpty) {
+      taskText = 'Projeto';
+    }
+
+    final hourType = typeHs.isEmpty ? 'Não informado' : typeHs;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(
+        bottom: 7,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 11,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: CoresApp.textoPrincipal.withOpacity(0.025),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: CoresApp.borda.withOpacity(0.65),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: CoresApp.sucesso.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              Icons.access_time_rounded,
+              color: CoresApp.sucesso,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // DATA
+          SizedBox(
+            width: 70,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'DATA',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _formatDate(date),
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // INÍCIO
+          SizedBox(
+            width: 65,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'INÍCIO',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  log.startTime.trim().isEmpty ? '-' : log.startTime.trim(),
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // FIM
+          SizedBox(
+            width: 65,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'FIM',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  log.endTime.trim().isEmpty ? '-' : log.endTime.trim(),
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // DURAÇÃO
+          SizedBox(
+            width: 75,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'DURAÇÃO',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  duration,
+                  style: TextStyle(
+                    color: CoresApp.sucesso,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // TAREFA
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ETAPA / TAREFA',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                      fontSize: 7,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    taskText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: CoresApp.textoPrincipal,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // TIPO DE HORA
+          SizedBox(
+            width: 95,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 7,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: CoresApp.destaque.withOpacity(0.07),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                hourType,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: CoresApp.destaque,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 7),
+
+          // REGISTRADO
+          Tooltip(
+            message: 'Hora cadastrada',
+            child: Icon(
+              Icons.check_circle_rounded,
+              color: CoresApp.sucesso,
+              size: 17,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // LISTA DE HORAS DO PROJETO
+  // ============================================================
+
+  Widget _buildProjectTimeLogs(
+    String projectId,
+  ) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: CoresApp.erro.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: CoresApp.erro.withOpacity(0.20),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              color: CoresApp.erro,
+              size: 19,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Usuário não autenticado. Não foi possível carregar as horas.',
+                style: TextStyle(
+                  color: CoresApp.textoSecundario,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return StreamBuilder<List<TimeLog>>(
+      stream: _timeLogStore.streamProjectTimeLogs(
+        user.uid,
+        projectId,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              vertical: 25,
+            ),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: CoresApp.primaria,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Carregando horas trabalhadas...',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: CoresApp.erro.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: CoresApp.erro.withOpacity(0.20),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: CoresApp.erro,
+                  size: 19,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Não foi possível carregar as horas deste projeto.\n'
+                    '${snapshot.error}',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                      fontSize: 10,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final logs = (snapshot.data ?? <TimeLog>[])
+            .where(
+              (log) => log.isRegistered,
+            )
+            .toList();
+
+        logs.sort(
+          (a, b) => b.date.compareTo(a.date),
+        );
+
+        int totalMinutes = 0;
+
+        for (final log in logs) {
+          totalMinutes += _getLogMinutes(log);
+        }
+
+        if (logs.isEmpty) {
+          return Column(
+            children: [
+              _buildHoursSectionHeader(
+                totalMinutes: 0,
+                totalLogs: 0,
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 24,
+                ),
+                decoration: BoxDecoration(
+                  color: CoresApp.textoPrincipal.withOpacity(0.025),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: CoresApp.borda.withOpacity(0.60),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.schedule_outlined,
+                      color: CoresApp.textoSecundario.withOpacity(0.50),
+                      size: 32,
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      'Nenhuma hora cadastrada',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Este projeto não possui apontamentos registrados.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _buildHoursSectionHeader(
+              totalMinutes: totalMinutes,
+              totalLogs: logs.length,
+            ),
+            const SizedBox(height: 10),
+
+            // Cabeçalho da tabela de horas
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 11,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: CoresDashboard.tabelaCabecalho,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 48),
+                  SizedBox(
+                    width: 70,
+                    child: Text(
+                      'DATA',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 65,
+                    child: Text(
+                      'INÍCIO',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 65,
+                    child: Text(
+                      'FIM',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 75,
+                    child: Text(
+                      'DURAÇÃO',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'ETAPA / TAREFA',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 95,
+                    child: Text(
+                      'TIPO DE HORA',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 5),
+
+            ...logs.map(
+              (log) => _buildTimeLogRow(log),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================
   // VISUALIZAR PROJETO
   // ============================================================
 
@@ -1543,7 +2257,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           ),
           child: Container(
             constraints: const BoxConstraints(
-              maxWidth: 560,
+              maxWidth: 900,
+              maxHeight: 850,
             ),
             decoration: BoxDecoration(
               color: CoresTelas.fundoModal,
@@ -1562,6 +2277,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // ==================================================
+                // CABEÇALHO DO MODAL
+                // ==================================================
+
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(
@@ -1635,12 +2354,21 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     ],
                   ),
                 ),
+
+                // ==================================================
+                // CONTEÚDO
+                // ==================================================
+
                 Flexible(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // ==========================================
+                        // INFORMAÇÕES DO PROJETO
+                        // ==========================================
+
                         Text(
                           'Informações do projeto',
                           style: TextStyle(
@@ -1650,6 +2378,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
+
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
@@ -1689,7 +2418,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
+
+                        const SizedBox(height: 18),
+
+                        // ==========================================
+                        // STATUS
+                        // ==========================================
+
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(
@@ -1730,7 +2465,21 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             ],
                           ),
                         ),
+
                         const SizedBox(height: 22),
+
+                        // ==========================================
+                        // HORAS TRABALHADAS
+                        // ==========================================
+
+                        _buildProjectTimeLogs(id),
+
+                        const SizedBox(height: 22),
+
+                        // ==========================================
+                        // ARQUIVOS
+                        // ==========================================
+
                         Text(
                           'Arquivos do projeto',
                           style: TextStyle(
@@ -1748,6 +2497,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
+
                         _buildResourceButton(
                           icon: Icons.table_chart_rounded,
                           color: CoresApp.destaqueVerde,
@@ -1779,7 +2529,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             }
                           },
                         ),
+
                         const SizedBox(height: 9),
+
                         _buildResourceButton(
                           icon: Icons.folder_open_rounded,
                           color: CoresApp.destaque,
@@ -1815,6 +2567,11 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     ),
                   ),
                 ),
+
+                // ==================================================
+                // RODAPÉ
+                // ==================================================
+
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(
@@ -1910,6 +2667,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   void dispose() {
     _horizontalController.dispose();
     _verticalController.dispose();
+
+    _timeLogStore.dispose();
+
     super.dispose();
   }
 
@@ -2006,7 +2766,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               }
 
               final List<dynamic> rawProjects = snapshot.data != null
-                  ? List<dynamic>.from(snapshot.data!)
+                  ? List<dynamic>.from(
+                      snapshot.data!,
+                    )
                   : <dynamic>[];
 
               final allProjects = _convertProjects(rawProjects);

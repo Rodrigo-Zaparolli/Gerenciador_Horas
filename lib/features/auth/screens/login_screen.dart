@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'register_screen.dart';
+import 'package:gerenciador_horas/features/auth/screens/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -15,29 +15,89 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  // ============================================================
+  // LOGO
+  // ============================================================
+
+  static const String _logoHorizontal = 'assets/images/Logo_H.png';
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.08),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    _animationController.forward();
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+
+    _animationController.dispose();
+
     super.dispose();
   }
 
-  Future<void> _handleLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+  // ============================================================
+  // LOGIN
+  // ============================================================
 
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, preencha o e-mail e a senha.'),
-          backgroundColor: CoresApp.erro,
-        ),
+  Future<void> _handleLogin() async {
+    FocusScope.of(context).unfocus();
+
+    final String email = _emailController.text.trim();
+    final String password = _passwordController.text;
+
+    if (email.isEmpty) {
+      _showMessage(
+        'Informe seu e-mail.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showMessage(
+        'Informe sua senha.',
+        isError: true,
       );
       return;
     }
@@ -51,27 +111,58 @@ class _LoginScreenState extends State<LoginScreen> {
         email: email,
         password: password,
       );
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        String errorMessage = 'Erro ao fazer login.';
-        if (e.code == 'user-not-found') {
-          errorMessage = 'Usuário não encontrado.';
-        } else if (e.code == 'wrong-password') {
-          errorMessage = 'Senha incorreta.';
-        } else if (e.code == 'invalid-email') {
-          errorMessage = 'O formato do e-mail é inválido.';
-        } else if (e.code == 'invalid-credential') {
-          errorMessage = 'E-mail ou senha incorretos.';
-        } else {
-          errorMessage = 'Erro: ${e.message ?? "Tente novamente."}';
-        }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage,
-                style: const TextStyle(color: CoresApp.textoPrincipal)),
-            backgroundColor: CoresApp.erro,
-          ),
+      if (!mounted) {
+        return;
+      }
+
+      widget.onLoginSuccess();
+    } on FirebaseAuthException catch (e) {
+      String message;
+
+      switch (e.code) {
+        case 'invalid-email':
+          message = 'O e-mail informado é inválido.';
+          break;
+
+        case 'user-not-found':
+          message = 'Não encontramos uma conta com este e-mail.';
+          break;
+
+        case 'wrong-password':
+        case 'invalid-credential':
+          message = 'E-mail ou senha incorretos.';
+          break;
+
+        case 'user-disabled':
+          message = 'Esta conta foi desativada.';
+          break;
+
+        case 'too-many-requests':
+          message =
+              'Muitas tentativas. Aguarde alguns instantes e tente novamente.';
+          break;
+
+        case 'network-request-failed':
+          message =
+              'Não foi possível conectar ao servidor. Verifique sua internet.';
+          break;
+
+        default:
+          message = e.message ?? 'Não foi possível realizar o login.';
+      }
+
+      if (mounted) {
+        _showMessage(
+          message,
+          isError: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Ocorreu um erro inesperado ao realizar o login.',
+          isError: true,
         );
       }
     } finally {
@@ -83,266 +174,702 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // ============================================================
+  // RECUPERAR SENHA
+  // ============================================================
+
   Future<void> _resetPassword() async {
-    final email = _emailController.text.trim();
+    final String email = _emailController.text.trim();
 
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Por favor, digite seu e-mail no campo acima primeiro.'),
-          backgroundColor: CoresApp.erro,
-        ),
+      _showMessage(
+        'Informe seu e-mail para recuperar a senha.',
+        isError: true,
       );
+
+      _emailFocusNode.requestFocus();
       return;
     }
 
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'E-mail de redefinição enviado! Verifique sua caixa de entrada e spam.'),
-            backgroundColor: CoresApp.sucesso,
-          ),
-        );
+      await FirebaseAuth.instance.sendPasswordResetEmail(
+        email: email,
+      );
+
+      if (!mounted) {
+        return;
       }
+
+      _showMessage(
+        'Se o e-mail estiver cadastrado, enviaremos as instruções para recuperação da senha.',
+      );
     } on FirebaseAuthException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      String message;
+
+      switch (e.code) {
+        case 'invalid-email':
+          message = 'O e-mail informado é inválido.';
+          break;
+
+        default:
+          message =
+              e.message ?? 'Não foi possível enviar o e-mail de recuperação.';
+      }
+
+      _showMessage(
+        message,
+        isError: true,
+      );
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao enviar e-mail: ${e.message}',
-                style: const TextStyle(color: CoresApp.textoPrincipal)),
-            backgroundColor: CoresApp.erro,
-          ),
+        _showMessage(
+          'Não foi possível solicitar a recuperação da senha.',
+          isError: true,
         );
       }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CoresApp.fundo,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            padding: const EdgeInsets.fromLTRB(36.0, 20.0, 36.0, 36.0),
-            decoration: BoxDecoration(
-              color: CoresApp.superficie,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: CoresApp.borda, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+  // ============================================================
+  // ABRIR CADASTRO
+  // ============================================================
+
+  void _openRegisterScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RegisterScreen(
+          onRegisterSuccess: () {
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // MENSAGEM
+  // ============================================================
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Logo grande preenchendo o espaço superior perfeitamente
-                Center(
-                  child: SizedBox(
-                    height: 200,
-                    width: double.infinity,
-                    child: Image.asset(
-                      'assets/images/Logo.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(
-                          Icons.access_time_rounded,
-                          color: CoresApp.primaria,
-                          size: 48,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Bem-vindo de volta',
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Faça login para continuar',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 13,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
+          ),
+          backgroundColor: isError ? CoresApp.erro : CoresApp.sucesso,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+  }
 
-                // Campo de E-mail
-                TextField(
-                  controller: _emailController,
-                  style: const TextStyle(
-                      color: CoresApp.textoPrincipal, fontSize: 14),
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'E-mail',
-                    labelStyle: const TextStyle(
-                        color: CoresApp.textoSecundario, fontSize: 13),
-                    prefixIcon: const Icon(Icons.email_outlined,
-                        color: CoresApp.primaria, size: 20),
-                    filled: true,
-                    fillColor: CoresTelas.campoFormulario,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: CoresApp.borda),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                          color: CoresApp.primaria, width: 1.2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+  // ============================================================
+  // LOGO HORIZONTAL
+  // ============================================================
 
-                // Campo de Senha
-                TextField(
-                  controller: _passwordController,
-                  style: const TextStyle(
-                      color: CoresApp.textoPrincipal, fontSize: 14),
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Senha',
-                    labelStyle: const TextStyle(
-                        color: CoresApp.textoSecundario, fontSize: 13),
-                    prefixIcon: const Icon(Icons.lock_outline,
-                        color: CoresApp.primaria, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                        color: CoresApp.textoFraco,
-                        size: 20,
-                      ),
-                      onPressed: () {
+  Widget _buildHorizontalLogo({
+    required double height,
+  }) {
+    return Image.asset(
+      _logoHorizontal,
+      fit: BoxFit.contain,
+      height: height,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20,
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.access_time_rounded,
+                size: 30,
+                color: CoresApp.primaria,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Gerenciador de Horas e Projetos',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // CHIP DE FUNCIONALIDADE
+  // ============================================================
+
+  Widget _buildFeatureChip({
+    required IconData icon,
+    required String text,
+    required bool compact,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 11 : 14,
+        vertical: compact ? 7 : 9,
+      ),
+      decoration: BoxDecoration(
+        color: CoresApp.superficie.withOpacity(0.75),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: CoresApp.borda.withOpacity(0.8),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: compact ? 14 : 16,
+            color: CoresApp.primaria,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: compact ? 11 : 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // CAMPO DE TEXTO
+  // ============================================================
+
+  InputDecoration _inputDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(
+        icon,
+        size: 20,
+      ),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: CoresTelas.campoFormulario,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: CoresApp.borda,
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: CoresApp.borda,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: CoresApp.primaria,
+          width: 1.5,
+        ),
+      ),
+      labelStyle: TextStyle(
+        color: CoresApp.textoSecundario,
+      ),
+      prefixIconColor: CoresApp.textoSecundario,
+    );
+  }
+
+  // ============================================================
+  // CARD DE LOGIN
+  // ============================================================
+
+  Widget _buildLoginCard({
+    required bool smallHeight,
+  }) {
+    final double cardPadding = smallHeight ? 22 : 30;
+
+    return Container(
+      width: 430,
+      padding: EdgeInsets.all(cardPadding),
+      decoration: BoxDecoration(
+        color: CoresApp.superficie,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: CoresApp.borda,
+        ),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 35,
+            spreadRadius: 0,
+            offset: const Offset(0, 15),
+            color: Colors.black.withOpacity(0.22),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ====================================================
+          // TÍTULO
+          // ====================================================
+
+          Text(
+            'Bem-vindo de volta!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontSize: smallHeight ? 20 : 23,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          Text(
+            'Entre para continuar gerenciando seus projetos.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: smallHeight ? 12 : 13,
+            ),
+          ),
+
+          SizedBox(height: smallHeight ? 18 : 28),
+
+          // ====================================================
+          // E-MAIL
+          // ====================================================
+
+          TextField(
+            controller: _emailController,
+            focusNode: _emailFocusNode,
+            enabled: !_isLoading,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) {
+              _passwordFocusNode.requestFocus();
+            },
+            decoration: _inputDecoration(
+              label: 'E-mail',
+              icon: Icons.email_outlined,
+            ),
+          ),
+
+          SizedBox(height: smallHeight ? 10 : 16),
+
+          // ====================================================
+          // SENHA
+          // ====================================================
+
+          TextField(
+            controller: _passwordController,
+            focusNode: _passwordFocusNode,
+            enabled: !_isLoading,
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              _handleLogin();
+            },
+            decoration: _inputDecoration(
+              label: 'Senha',
+              icon: Icons.lock_outline_rounded,
+              suffixIcon: IconButton(
+                tooltip: _obscurePassword ? 'Mostrar senha' : 'Ocultar senha',
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
+                onPressed: _isLoading
+                    ? null
+                    : () {
                         setState(() {
                           _obscurePassword = !_obscurePassword;
                         });
                       },
-                    ),
-                    filled: true,
-                    fillColor: CoresTelas.campoFormulario,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: CoresApp.borda),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                          color: CoresApp.primaria, width: 1.2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
+              ),
+            ),
+          ),
 
-                // Botão Esqueci a senha
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _resetPassword,
-                    style: TextButton.styleFrom(
-                      foregroundColor: CoresApp.primaria,
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'Esqueceu a senha?',
-                      style: TextStyle(color: CoresApp.primaria, fontSize: 13),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+          SizedBox(height: smallHeight ? 3 : 10),
 
-                // Botão de Entrar
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: CoresApp.primaria,
-                      foregroundColor: CoresApp.fundo,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+          // ====================================================
+          // ESQUECI A SENHA
+          // ====================================================
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _isLoading ? null : _resetPassword,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+              ),
+              child: Text(
+                'Esqueci minha senha',
+                style: TextStyle(
+                  color: CoresApp.primaria,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+
+          SizedBox(height: smallHeight ? 7 : 12),
+
+          // ====================================================
+          // ENTRAR
+          // ====================================================
+
+          SizedBox(
+            height: smallHeight ? 46 : 52,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _handleLogin,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.primaria,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: CoresApp.primaria.withOpacity(0.45),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 21,
+                      height: 21,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
                       ),
-                      elevation: 0,
-                    ),
-                    onPressed: _isLoading ? null : _handleLogin,
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: CoresApp.fundo,
-                            ),
-                          )
-                        : const Text(
-                            'Entrar',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.login_rounded,
+                          size: 19,
+                        ),
+                        SizedBox(width: 9),
+                        Text(
+                          'ENTRAR',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
                           ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+
+          SizedBox(height: smallHeight ? 12 : 22),
+
+          // ====================================================
+          // DIVISOR
+          // ====================================================
+
+          Row(
+            children: [
+              Expanded(
+                child: Divider(
+                  color: CoresApp.borda,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                ),
+                child: Text(
+                  'ou',
+                  style: TextStyle(
+                    color: CoresApp.textoFraco,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(height: 20),
+              ),
+              Expanded(
+                child: Divider(
+                  color: CoresApp.borda,
+                ),
+              ),
+            ],
+          ),
 
-                // Botão para ir para a Tela de Cadastro
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Não tem uma conta?',
-                      style: TextStyle(
-                          color: CoresApp.textoSecundario, fontSize: 13),
+          SizedBox(height: smallHeight ? 10 : 18),
+
+          // ====================================================
+          // CADASTRO
+          // ====================================================
+
+          SizedBox(
+            height: smallHeight ? 42 : 48,
+            child: OutlinedButton(
+              onPressed: _isLoading ? null : _openRegisterScreen,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: CoresApp.textoPrincipal,
+                side: BorderSide(
+                  color: CoresApp.borda,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Criar nova conta',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: CoresApp.fundo,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final double width = constraints.maxWidth;
+          final double height = constraints.maxHeight;
+
+          final bool compact = width < 700;
+
+          // Detecta telas com pouca altura.
+          final bool smallHeight = height < 720;
+
+          // Detecta telas muito pequenas.
+          final bool verySmallHeight = height < 620;
+
+          final double logoHeight = verySmallHeight
+              ? 42
+              : smallHeight
+                  ? 52
+                  : compact
+                      ? 62
+                      : 76;
+
+          return Stack(
+            children: [
+              // ==================================================
+              // FUNDO DECORATIVO
+              // ==================================================
+
+              Positioned(
+                top: -180,
+                left: -150,
+                child: Container(
+                  width: 420,
+                  height: 420,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: CoresApp.primaria.withOpacity(0.06),
+                  ),
+                ),
+              ),
+
+              Positioned(
+                bottom: -220,
+                right: -160,
+                child: Container(
+                  width: 480,
+                  height: 480,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: CoresApp.destaque.withOpacity(0.035),
+                  ),
+                ),
+              ),
+
+              // ==================================================
+              // CONTEÚDO
+              // ==================================================
+
+              Positioned.fill(
+                child: SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 20 : 40,
+                      vertical: verySmallHeight
+                          ? 5
+                          : smallHeight
+                              ? 8
+                              : 18,
                     ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => RegisterScreen(
-                              onRegisterSuccess: () {
-                                Navigator.pop(context);
-                              },
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // ====================================
+                            // LOGO
+                            // ====================================
+
+                            SizedBox(
+                              height: logoHeight,
+                              child: _buildHorizontalLogo(
+                                height: logoHeight,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: const Text(
-                        'Cadastre-se',
-                        style: TextStyle(
-                          color: CoresApp.primaria,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
+
+                            SizedBox(
+                              height: verySmallHeight
+                                  ? 4
+                                  : smallHeight
+                                      ? 7
+                                      : 14,
+                            ),
+
+                            // ====================================
+                            // DESCRIÇÃO
+                            // ====================================
+
+                            if (!verySmallHeight)
+                              Text(
+                                'Organize seu trabalho, acompanhe seus '
+                                'projetos e tenha controle total das suas horas.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: smallHeight ? 11 : 13,
+                                  height: 1.35,
+                                ),
+                              ),
+
+                            SizedBox(
+                              height: verySmallHeight
+                                  ? 5
+                                  : smallHeight
+                                      ? 8
+                                      : 14,
+                            ),
+
+                            // ====================================
+                            // FUNCIONALIDADES
+                            // ====================================
+
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 7,
+                              runSpacing: 6,
+                              children: [
+                                _buildFeatureChip(
+                                  icon: Icons.access_time_rounded,
+                                  text: 'Horas',
+                                  compact: compact || smallHeight,
+                                ),
+                                _buildFeatureChip(
+                                  icon: Icons.folder_open_rounded,
+                                  text: 'Projetos',
+                                  compact: compact || smallHeight,
+                                ),
+                                _buildFeatureChip(
+                                  icon: Icons.bar_chart_rounded,
+                                  text: 'Métricas',
+                                  compact: compact || smallHeight,
+                                ),
+                              ],
+                            ),
+
+                            SizedBox(
+                              height: verySmallHeight
+                                  ? 7
+                                  : smallHeight
+                                      ? 10
+                                      : 20,
+                            ),
+
+                            // ====================================
+                            // CARD
+                            // ====================================
+
+                            _buildLoginCard(
+                              smallHeight: smallHeight || verySmallHeight,
+                            ),
+
+                            SizedBox(
+                              height: verySmallHeight
+                                  ? 3
+                                  : smallHeight
+                                      ? 6
+                                      : 12,
+                            ),
+
+                            // ====================================
+                            // RODAPÉ
+                            // ====================================
+
+                            Text(
+                              'Gestão de Horas e Projetos',
+                              style: TextStyle(
+                                color: CoresApp.textoFraco,
+                                fontSize: verySmallHeight ? 8 : 10,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ],
-            ),
-          ),
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

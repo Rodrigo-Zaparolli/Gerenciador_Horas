@@ -17,6 +17,7 @@ class ProjectFormDialog extends StatefulWidget {
     super.key,
     required this.workFormats,
     this.projectToEdit,
+    Object? firebaseService,
   });
 
   @override

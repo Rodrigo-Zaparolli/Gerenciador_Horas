@@ -34,6 +34,8 @@ class TimeLog {
     this.projectId,
   });
 
+  get dateFormatted => null;
+
   set setDurationMinutes(int minutes) {
     durationMinutes = minutes;
   }

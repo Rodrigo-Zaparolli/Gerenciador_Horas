@@ -3,21 +3,16 @@ import 'package:flutter/material.dart';
 
 import 'package:gerenciador_horas/app/app.dart';
 import 'package:gerenciador_horas/firebase_options.dart';
+import 'package:gerenciador_horas/core/platform/platform_init.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ============================================================
-  // INICIALIZAÇÃO DO FIREBASE
-  // ============================================================
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // ============================================================
-  // INICIA O APLICATIVO
-  // ============================================================
+  await initializePlatform();
 
   runApp(const GerenciadorHorasApp());
 }

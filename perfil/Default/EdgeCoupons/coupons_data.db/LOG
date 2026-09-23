@@ -1,0 +1,15 @@
+2026/09/18-09:31:49.101 1048 Reusing MANIFEST D:\APP\gerenciador_horas\perfil\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/18-09:31:49.102 1048 Recovering log #29
+2026/09/18-09:31:49.102 1048 Reusing old log D:\APP\gerenciador_horas\perfil\Default\EdgeCoupons/coupons_data.db/000029.log 
+2026/09/18-09:31:50.046 3f94 Level-0 table #33: started
+2026/09/18-09:31:50.060 3f94 Level-0 table #33: 683376 bytes OK
+2026/09/18-09:31:50.062 3f94 Delete type=0 #29
+2026/09/18-09:31:50.063 3f94 Compacting 4@0 + 1@1 files
+2026/09/18-09:31:50.075 3f94 Generated table #34@0: 3 keys, 683376 bytes
+2026/09/18-09:31:50.075 3f94 Compacted 4@0 + 1@1 files => 683376 bytes
+2026/09/18-09:31:50.077 3f94 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/09/18-09:31:50.078 3f94 Delete type=2 #21
+2026/09/18-09:31:50.078 3f94 Delete type=2 #24
+2026/09/18-09:31:50.078 3f94 Delete type=2 #27
+2026/09/18-09:31:50.078 3f94 Delete type=2 #30
+2026/09/18-09:31:50.078 3f94 Delete type=2 #33

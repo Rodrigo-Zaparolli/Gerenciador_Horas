@@ -26,4 +26,6 @@ class AppTheme {
       useMaterial3: true,
     );
   }
+
+  static Color? get backgroundColor => null;
 }

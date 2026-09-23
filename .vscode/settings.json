@@ -2,5 +2,6 @@
     "workbench.tree.renderIndentGuides": "onHover",
     "editor.guides.highlightActiveIndentation": false,
     "editor.guides.indentation": false,
-    "editor.stickyScroll.enabled": false
+    "editor.stickyScroll.enabled": false,
+    "C_Cpp.errorSquiggles": "enabled"
 }

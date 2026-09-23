@@ -1,0 +1,71 @@
+Portal do Atendente
+Sem nome
+Nova Aba ...
+Gerenciar ...
+     
+0
+ Solicitante
+ Minha Conta
+ Sobre
+ Sair
+Usuário: rodrigo.zaparolli@cyncly.com
+     
+Solicitaçao
+Departamento  	
+ 	Sol.		Prioridade 		Situação Trabalho	Tipo	Data Sol.	Hora Sol.	Departamento	Solicitante	Assunto da Solicitação	Equipe de Trabalho	Atendente	Tipo de Trabalho	Sla Data Resposta	Sla Hora Resposta	Sla Data Solucao	Sla Hora Solucao
+	
+Departamento: A Q M MOVEIS PROJETADOS LTDATotal de Registros: 3
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: B R CANTANHEDE MOVEIS, PORTAS E ACESSORIOS LTDATotal de Registros: 3
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+ 	2250455		1-Normal		Parada	Projeto	28/11/2025	23:26	B R CANTANHEDE MOVEIS, PORTAS E ACESSORIOS LTDA	Benedito	Promob Studio Start BR Cantanhede Moveis - Implantação Plugins	Consultoria Promob	Rodrigo Zaparolli	Implantação Plugin (OH)	 	 	 	 
+ 	2260860		1-Normal		Parada	Projeto	01/07/2026	15:27	B R CANTANHEDE MOVEIS, PORTAS E ACESSORIOS LTDA	Benedito	Revitalização de base - Enterprise Produção Completa - Promob BR Cantanhede Moveis	Consultoria Promob	Rodrigo Zaparolli	Implantação (OH)	 	 	 	 
+ 	2260860		1-Normal		Encaminhada	Projeto	01/07/2026	15:27	B R CANTANHEDE MOVEIS, PORTAS E ACESSORIOS LTDA	Benedito	Revitalização de base - Enterprise Produção Completa - Promob BR Cantanhede Moveis	Consultoria Promob	Rodrigo Zaparolli	Pós Implantação (OH)	 	 	 	 
+	
+Departamento: BORTOLINI INDUSTRIA DE MOVEIS LTDATotal de Registros: 1
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: CARAFFINI MOVEIS LTDATotal de Registros: 1
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: CLS EAGLE ADMINISTRACAO DE BENS PROPRIOS LTDATotal de Registros: 2
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+ 	2260301		1-Normal		Parada	Projeto	19/06/2026	14:46	CLS EAGLE ADMINISTRACAO DE BENS PROPRIOS LTDA	Celso los	Enterprise Produção Completa (CLS EAGLE) - Desenvolvimento de Plugin Centro de Furação Defender Drill6F 1MF + 1ATC	Consultoria Promob	Rodrigo Zaparolli	Desenvolvimento (OH)	 	 	 	 
+ 	2260301		1-Normal		Parada	Projeto	19/06/2026	14:46	CLS EAGLE ADMINISTRACAO DE BENS PROPRIOS LTDA	Celso los	Enterprise Produção Completa (CLS EAGLE) - Desenvolvimento de Plugin Centro de Furação Defender Drill6F 1MF + 1ATC	Consultoria Promob	Rodrigo Zaparolli	Implantação Plugin (OH)	 	 	 	 
+	
+Departamento: COLLA & CIA LTDATotal de Registros: 2
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: EDCASA DECOR ARTIGOS PARA DECORACAO LTDATotal de Registros: 5
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: EMPIRICA ASSESSORIA E TREINAMENTOS LTDATotal de Registros: 1
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: Filipe NunesTotal de Registros: 1
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+ 	2253817		1-Normal		Parada	Projeto	11/02/2026	16:22	Filipe Nunes	Filipe Nunes	Promob Studio Start Woody	Consultoria Promob	Rodrigo Zaparolli	Desenvolvimento (OH)	 	 	 	 
+	
+Departamento: G. E. PLANEJADOS LTDATotal de Registros: 2
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: KAZZA COMERCIO E SERVICOS LTDATotal de Registros: 1
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: MARCENARIA FERNANDES LTDATotal de Registros: 3
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: MESARO MOVEIS PLANEJADOS LTDATotal de Registros: 1
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: ORQUINARE INDUSTRIA E COMERCIO DE MOVEIS LTDATotal de Registros: 2
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+	
+Departamento: PROMOB SOFTWARES S.A.Total de Registros: 2
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 
+ 	2263797		1-Normal		Parada	Projeto	01/09/2026	08:00	PROMOB SOFTWARES S.A.	Cristina Baldin	Atividades Internas – Setembro/2026	Consultoria Promob	Rodrigo Zaparolli	PS - Atividades Internas	 	 	 	 
+ 	2263797		1-Normal		Parada	Projeto	01/09/2026	08:00	PROMOB SOFTWARES S.A.	Cristina Baldin	Atividades Internas – Setembro/2026	Consultoria Promob	Rodrigo Zaparolli	PS - Reuniões não cobráveis	 	 	 	 
+1
+2
+ Página 1 de 2, Registros 1 a 30, Total: 32.

@@ -19,30 +19,54 @@ class TimeLogStore extends ChangeNotifier {
   String? get _userId => _auth.currentUser?.uid;
 
   // ============================================================
+  // AUXILIAR: IDENTIFICA O ID DO PROJETO DE UM LOG
+  // ============================================================
+
+  String _getProjectIdFromLog(TimeLog log) {
+    final targetId = log.targetId.trim();
+
+    if (targetId.isEmpty) {
+      return '';
+    }
+
+    return targetId.split('_').first.trim();
+  }
+
+  // ============================================================
   // AUXILIAR: CONVERTE "HH:MM" PARA MINUTOS
   // ============================================================
+
   int _timeToMinutes(String timeStr) {
     try {
       final parts = timeStr.trim().split(':');
+
       if (parts.length == 2) {
         final hours = int.tryParse(parts[0]) ?? 0;
         final minutes = int.tryParse(parts[1]) ?? 0;
+
         return (hours * 60) + minutes;
-      } else if (parts.length == 1) {
+      }
+
+      if (parts.length == 1) {
         final val = double.tryParse(parts[0].replaceAll(',', '.')) ?? 0.0;
+
         return (val * 60).round();
       }
     } catch (_) {}
+
     return 0;
   }
 
   // ============================================================
-  // AUXILIAR: CONVERTE MINUTOS PARA FORMATO "HH:MM"
+  // AUXILIAR: CONVERTE MINUTOS PARA "HH:MM"
   // ============================================================
+
   String _minutesToTime(int totalMinutes) {
     final hours = totalMinutes ~/ 60;
     final minutes = totalMinutes % 60;
-    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}';
   }
 
   // ============================================================
@@ -51,7 +75,10 @@ class TimeLogStore extends ChangeNotifier {
 
   Future<Map<String, dynamic>?> carregarMetasAnuais(int ano) async {
     final userId = _userId;
-    if (userId == null || userId.trim().isEmpty) return null;
+
+    if (userId == null || userId.trim().isEmpty) {
+      return null;
+    }
 
     try {
       final doc = await _firestore
@@ -60,6 +87,7 @@ class TimeLogStore extends ChangeNotifier {
           .collection('metrics')
           .doc('yearly_$ano')
           .get();
+
       return doc.data();
     } catch (e) {
       debugPrint('Erro ao carregar metas anuais: $e');
@@ -67,9 +95,16 @@ class TimeLogStore extends ChangeNotifier {
     }
   }
 
-  Future<void> salvarMetaMensal(int ano, String mesIndex, String valor) async {
+  Future<void> salvarMetaMensal(
+    int ano,
+    String mesIndex,
+    String valor,
+  ) async {
     final userId = _userId;
-    if (userId == null || userId.trim().isEmpty) return;
+
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
 
     try {
       final docRef = _firestore
@@ -79,6 +114,7 @@ class TimeLogStore extends ChangeNotifier {
           .doc('yearly_$ano');
 
       final docSnapshot = await docRef.get();
+
       final Map<String, dynamic> dadosAtuais = docSnapshot.data() ?? {};
 
       dadosAtuais[mesIndex] = valor;
@@ -98,17 +134,6 @@ class TimeLogStore extends ChangeNotifier {
         '9',
         '10',
         '11',
-        '1',
-        '2',
-        '3',
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '10',
-        '11',
         '12',
         'janeiro',
         'fevereiro',
@@ -121,32 +146,41 @@ class TimeLogStore extends ChangeNotifier {
         'setembro',
         'outubro',
         'novembro',
-        'dezembro'
+        'dezembro',
       ];
 
       dadosAtuais.forEach((key, val) {
         if (mesesValidos.contains(key.toLowerCase())) {
           final timeStr = val?.toString() ?? '00:00';
+
           totalMinutesSum += _timeToMinutes(timeStr);
         }
       });
 
       final String totalFormatado = _minutesToTime(totalMinutesSum);
 
-      await docRef.set({
-        mesIndex: valor,
-        'totalAnual': totalFormatado,
-      }, SetOptions(merge: true));
+      await docRef.set(
+        {
+          mesIndex: valor,
+          'totalAnual': totalFormatado,
+        },
+        SetOptions(merge: true),
+      );
 
       notifyListeners();
     } catch (e) {
-      debugPrint('Erro ao salvar meta mensal e atualizar total: $e');
+      debugPrint(
+        'Erro ao salvar meta mensal e atualizar total: $e',
+      );
     }
   }
 
   Future<void> salvarMetasAnuaisCompleta(
-      int ano, Map<String, dynamic> metasMensais) async {
+    int ano,
+    Map<String, dynamic> metasMensais,
+  ) async {
     final userId = _userId;
+
     if (userId == null || userId.trim().isEmpty) {
       throw Exception('Usuário não autenticado.');
     }
@@ -159,6 +193,7 @@ class TimeLogStore extends ChangeNotifier {
           .doc('yearly_$ano');
 
       int totalMinutesSum = 0;
+
       final List<String> mesesValidos = [
         '0',
         '1',
@@ -172,17 +207,6 @@ class TimeLogStore extends ChangeNotifier {
         '9',
         '10',
         '11',
-        '1',
-        '2',
-        '3',
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '10',
-        '11',
         '12',
         'janeiro',
         'fevereiro',
@@ -195,12 +219,13 @@ class TimeLogStore extends ChangeNotifier {
         'setembro',
         'outubro',
         'novembro',
-        'dezembro'
+        'dezembro',
       ];
 
       metasMensais.forEach((key, val) {
         if (mesesValidos.contains(key.toLowerCase())) {
           final timeStr = val?.toString() ?? '00:00';
+
           totalMinutesSum += _timeToMinutes(timeStr);
         }
       });
@@ -213,17 +238,135 @@ class TimeLogStore extends ChangeNotifier {
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      await docRef.set(dadosCompletos, SetOptions(merge: true));
+      await docRef.set(
+        dadosCompletos,
+        SetOptions(merge: true),
+      );
 
       notifyListeners();
     } catch (e) {
-      debugPrint('Erro ao salvar o conjunto completo de métricas anuais: $e');
+      debugPrint(
+        'Erro ao salvar o conjunto completo de métricas anuais: $e',
+      );
+
       rethrow;
     }
   }
 
   // ============================================================
+  // CONVERTER DOCUMENTO FIRESTORE EM TIMELOG
+  // ============================================================
+
+  TimeLog _timeLogFromDocument(
+    String projectId,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+
+    DateTime date = DateTime.now();
+
+    final dynamic dateValue = data['date'];
+    final dynamic createdAt = data['createdAt'];
+
+    if (dateValue is Timestamp) {
+      date = dateValue.toDate();
+    } else if (createdAt is Timestamp) {
+      date = createdAt.toDate();
+    }
+
+    double? hours;
+
+    final dynamic rawHours = data['hours'];
+
+    if (rawHours is num) {
+      hours = rawHours.toDouble();
+    } else {
+      hours = double.tryParse(
+        rawHours?.toString() ?? '',
+      );
+    }
+
+    return TimeLog(
+      id: doc.id,
+      targetId: data['targetId']?.toString() ?? projectId,
+      hours: hours,
+      description: data['description']?.toString(),
+      isRegistered: data['isRegistered'] == true,
+      date: date,
+      startTime: data['startTime']?.toString() ?? '',
+      endTime: data['endTime']?.toString() ?? '',
+      durationFormatted: data['durationFormatted']?.toString() ?? '',
+      projectName: data['projectName']?.toString(),
+      taskName: data['taskName']?.toString(),
+      typeHs: data['typeHs']?.toString(),
+    );
+  }
+
+  // ============================================================
+  // BUSCAR TAMBÉM OS PROJETOS FINALIZADOS
+  //
+  // IMPORTANTE:
+  //
+  // O projeto finalizado é movido para:
+  //
+  // users/{uid}/completed_projects/{id}
+  //
+  // Mas os time_logs continuam em:
+  //
+  // users/{uid}/projects/{id}/time_logs
+  //
+  // Portanto precisamos descobrir os IDs dos projetos
+  // finalizados e continuar lendo os time_logs no caminho
+  // original.
+  // ============================================================
+
+  Future<Set<String>> _getCompletedProjectIds() async {
+    final userId = _userId;
+
+    if (userId == null || userId.trim().isEmpty) {
+      return <String>{};
+    }
+
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('completed_projects')
+          .get();
+
+      return snapshot.docs
+          .map((doc) {
+            final data = doc.data();
+
+            final String id = data['id']?.toString().trim() ?? '';
+
+            if (id.isNotEmpty) {
+              return id;
+            }
+
+            return doc.id.trim();
+          })
+          .where((id) => id.isNotEmpty)
+          .toSet();
+    } catch (e) {
+      debugPrint(
+        'TimeLogStore: erro ao buscar projetos finalizados: $e',
+      );
+
+      return <String>{};
+    }
+  }
+
+  // ============================================================
   // INICIAR ESCUTA DOS LOGS DOS PROJETOS
+  //
+  // AGORA ESCUTA:
+  //
+  // 1. Projetos ativos
+  // 2. Projetos finalizados
+  //
+  // Isso faz com que os horários não desapareçam quando o
+  // projeto é movido para completed_projects.
   // ============================================================
 
   Future<void> startListeningToProjects(
@@ -234,24 +377,40 @@ class TimeLogStore extends ChangeNotifier {
     final userId = _userId;
 
     if (userId == null || userId.trim().isEmpty) {
-      debugPrint('TimeLogStore: usuário não autenticado.');
+      debugPrint(
+        'TimeLogStore: usuário não autenticado.',
+      );
       return;
     }
 
-    for (final projectId in projectIds) {
-      final id = projectId.trim();
+    final Set<String> ids =
+        projectIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
 
-      if (id.isEmpty) {
-        continue;
-      }
+    // ----------------------------------------------------------
+    // ADICIONA PROJETOS FINALIZADOS
+    // ----------------------------------------------------------
 
+    final completedProjectIds = await _getCompletedProjectIds();
+
+    ids.addAll(completedProjectIds);
+
+    debugPrint(
+      'TimeLogStore: iniciando escuta de '
+      '${ids.length} projetos '
+      '(${completedProjectIds.length} finalizados).',
+    );
+
+    // ----------------------------------------------------------
+    // CRIA OS LISTENERS
+    // ----------------------------------------------------------
+
+    for (final id in ids) {
       final subscription = _firestore
           .collection('users')
           .doc(userId)
           .collection('projects')
           .doc(id)
           .collection('time_logs')
-          .orderBy('createdAt', descending: true)
           .snapshots()
           .listen(
         (snapshot) {
@@ -261,7 +420,9 @@ class TimeLogStore extends ChangeNotifier {
           );
         },
         onError: (error) {
-          debugPrint('Erro ao escutar logs do projeto $id: $error');
+          debugPrint(
+            'Erro ao escutar logs do projeto $id: $error',
+          );
         },
       );
 
@@ -279,52 +440,24 @@ class TimeLogStore extends ChangeNotifier {
   }) {
     final otherLogs = _logs.where(
       (log) {
-        final baseProjectId = log.targetId.split('_').first;
+        final baseProjectId = _getProjectIdFromLog(log);
+
         return baseProjectId != projectId;
       },
     ).toList();
 
-    final projectLogs = snapshot.docs.map(
-      (doc) {
-        final data = doc.data();
+    final projectLogs = snapshot.docs
+        .map(
+          (doc) => _timeLogFromDocument(
+            projectId,
+            doc,
+          ),
+        )
+        .toList();
 
-        DateTime date = DateTime.now();
-
-        final dynamic dateValue = data['date'];
-        final dynamic createdAt = data['createdAt'];
-
-        if (dateValue is Timestamp) {
-          date = dateValue.toDate();
-        } else if (createdAt is Timestamp) {
-          date = createdAt.toDate();
-        }
-
-        double? hours;
-
-        final dynamic rawHours = data['hours'];
-
-        if (rawHours is num) {
-          hours = rawHours.toDouble();
-        } else {
-          hours = double.tryParse(rawHours?.toString() ?? '');
-        }
-
-        return TimeLog(
-          id: doc.id,
-          targetId: data['targetId']?.toString() ?? projectId,
-          hours: hours,
-          description: data['description']?.toString(),
-          isRegistered: data['isRegistered'] == true,
-          date: date,
-          startTime: data['startTime']?.toString() ?? '',
-          endTime: data['endTime']?.toString() ?? '',
-          durationFormatted: data['durationFormatted']?.toString() ?? '',
-          projectName: data['projectName']?.toString(),
-          taskName: data['taskName']?.toString(),
-          typeHs: data['typeHs']?.toString(),
-        );
-      },
-    ).toList();
+    projectLogs.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
 
     _logs = [
       ...otherLogs,
@@ -336,6 +469,66 @@ class TimeLogStore extends ChangeNotifier {
     );
 
     notifyListeners();
+  }
+
+  // ============================================================
+  // CARREGAR LOGS DE UM PROJETO IMEDIATAMENTE
+  // ============================================================
+
+  Future<void> _loadProjectLogsIntoMemory(
+    String projectId,
+  ) async {
+    final userId = _userId;
+
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+
+    final id = projectId.trim();
+
+    if (id.isEmpty) {
+      return;
+    }
+
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('projects')
+          .doc(id)
+          .collection('time_logs')
+          .get();
+
+      final projectLogs = snapshot.docs
+          .map(
+            (doc) => _timeLogFromDocument(
+              id,
+              doc,
+            ),
+          )
+          .toList();
+
+      final otherLogs = _logs.where(
+        (log) {
+          return _getProjectIdFromLog(log) != id;
+        },
+      ).toList();
+
+      _logs = [
+        ...otherLogs,
+        ...projectLogs,
+      ];
+
+      _logs.sort(
+        (a, b) => b.date.compareTo(a.date),
+      );
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint(
+        'Erro ao carregar logs do projeto $id: $e',
+      );
+    }
   }
 
   // ============================================================
@@ -352,51 +545,23 @@ class TimeLogStore extends ChangeNotifier {
         .collection('projects')
         .doc(projectId)
         .collection('time_logs')
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
       (snapshot) {
-        return snapshot.docs.map(
-          (doc) {
-            final data = doc.data();
+        final logs = snapshot.docs
+            .map(
+              (doc) => _timeLogFromDocument(
+                projectId,
+                doc,
+              ),
+            )
+            .toList();
 
-            DateTime date = DateTime.now();
+        logs.sort(
+          (a, b) => b.date.compareTo(a.date),
+        );
 
-            final dynamic dateValue = data['date'];
-            final dynamic createdAt = data['createdAt'];
-
-            if (dateValue is Timestamp) {
-              date = dateValue.toDate();
-            } else if (createdAt is Timestamp) {
-              date = createdAt.toDate();
-            }
-
-            double? hours;
-
-            final dynamic rawHours = data['hours'];
-
-            if (rawHours is num) {
-              hours = rawHours.toDouble();
-            } else {
-              hours = double.tryParse(rawHours?.toString() ?? '');
-            }
-
-            return TimeLog(
-              id: doc.id,
-              targetId: data['targetId']?.toString() ?? projectId,
-              hours: hours,
-              description: data['description']?.toString(),
-              isRegistered: data['isRegistered'] == true,
-              date: date,
-              startTime: data['startTime']?.toString() ?? '',
-              endTime: data['endTime']?.toString() ?? '',
-              durationFormatted: data['durationFormatted']?.toString() ?? '',
-              projectName: data['projectName']?.toString(),
-              taskName: data['taskName']?.toString(),
-              typeHs: data['typeHs']?.toString(),
-            );
-          },
-        ).toList();
+        return logs;
       },
     );
   }
@@ -456,7 +621,7 @@ class TimeLogStore extends ChangeNotifier {
   }
 
   // ============================================================
-  // CADASTRAR / REGISTRAR (CORRIGIDO)
+  // CADASTRAR / REGISTRAR
   // ============================================================
 
   Future<void> register(TimeLog log) async {
@@ -466,17 +631,25 @@ class TimeLogStore extends ChangeNotifier {
       throw Exception('Usuário não autenticado.');
     }
 
-    final projectId = log.targetId.split('_').first.trim();
+    final projectId = _getProjectIdFromLog(log);
 
     if (projectId.isEmpty) {
-      throw Exception('Não foi possível identificar o projeto do apontamento.');
+      throw Exception(
+        'Não foi possível identificar o projeto do apontamento.',
+      );
     }
 
     final logId = log.id.trim();
+
     String targetLogId = logId;
 
     if (logId.isEmpty) {
-      targetLogId = await addFirebaseLog(projectId, log);
+      log.isRegistered = true;
+
+      targetLogId = await addFirebaseLog(
+        projectId,
+        log,
+      );
     } else {
       final docRef = _firestore
           .collection('users')
@@ -489,7 +662,12 @@ class TimeLogStore extends ChangeNotifier {
       final snapshot = await docRef.get();
 
       if (!snapshot.exists) {
-        targetLogId = await addFirebaseLog(projectId, log);
+        log.isRegistered = true;
+
+        targetLogId = await addFirebaseLog(
+          projectId,
+          log,
+        );
       } else {
         await docRef.set(
           {
@@ -501,20 +679,121 @@ class TimeLogStore extends ChangeNotifier {
       }
     }
 
-    // Atualiza de forma segura na memória local e notifica a UI
-    final index = _logs.indexWhere((item) => item.id == targetLogId);
+    final index = _logs.indexWhere(
+      (item) => item.id == targetLogId,
+    );
+
     if (index != -1) {
-      // Cria uma nova instância ou altera a flag e substitui na lista
-      final updatedLog = _logs[index];
-      updatedLog.isRegistered = true;
-      _logs[index] = updatedLog;
+      _logs[index].isRegistered = true;
     } else {
       log.isRegistered = true;
       _logs.add(log);
     }
 
-    _logs.sort((a, b) => b.date.compareTo(a.date));
+    _logs.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
+
     notifyListeners();
+  }
+
+  // ============================================================
+  // REGISTRAR TODOS OS APONTAMENTOS DO PROJETO
+  // ============================================================
+
+  Future<void> registerProjectLogs(
+    String projectId,
+  ) async {
+    final userId = _userId;
+
+    if (userId == null || userId.trim().isEmpty) {
+      throw Exception('Usuário não autenticado.');
+    }
+
+    final id = projectId.trim();
+
+    if (id.isEmpty) {
+      throw Exception('ID do projeto inválido.');
+    }
+
+    final collection = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('projects')
+        .doc(id)
+        .collection('time_logs');
+
+    // ----------------------------------------------------------
+    // 1. BUSCA TODOS OS LOGS
+    // ----------------------------------------------------------
+
+    final snapshot = await collection.get();
+
+    debugPrint(
+      'TimeLogStore: projeto $id possui '
+      '${snapshot.docs.length} apontamentos.',
+    );
+
+    // ----------------------------------------------------------
+    // 2. REGISTRA OS LOGS PENDENTES
+    // ----------------------------------------------------------
+
+    final pending = snapshot.docs.where(
+      (doc) {
+        final data = doc.data();
+
+        return data['isRegistered'] != true;
+      },
+    ).toList();
+
+    if (pending.isNotEmpty) {
+      final batch = _firestore.batch();
+
+      for (final doc in pending) {
+        batch.set(
+          doc.reference,
+          {
+            'isRegistered': true,
+            'registeredAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      await batch.commit();
+
+      debugPrint(
+        'TimeLogStore: ${pending.length} '
+        'apontamentos registrados no projeto $id.',
+      );
+    }
+
+    // ----------------------------------------------------------
+    // 3. CARREGA NOVAMENTE PARA A MEMÓRIA
+    // ----------------------------------------------------------
+
+    await _loadProjectLogsIntoMemory(id);
+
+    // ----------------------------------------------------------
+    // 4. GARANTE REGISTRO LOCAL
+    // ----------------------------------------------------------
+
+    for (final log in _logs) {
+      if (_getProjectIdFromLog(log) == id) {
+        log.isRegistered = true;
+      }
+    }
+
+    _logs.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
+
+    notifyListeners();
+
+    debugPrint(
+      'TimeLogStore: finalização do projeto $id concluída. '
+      'Todos os horários estão registrados.',
+    );
   }
 
   // ============================================================
@@ -530,14 +809,16 @@ class TimeLogStore extends ChangeNotifier {
       throw Exception('Usuário não autenticado.');
     }
 
-    final projectId = log.targetId.split('_').first.trim();
+    final projectId = _getProjectIdFromLog(log);
 
     if (projectId.isEmpty) {
       throw Exception('Projeto inválido.');
     }
 
     if (log.id.trim().isEmpty) {
-      throw Exception('ID do apontamento inválido.');
+      throw Exception(
+        'ID do apontamento inválido.',
+      );
     }
 
     await _firestore
@@ -582,14 +863,16 @@ class TimeLogStore extends ChangeNotifier {
       throw Exception('Usuário não autenticado.');
     }
 
-    final projectId = log.targetId.split('_').first.trim();
+    final projectId = _getProjectIdFromLog(log);
 
     if (projectId.isEmpty) {
       throw Exception('Projeto inválido.');
     }
 
     if (log.id.trim().isEmpty) {
-      throw Exception('ID do apontamento inválido.');
+      throw Exception(
+        'ID do apontamento inválido.',
+      );
     }
 
     await _firestore
@@ -678,6 +961,10 @@ class TimeLogStore extends ChangeNotifier {
 
     super.dispose();
   }
+
+  // ============================================================
+  // COMPATIBILIDADE
+  // ============================================================
 
   void deleteLog(String s) {}
 

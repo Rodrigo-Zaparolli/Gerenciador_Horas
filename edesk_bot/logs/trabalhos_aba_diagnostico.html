@@ -1,0 +1,130 @@
+<div id="cph1_rpvTrabalhos" class="rmpView">
+			
+                            <table class="c1">
+                                <tbody><tr>
+                                    <td>
+                                        <table>
+                                            <tbody><tr>
+                                                <td class="dir Larg5perc">
+                                                    <span id="cph1_lblSitTra">Situação</span></td>
+                                                <td class="Larg5perc">
+                                                    <select name="ctl00$cph1$ddlSitTra" id="cph1_ddlSitTra" class="txtDesDdl" style="width:240px;">
+				<option value="">Todas as situações</option>
+				<option value="1">Novos</option>
+				<option value="2">Em Andamento</option>
+				<option value="3">Encaminhados</option>
+				<option value="5">Pausados</option>
+				<option value="7">Concluídos</option>
+				<option value="11">Aguardando solicitante</option>
+				<option value="12">Aguardando atendimento</option>
+				<option value="13">Aguardando outra área</option>
+				<option value="14">Aprovação</option>
+				<option selected="selected" value="102">Situações Ativas Exceto Concluídas</option>
+
+			</select></td>
+                                                <td class="dir Larg8perc">
+                                                    <span id="cph1_lblAteTra">Atendente</span></td>
+                                                <td class="Larg5perc">
+                                                    <table class="jmTab jmTx txlDes" id="cph1_txlAteTra" style="width:300px;">
+				<tbody><tr>
+					<td class="eLo2"><input name="ctl00$cph1$txlAteTra$txtDes" type="text" value="Rodrigo Zaparolli" maxlength="50" id="cph1_txlAteTra_txtDes" class="txtInt " onkeypress="if (!window.__cfRLUnblockHandlers) return false; return JmLocEnter(event, 'ctl00$cph1$txlAteTra$bt1');"></td><td class="eLo4"><button class="eBl CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$txlAteTra$bt1','')" id="ctl00$cph1$txlAteTra$bt1"><i class="i-s"></i></button></td><td class="eLo4"><button class="eBl CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$txlAteTra$bt3','')"><i class="i-e"></i></button></td>
+				</tr>
+			</tbody></table>
+                                                </td>
+                                                <td class="Larg5perc">
+                                                    <button class="eBt eBn CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$btnFilTra$b1','')" id="cph1_btnFilTra" style="height:27px;"><i class="i-Localizar"></i><span> Localizar</span></button>
+                                                    </td>
+                                                <td>
+                                                    <table id="cph1_rblTipGrid">
+				<tbody><tr>
+					<td><input id="cph1_rblTipGrid_0" type="radio" name="ctl00$cph1$rblTipGrid" value="0" checked="checked"><label for="cph1_rblTipGrid_0">Grid</label></td><td><input id="cph1_rblTipGrid_1" type="radio" name="ctl00$cph1$rblTipGrid" value="1" onclick="if (!window.__cfRLUnblockHandlers) return false; javascript:setTimeout('__doPostBack(\'ctl00$cph1$rblTipGrid$1\',\'\')', 0)"><label for="cph1_rblTipGrid_1">Kanban</label></td>
+				</tr>
+			</tbody></table>
+                                                </td>
+                                                <td>
+                                                    
+                                                </td>
+                                            </tr>
+                                        </tbody></table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div id="cph1_divAbatrabalhos" style="width: 100%" class="CorFundoTela AlturaDivTabTra">
+                                            <div>
+				<table class="gvwTrabalhos" cellspacing="0" id="cph1_gvwTra" style="width:100%;border-collapse:collapse;">
+					<tbody><tr>
+						<th scope="col" style="width:120px;">Atalhos</th><th scope="col">&nbsp;</th><th scope="col" style="width:10px;">&nbsp;</th><th scope="col">Situação</th><th scope="col">Fase</th><th scope="col">Ordem</th><th scope="col">Tipo de Trabalho</th><th scope="col">Equipe de Trabalho</th><th scope="col">Atendente</th><th scope="col">Início</th><th scope="col">Término</th><th scope="col">Tp. Trab</th><th scope="col">Tp. Estimado</th><th scope="col">Agendamento</th><th scope="col">Assunto</th><th scope="col">&nbsp;</th>
+					</tr><tr>
+						<td>
+                                                            <button class="eBte eB CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnGtrIni$b1','')" id="cph1_gvwTra_btnGtrIni_0" title="Iniciar" style="width:30px;"><i class="i-Iniciar"></i></button>
+                                                            
+                                                            
+                                                            <button class="eBte eB CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnGtrTer$b1','')" id="cph1_gvwTra_btnGtrTer_0" title="Terminar" style="width:30px;"><i class="i-Terminar"></i></button>
+                                                            
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">18</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblCor_0" class="StatusCor" style="display:inline-block;color:Red;background-color:Red;height:33px;">I</span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">
+                                                            <img id="cph1_gvwTra_imgSit_0" src="../Content/Img/sit4.png" style="height:10px;width:10px;"><span id="cph1_gvwTra_lblSitDes_0">Parada</span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">&nbsp;</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">18</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">PS - Atividades Internas</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">Consultoria Promob</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">Rodrigo Zaparolli</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblDatIni_0">02/09/2026 08:00</span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblDatTer_0"></span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl02$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblTmpTot_0"></span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_lblTmpEst_0">00:00</span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_Label1_0"></span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_lblAssTra_0">PS - Atividades Internas</span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_lblIdConvite_0"></span>
+                                                        </td>
+					</tr><tr>
+						<td>
+                                                            <button class="eBte eB CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnGtrIni$b1','')" id="cph1_gvwTra_btnGtrIni_1" title="Iniciar" style="width:30px;"><i class="i-Iniciar"></i></button>
+                                                            
+                                                            
+                                                            <button class="eBte eB CBT" type="button" onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnGtrTer$b1','')" id="cph1_gvwTra_btnGtrTer_1" title="Terminar" style="width:30px;"><i class="i-Terminar"></i></button>
+                                                            
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">31</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblCor_1" class="StatusCor" style="display:inline-block;color:Red;background-color:Red;height:33px;">I</span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">
+                                                            <img id="cph1_gvwTra_imgSit_1" src="../Content/Img/sit4.png" style="height:10px;width:10px;"><span id="cph1_gvwTra_lblSitDes_1">Parada</span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">&nbsp;</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">31</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">PS - Reuniões não cobráveis</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">Consultoria Promob</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">Rodrigo Zaparolli</td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblDatIni_1">09/09/2026 08:00</span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblDatTer_1"></span>
+                                                        </td><td onclick="if (!window.__cfRLUnblockHandlers) return false; __doPostBack('ctl00$cph1$gvwTra$ctl03$btnSelTra','')">
+                                                            <span id="cph1_gvwTra_lblTmpTot_1"></span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_lblTmpEst_1">00:00</span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_Label1_1"></span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_lblAssTra_1">Reuniões internas</span>
+                                                        </td><td>
+                                                            <span id="cph1_gvwTra_lblIdConvite_1"></span>
+                                                        </td>
+					</tr>
+				</tbody></table>
+			</div>
+                                            
+                                            <table class="c1">
+                                                <tbody><tr>
+                                                    <td class="dir" style="padding-right: 10px;">
+                                                        <span id="cph1_lblTotTra" style="font-weight:bold;"></span></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="dir">
+                                                        
+                                                    </td>
+                                                </tr>
+                                            </tbody></table>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody></table>
+                        
+		</div>

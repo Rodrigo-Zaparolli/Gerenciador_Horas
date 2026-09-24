@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 2026/09/23-13:27:58.663 44c0 Reusing MANIFEST D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Extension State/MANIFEST-000001
 2026/09/23-13:27:58.664 44c0 Recovering log #3
 2026/09/23-13:27:58.664 44c0 Reusing old log D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Extension State/000003.log 
+=======
+2026/09/23-18:33:57.747 4014 Reusing MANIFEST D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Extension State/MANIFEST-000001
+2026/09/23-18:33:57.762 4014 Recovering log #3
+2026/09/23-18:33:57.763 4014 Reusing old log D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Extension State/000003.log 
+>>>>>>> 8dd226198133b851a4e39348ecd9906cfdfc3b40

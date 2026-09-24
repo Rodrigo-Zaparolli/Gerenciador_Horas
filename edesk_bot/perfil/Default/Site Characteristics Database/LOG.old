@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 2026/09/23-13:20:22.289 4228 Reusing MANIFEST D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Site Characteristics Database/MANIFEST-000001
 2026/09/23-13:20:22.324 4228 Recovering log #3
 2026/09/23-13:20:22.325 4228 Reusing old log D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Site Characteristics Database/000003.log 
+=======
+2026/09/23-13:27:57.754 4b9c Reusing MANIFEST D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Site Characteristics Database/MANIFEST-000001
+2026/09/23-13:27:57.800 4b9c Recovering log #3
+2026/09/23-13:27:57.802 4b9c Reusing old log D:\APP\gerenciador_horas\edesk_bot\perfil\Default\Site Characteristics Database/000003.log 
+>>>>>>> 8dd226198133b851a4e39348ecd9906cfdfc3b40

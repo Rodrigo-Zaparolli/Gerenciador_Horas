@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 2026/09/23-13:27:58.545 44c0 Reusing MANIFEST D:\APP\gerenciador_horas\edesk_bot\perfil\Default\shared_proto_db\metadata/MANIFEST-000001
 2026/09/23-13:27:58.545 44c0 Recovering log #3
 2026/09/23-13:27:58.547 44c0 Reusing old log D:\APP\gerenciador_horas\edesk_bot\perfil\Default\shared_proto_db\metadata/000003.log 
+=======
+2026/09/23-18:33:57.714 224c Reusing MANIFEST D:\APP\gerenciador_horas\edesk_bot\perfil\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/09/23-18:33:57.729 224c Recovering log #3
+2026/09/23-18:33:57.730 224c Reusing old log D:\APP\gerenciador_horas\edesk_bot\perfil\Default\shared_proto_db\metadata/000003.log 
+>>>>>>> 8dd226198133b851a4e39348ecd9906cfdfc3b40

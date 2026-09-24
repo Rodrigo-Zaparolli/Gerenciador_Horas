@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -16,33 +17,80 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  // ============================================================
+  // LOGO
+  // ============================================================
+
+  static const String _logoPath = 'assets/images/Logo_H.png';
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+
+    _nameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+
     super.dispose();
   }
 
-  Future<void> _handleRegister() async {
-    final name = _nameController.text.trim();
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+  // ============================================================
+  // CADASTRO
+  // ============================================================
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, preencha todos os campos.',
-              style: TextStyle(color: CoresApp.textoPrincipal)),
-          backgroundColor: CoresApp.erro,
-        ),
+  Future<void> _handleRegister() async {
+    FocusScope.of(context).unfocus();
+
+    final String name = _nameController.text.trim();
+    final String email = _emailController.text.trim();
+    final String password = _passwordController.text.trim();
+
+    if (name.isEmpty) {
+      _showMessage(
+        'Informe seu nome completo.',
+        isError: true,
       );
+      _nameFocusNode.requestFocus();
+      return;
+    }
+
+    if (email.isEmpty) {
+      _showMessage(
+        'Informe seu e-mail.',
+        isError: true,
+      );
+      _emailFocusNode.requestFocus();
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showMessage(
+        'Informe uma senha.',
+        isError: true,
+      );
+      _passwordFocusNode.requestFocus();
+      return;
+    }
+
+    if (password.length < 6) {
+      _showMessage(
+        'A senha deve possuir pelo menos 6 caracteres.',
+        isError: true,
+      );
+      _passwordFocusNode.requestFocus();
       return;
     }
 
@@ -51,16 +99,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      // 1. Cria o usuário no Firebase Auth
-      UserCredential userCredential =
+      // ========================================================
+      // 1. CRIA USUÁRIO NO FIREBASE AUTH
+      // ========================================================
+
+      final UserCredential userCredential =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // 2. Salva os dados extras (como o nome) no Cloud Firestore
+      // ========================================================
+      // 2. SALVA INFORMAÇÕES DO USUÁRIO
+      // ========================================================
+
       if (userCredential.user != null) {
-        await userCredential.user?.updateDisplayName(name);
+        await userCredential.user!.updateDisplayName(name);
 
         await FirebaseFirestore.instance
             .collection('users')
@@ -72,54 +126,72 @@ class _RegisterScreenState extends State<RegisterScreen> {
         });
       }
 
-      // 3. Desloga o usuário recém-criado para forçá-lo a fazer login manualmente
+      // ========================================================
+      // 3. DESLOGA O USUÁRIO
+      // ========================================================
+
       await FirebaseAuth.instance.signOut();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Conta criada com sucesso! Faça login para continuar.',
-                style: TextStyle(color: CoresApp.textoPrincipal)),
-            backgroundColor: CoresApp.sucesso,
-            duration: Duration(seconds: 4),
-          ),
-        );
-
-        // Retorna para a tela de login
-        widget.onRegisterSuccess();
+      if (!mounted) {
+        return;
       }
+
+      _showMessage(
+        'Conta criada com sucesso! Faça login para continuar.',
+      );
+
+      // Pequeno intervalo para permitir que a mensagem seja vista.
+      await Future.delayed(
+        const Duration(milliseconds: 500),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      widget.onRegisterSuccess();
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Erro ao criar conta.';
-      if (e.code == 'weak-password') {
-        errorMessage =
-            'A senha fornecida é muito fraca (mínimo de 6 caracteres).';
-      } else if (e.code == 'email-already-in-use') {
-        errorMessage = 'Já existe uma conta com este e-mail.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = 'O formato do e-mail é inválido.';
-      } else {
-        errorMessage = 'Erro (${e.code}): ${e.message ?? "Tente novamente."}';
+
+      switch (e.code) {
+        case 'weak-password':
+          errorMessage =
+              'A senha fornecida é muito fraca. Use pelo menos 6 caracteres.';
+          break;
+
+        case 'email-already-in-use':
+          errorMessage = 'Já existe uma conta cadastrada com este e-mail.';
+          break;
+
+        case 'invalid-email':
+          errorMessage = 'O formato do e-mail informado é inválido.';
+          break;
+
+        case 'operation-not-allowed':
+          errorMessage =
+              'O cadastro por e-mail e senha não está habilitado no Firebase.';
+          break;
+
+        case 'network-request-failed':
+          errorMessage =
+              'Não foi possível conectar ao Firebase. Verifique sua conexão.';
+          break;
+
+        default:
+          errorMessage = 'Erro (${e.code}): ${e.message ?? "Tente novamente."}';
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage,
-                style: const TextStyle(color: CoresApp.textoPrincipal)),
-            backgroundColor: CoresApp.erro,
-          ),
+        _showMessage(
+          errorMessage,
+          isError: true,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Erro inesperado ao criar conta. Verifique sua conexão.',
-                style: TextStyle(color: CoresApp.textoPrincipal)),
-            backgroundColor: CoresApp.erro,
-          ),
+        _showMessage(
+          'Erro inesperado ao criar conta. Verifique sua conexão.',
+          isError: true,
         );
       }
     } finally {
@@ -131,6 +203,423 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // ============================================================
+  // MENSAGEM
+  // ============================================================
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          backgroundColor: isError ? CoresApp.erro : CoresApp.sucesso,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+  }
+
+  // ============================================================
+  // CAMPO DE TEXTO
+  // ============================================================
+
+  InputDecoration _inputDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(
+        color: CoresApp.textoSecundario,
+        fontSize: 13,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: CoresApp.textoSecundario,
+        size: 20,
+      ),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: CoresTelas.campoFormulario,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: CoresApp.borda,
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: CoresApp.borda,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: CoresApp.primaria,
+          width: 1.5,
+        ),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: CoresApp.borda.withOpacity(0.5),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // LOGO
+  // ============================================================
+
+  Widget _buildLogo({
+    required bool compact,
+  }) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: compact ? 280 : 330,
+      ),
+      child: Image.asset(
+        _logoPath,
+        height: compact ? 70 : 82,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            height: 70,
+            alignment: Alignment.center,
+            child: const Text(
+              'Gestão de Horas e Projetos',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: CoresApp.textoPrincipal,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ============================================================
+  // CARD DE CADASTRO
+  // ============================================================
+
+  Widget _buildRegisterCard({
+    required bool compact,
+  }) {
+    return Container(
+      width: compact ? double.infinity : 430,
+      padding: EdgeInsets.all(
+        compact ? 24 : 30,
+      ),
+      decoration: BoxDecoration(
+        color: CoresApp.superficie,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: CoresApp.borda,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 35,
+            spreadRadius: 0,
+            offset: const Offset(0, 15),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ====================================================
+          // TÍTULO
+          // ====================================================
+
+          const Text(
+            'Criar nova conta',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontSize: 23,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+
+          const SizedBox(height: 7),
+
+          const Text(
+            'Crie sua conta para começar a gerenciar '
+            'suas horas e projetos.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ====================================================
+          // NOME
+          // ====================================================
+
+          TextField(
+            controller: _nameController,
+            focusNode: _nameFocusNode,
+            enabled: !_isLoading,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.next,
+            style: const TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontSize: 14,
+            ),
+            onSubmitted: (_) {
+              _emailFocusNode.requestFocus();
+            },
+            decoration: _inputDecoration(
+              label: 'Nome completo',
+              icon: Icons.person_outline_rounded,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ====================================================
+          // E-MAIL
+          // ====================================================
+
+          TextField(
+            controller: _emailController,
+            focusNode: _emailFocusNode,
+            enabled: !_isLoading,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            style: const TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontSize: 14,
+            ),
+            onSubmitted: (_) {
+              _passwordFocusNode.requestFocus();
+            },
+            decoration: _inputDecoration(
+              label: 'E-mail',
+              icon: Icons.email_outlined,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ====================================================
+          // SENHA
+          // ====================================================
+
+          TextField(
+            controller: _passwordController,
+            focusNode: _passwordFocusNode,
+            enabled: !_isLoading,
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            style: const TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontSize: 14,
+            ),
+            onSubmitted: (_) {
+              if (!_isLoading) {
+                _handleRegister();
+              }
+            },
+            decoration: _inputDecoration(
+              label: 'Senha',
+              icon: Icons.lock_outline_rounded,
+              suffixIcon: IconButton(
+                tooltip: _obscurePassword ? 'Mostrar senha' : 'Ocultar senha',
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: CoresApp.textoFraco,
+                  size: 20,
+                ),
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // ====================================================
+          // INFORMAÇÃO DA SENHA
+          // ====================================================
+
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 15,
+                color: CoresApp.textoFraco,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'A senha deve possuir pelo menos 6 caracteres.',
+                  style: TextStyle(
+                    color: CoresApp.textoFraco,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ====================================================
+          // BOTÃO CADASTRAR
+          // ====================================================
+
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _handleRegister,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.primaria,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: CoresApp.primaria.withOpacity(0.45),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.person_add_alt_1_rounded,
+                          size: 19,
+                        ),
+                        SizedBox(width: 9),
+                        Text(
+                          'CRIAR CONTA',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ====================================================
+          // DIVISOR
+          // ====================================================
+
+          Row(
+            children: [
+              Expanded(
+                child: Divider(
+                  color: CoresApp.borda,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                ),
+                child: Text(
+                  'Conta segura',
+                  style: TextStyle(
+                    color: CoresApp.textoFraco,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Divider(
+                  color: CoresApp.borda,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ====================================================
+          // INFORMAÇÃO FIREBASE
+          // ====================================================
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.verified_user_outlined,
+                size: 15,
+                color: CoresApp.sucesso,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                'Seus dados são armazenados com segurança.',
+                style: TextStyle(
+                  color: CoresApp.textoFraco,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -138,199 +627,169 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: CoresApp.primaria),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            padding: const EdgeInsets.all(36.0),
-            decoration: BoxDecoration(
-              color: CoresApp.superficie,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: CoresApp.borda, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: SizedBox(
-                    height: 100,
-                    width: 240,
-                    child: Image.asset(
-                      'assets/images/Logo_H.png',
-                      fit: BoxFit.fill,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Text(
-                          'Gestão de Horas e Projetos',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Criar Nova Conta',
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Preencha os dados abaixo para começar',
-                  style:
-                      TextStyle(color: CoresApp.textoSecundario, fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-
-                // Campo Nome
-                TextField(
-                  controller: _nameController,
-                  style: const TextStyle(
-                      color: CoresApp.textoPrincipal, fontSize: 14),
-                  decoration: InputDecoration(
-                    labelText: 'Nome completo',
-                    labelStyle: const TextStyle(
-                        color: CoresApp.textoSecundario, fontSize: 13),
-                    prefixIcon: const Icon(Icons.person_outline,
-                        color: CoresApp.primaria, size: 20),
-                    filled: true,
-                    fillColor: CoresTelas.campoFormulario,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: CoresApp.borda),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                          color: CoresApp.primaria, width: 1.2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Campo E-mail
-                TextField(
-                  controller: _emailController,
-                  style: const TextStyle(
-                      color: CoresApp.textoPrincipal, fontSize: 14),
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'E-mail',
-                    labelStyle: const TextStyle(
-                        color: CoresApp.textoSecundario, fontSize: 13),
-                    prefixIcon: const Icon(Icons.email_outlined,
-                        color: CoresApp.primaria, size: 20),
-                    filled: true,
-                    fillColor: CoresTelas.campoFormulario,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: CoresApp.borda),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                          color: CoresApp.primaria, width: 1.2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Campo Senha
-                TextField(
-                  controller: _passwordController,
-                  style: const TextStyle(
-                      color: CoresApp.textoPrincipal, fontSize: 14),
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Senha',
-                    labelStyle: const TextStyle(
-                        color: CoresApp.textoSecundario, fontSize: 13),
-                    prefixIcon: const Icon(Icons.lock_outline,
-                        color: CoresApp.primaria, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                        color: CoresApp.textoFraco,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
-                    ),
-                    filled: true,
-                    fillColor: CoresTelas.campoFormulario,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: CoresApp.borda),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                          color: CoresApp.primaria, width: 1.2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Botão Cadastrar
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: CoresApp.primaria,
-                      foregroundColor: CoresApp.fundo,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      elevation: 0,
-                    ),
-                    onPressed: _isLoading ? null : _handleRegister,
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: CoresApp.fundo,
-                            ),
-                          )
-                        : const Text(
-                            'Cadastrar',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        toolbarHeight: 48,
+        iconTheme: const IconThemeData(
+          color: CoresApp.primaria,
         ),
+        leading: IconButton(
+          tooltip: 'Voltar',
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+          ),
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
+        ),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final double width = constraints.maxWidth;
+          final double height = constraints.maxHeight;
+
+          final bool compact = width < 700;
+
+          // Espaço disponível depois da AppBar.
+          final double availableHeight = height;
+
+          // Ajusta o tamanho do conteúdo de acordo com a altura
+          // disponível para evitar qualquer necessidade de rolagem.
+          final bool smallHeight = availableHeight < 650;
+
+          final double logoHeight = smallHeight
+              ? 52
+              : compact
+                  ? 62
+                  : 72;
+
+          final double logoBottomSpace = smallHeight ? 8 : 14;
+
+          return Stack(
+            children: [
+              // ==================================================
+              // FUNDO DECORATIVO
+              // ==================================================
+
+              Positioned(
+                top: -180,
+                left: -150,
+                child: Container(
+                  width: 420,
+                  height: 420,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: CoresApp.primaria.withOpacity(0.06),
+                  ),
+                ),
+              ),
+
+              Positioned(
+                bottom: -220,
+                right: -160,
+                child: Container(
+                  width: 480,
+                  height: 480,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: CoresApp.destaque.withOpacity(0.035),
+                  ),
+                ),
+              ),
+
+              // ==================================================
+              // CONTEÚDO PRINCIPAL
+              // ==================================================
+
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 20 : 40,
+                    vertical: smallHeight ? 8 : 16,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // ==========================================
+                      // LOGO
+                      // ==========================================
+
+                      SizedBox(
+                        height: logoHeight,
+                        child: Image.asset(
+                          _logoPath,
+                          fit: BoxFit.contain,
+                          errorBuilder: (
+                            context,
+                            error,
+                            stackTrace,
+                          ) {
+                            return const Text(
+                              'Gestão de Horas e Projetos',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      SizedBox(
+                        height: logoBottomSpace,
+                      ),
+
+                      // ==========================================
+                      // LINHA DECORATIVA
+                      // ==========================================
+
+                      Container(
+                        width: 42,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: CoresApp.primaria,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+
+                      SizedBox(
+                        height: smallHeight ? 10 : 16,
+                      ),
+
+                      // ==========================================
+                      // CARD
+                      // ==========================================
+
+                      Flexible(
+                        child: _buildRegisterCard(
+                          compact: compact,
+                        ),
+                      ),
+
+                      SizedBox(
+                        height: smallHeight ? 6 : 10,
+                      ),
+
+                      // ==========================================
+                      // RODAPÉ
+                      // ==========================================
+
+                      Text(
+                        'Gestão de Horas e Projetos',
+                        style: TextStyle(
+                          color: CoresApp.textoFraco,
+                          fontSize: smallHeight ? 9 : 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

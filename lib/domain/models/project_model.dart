@@ -10,6 +10,31 @@ class TaskModel {
   String estimatedHours;
   String hourType;
 
+  // ============================================================
+  // E-DESK
+  // ============================================================
+
+  // Número da solicitação no E-Desk.
+  //
+  // Exemplo:
+  // 2263797
+  //
+  // O número da solicitação é mantido separado do número
+  // do trabalho porque uma mesma data pode possuir tarefas
+  // vinculadas a solicitações diferentes.
+  String? edeskSolicitacao;
+
+  // URL EXATA do trabalho no E-Desk.
+  //
+  // Importante:
+  // Não montamos essa URL usando apenas solicitacao/idTrabalho,
+  // pois o E-Desk utiliza valores codificados nos parâmetros.
+  String? edeskUrl;
+
+  // ID codificado do trabalho no E-Desk, quando disponível.
+  // É mantido separado para futuras integrações/validações.
+  String? edeskIdTrabalho;
+
   TaskModel({
     required this.subId,
     required this.stage,
@@ -19,11 +44,12 @@ class TaskModel {
     this.planEnd,
     required this.estimatedHours,
     required this.hourType,
-  });
 
-  // ============================================================
-  // TO JSON
-  // ============================================================
+    // E-Desk
+    this.edeskSolicitacao,
+    this.edeskUrl,
+    this.edeskIdTrabalho,
+  });
 
   Map<String, dynamic> toJson() {
     return {
@@ -35,17 +61,16 @@ class TaskModel {
       'planEnd': planEnd?.toIso8601String(),
       'estimatedHours': estimatedHours,
       'hourType': hourType,
+
+      // E-Desk
+      'edeskSolicitacao': edeskSolicitacao,
+      'edeskUrl': edeskUrl,
+      'edeskIdTrabalho': edeskIdTrabalho,
     };
   }
 
-  // ============================================================
-  // PARSE DATE
-  // ============================================================
-
   static DateTime? _parseDate(dynamic value) {
-    if (value == null) {
-      return null;
-    }
+    if (value == null) return null;
 
     if (value is Timestamp) {
       return value.toDate();
@@ -62,24 +87,10 @@ class TaskModel {
     return null;
   }
 
-  // ============================================================
-  // FROM JSON
-  // ============================================================
-
-  factory TaskModel.fromJson(
-    Map<String, dynamic> json,
-  ) {
-    final DateTime? parsedStart = _parseDate(
-      json['startDate'],
-    );
-
-    final DateTime? parsedPlanStart = _parseDate(
-      json['planStart'],
-    );
-
-    final DateTime? parsedPlanEnd = _parseDate(
-      json['planEnd'],
-    );
+  factory TaskModel.fromJson(Map<String, dynamic> json) {
+    final DateTime? parsedStart = _parseDate(json['startDate']);
+    final DateTime? parsedPlanStart = _parseDate(json['planStart']);
+    final DateTime? parsedPlanEnd = _parseDate(json['planEnd']);
 
     return TaskModel(
       subId: json['subId']?.toString() ?? '',
@@ -90,13 +101,18 @@ class TaskModel {
       planEnd: parsedPlanEnd,
       estimatedHours: json['estimatedHours']?.toString() ?? '00:00',
       hourType: json['hourType']?.toString() ?? 'Hs Cobradas',
+
+      // E-Desk
+      edeskSolicitacao:
+          json['edeskSolicitacao']?.toString().trim().isNotEmpty == true
+              ? json['edeskSolicitacao'].toString().trim()
+              : null,
+
+      edeskUrl: json['edeskUrl']?.toString(),
+      edeskIdTrabalho: json['edeskIdTrabalho']?.toString(),
     );
   }
 }
-
-// ==================================================================
-// PROJECT MODEL
-// ==================================================================
 
 class ProjectModel {
   String id;
@@ -111,12 +127,10 @@ class ProjectModel {
   String leader;
   String hourType;
 
-  // Campo adicionado para a observação inline na tabela
   String? observacao;
 
   List<TaskModel>? subTasks;
 
-  // Novo campo para armazenar os itens do Check List do projeto
   List<Map<String, dynamic>> checklist;
   String? excelLink;
   String? folderPath;
@@ -140,10 +154,6 @@ class ProjectModel {
     this.folderPath,
   });
 
-  // ============================================================
-  // TO JSON
-  // ============================================================
-
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -158,27 +168,15 @@ class ProjectModel {
       'leader': leader,
       'hourType': hourType,
       'observacao': observacao,
-      'subTasks': subTasks
-          ?.map(
-            (task) => task.toJson(),
-          )
-          .toList(),
-      'checklist': checklist, // Salva os itens do check list no Firebase
+      'subTasks': subTasks?.map((task) => task.toJson()).toList(),
+      'checklist': checklist,
       'excelLink': excelLink,
       'folderPath': folderPath,
     };
   }
 
-  // ============================================================
-  // PARSE DATE
-  // ============================================================
-
-  static DateTime? _parseDate(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
+  static DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
 
     if (value is Timestamp) {
       return value.toDate();
@@ -189,24 +187,14 @@ class ProjectModel {
     }
 
     if (value is String && value.trim().isNotEmpty) {
-      return DateTime.tryParse(
-        value.trim(),
-      );
+      return DateTime.tryParse(value.trim());
     }
 
     return null;
   }
 
-  // ============================================================
-  // FROM JSON
-  // ============================================================
-
-  factory ProjectModel.fromJson(
-    Map<String, dynamic> json,
-  ) {
-    final DateTime? parsedStart = _parseDate(
-      json['startDate'],
-    );
+  factory ProjectModel.fromJson(Map<String, dynamic> json) {
+    final DateTime? parsedStart = _parseDate(json['startDate']);
 
     List<TaskModel> parsedSubTasks = [];
 
@@ -217,21 +205,22 @@ class ProjectModel {
           .whereType<Map>()
           .map(
             (task) => TaskModel.fromJson(
-              Map<String, dynamic>.from(
-                task,
-              ),
+              Map<String, dynamic>.from(task),
             ),
           )
           .toList();
     }
 
-    // Leitura segura do checklist vindo do Firebase
     List<Map<String, dynamic>> parsedChecklist = [];
+
     final dynamic rawChecklist = json['checklist'];
+
     if (rawChecklist is List) {
       parsedChecklist = rawChecklist
           .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
+          .map(
+            (item) => Map<String, dynamic>.from(item),
+          )
           .toList();
     }
 
@@ -249,7 +238,7 @@ class ProjectModel {
       hourType: json['hourType']?.toString() ?? 'Hs Cobradas',
       observacao: json['observacao']?.toString(),
       subTasks: parsedSubTasks,
-      checklist: parsedChecklist, // Atribui os itens lidos
+      checklist: parsedChecklist,
       excelLink: json['excelLink']?.toString(),
       folderPath: json['folderPath']?.toString(),
     );

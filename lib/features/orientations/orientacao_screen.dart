@@ -26,16 +26,9 @@ class OrientacaoModel {
 
   Offset posicao;
 
-  /// Largura do card.
   double largura;
-
-  /// Altura mínima da área de conteúdo.
-  ///
-  /// O card pode crescer além dessa altura quando o texto/imagens
-  /// ocuparem mais espaço.
   double alturaTexto;
 
-  /// Imagens/prints salvos no Firebase em Base64.
   List<String> imagens;
 
   OrientacaoModel({
@@ -45,8 +38,8 @@ class OrientacaoModel {
     this.expandido = true,
     this.editandoTitulo = false,
     this.posicao = const Offset(50, 50),
-    this.largura = 380.0,
-    this.alturaTexto = 100.0,
+    this.largura = 600.0,
+    this.alturaTexto = 500.0,
     List<String>? imagens,
   })  : controller = TextEditingController(text: textoInicial),
         tituloController = TextEditingController(text: titulo),
@@ -98,20 +91,19 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
   final TextEditingController _pesquisaController = TextEditingController();
 
-  /// Card que atualmente está com foco para receber Ctrl + V.
   String? _cardComFoco;
 
-  /// Evita múltiplos Ctrl+V simultâneos.
   bool _colandoImagem = false;
 
-  // ============================================================
-  // INIT
-  // ============================================================
+  final Map<String, Timer> _timersSalvamento = {};
+
+  final Set<String> _salvandoIds = {};
+
+  String? _ultimoSalvoId;
 
   @override
   void initState() {
     super.initState();
-
     _carregarDados();
   }
 
@@ -179,10 +171,6 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     return value.toString();
   }
 
-  // ============================================================
-  // IMAGENS
-  // ============================================================
-
   List<String> _toImages(dynamic value) {
     if (value == null || value is! List) {
       return [];
@@ -209,16 +197,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     }
 
     try {
-      debugPrint('==============================================');
-      debugPrint('ORIENTAÇÕES - INICIANDO CARREGAMENTO');
-      debugPrint('==============================================');
-
       final dadosRemotos = await _firebaseService.getOrientacoes();
-
-      debugPrint(
-        'Orientações encontradas no Firebase: '
-        '${dadosRemotos.length}',
-      );
 
       final List<OrientacaoModel> orientacoesCarregadas = [];
 
@@ -256,21 +235,16 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
           final double largura = _toDouble(
             item['largura'],
-            380.0,
+            600.0,
           );
 
           final double alturaTexto = _toDouble(
             item['alturaTexto'],
-            100.0,
+            500.0,
           );
 
-          final List<String> imagens = _toImages(item['imagens']);
-
-          debugPrint(
-            'Carregando orientação: '
-            'id=$id | '
-            'titulo=$titulo | '
-            'imagens=${imagens.length}',
+          final List<String> imagens = _toImages(
+            item['imagens'],
           );
 
           final model = OrientacaoModel(
@@ -280,24 +254,24 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
             expandido: expandido,
             posicao: Offset(posX, posY),
             largura: largura.clamp(
-              260.0,
-              900.0,
+              350.0,
+              1100.0,
             ),
             alturaTexto: alturaTexto.clamp(
-              70.0,
-              700.0,
+              300.0,
+              850.0,
             ),
             imagens: imagens,
           );
 
           model.controller.addListener(
-            () => _salvarBloco(model),
+            () => _agendarSalvamento(model),
           );
 
           orientacoesCarregadas.add(model);
         } catch (e, stackTrace) {
           debugPrint(
-            'ERRO AO CONVERTER UMA ORIENTAÇÃO: $e',
+            'ERRO AO CONVERTER ORIENTAÇÃO: $e',
           );
 
           debugPrint(
@@ -321,58 +295,17 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         );
       });
 
-      debugPrint(
-        'Total carregado na tela: '
-        '${_orientacoes.length}',
-      );
-
       if (_orientacoes.isEmpty && dadosRemotos.isEmpty) {
-        debugPrint(
-          'Firebase não possui orientações. '
-          'Criando modelos padrão.',
-        );
-
         _adicionarBlocoComDetalhes(
           id: '1',
           titulo: 'Orientação #1',
           texto: '',
           pos: const Offset(40, 30),
         );
-
-        _adicionarBlocoComDetalhes(
-          id: '2',
-          titulo: 'Orientação #2',
-          texto: '',
-          pos: const Offset(460, 30),
-        );
-
-        _adicionarBlocoComDetalhes(
-          id: '3',
-          titulo: 'Orientação #3',
-          texto: '',
-          pos: const Offset(40, 320),
-        );
       }
     } catch (e, stackTrace) {
-      debugPrint(
-        '==============================================',
-      );
-
-      debugPrint(
-        'ERRO AO CARREGAR ORIENTAÇÕES',
-      );
-
-      debugPrint(
-        '==============================================',
-      );
-
-      debugPrint(
-        e.toString(),
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
+      debugPrint(e.toString());
+      debugPrint(stackTrace.toString());
 
       if (mounted) {
         setState(() {
@@ -389,6 +322,80 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   }
 
   // ============================================================
+  // SALVAMENTO COM DEBOUNCE
+  // ============================================================
+
+  void _agendarSalvamento(
+    OrientacaoModel item,
+  ) {
+    _timersSalvamento[item.id]?.cancel();
+
+    _timersSalvamento[item.id] = Timer(
+      const Duration(milliseconds: 700),
+      () {
+        _salvarBloco(item);
+      },
+    );
+
+    if (mounted) {
+      setState(() {
+        _ultimoSalvoId = null;
+      });
+    }
+  }
+
+  Future<void> _salvarBloco(
+    OrientacaoModel item,
+  ) async {
+    _timersSalvamento[item.id]?.cancel();
+
+    if (mounted) {
+      setState(() {
+        _salvandoIds.add(item.id);
+      });
+    }
+
+    try {
+      await _firebaseService.saveOrientacao(
+        item.id,
+        item.toJson(),
+      );
+
+      if (mounted) {
+        setState(() {
+          _salvandoIds.remove(item.id);
+          _ultimoSalvoId = item.id;
+        });
+
+        Future.delayed(
+          const Duration(seconds: 2),
+          () {
+            if (!mounted) {
+              return;
+            }
+
+            if (_ultimoSalvoId == item.id) {
+              setState(() {
+                _ultimoSalvoId = null;
+              });
+            }
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint(
+        'Erro ao salvar orientação ${item.id}: $e',
+      );
+
+      if (mounted) {
+        setState(() {
+          _salvandoIds.remove(item.id);
+        });
+      }
+    }
+  }
+
+  // ============================================================
   // ADICIONAR BLOCO
   // ============================================================
 
@@ -398,8 +405,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     required String texto,
     required Offset pos,
     bool expandido = true,
-    double largura = 380.0,
-    double altura = 100.0,
+    double largura = 600.0,
+    double altura = 500.0,
     List<String>? imagens,
   }) {
     final model = OrientacaoModel(
@@ -414,7 +421,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     );
 
     model.controller.addListener(
-      () => _salvarBloco(model),
+      () => _agendarSalvamento(model),
     );
 
     _orientacoes.add(model);
@@ -441,32 +448,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   }
 
   // ============================================================
-  // SALVAR BLOCO
-  // ============================================================
-
-  Future<void> _salvarBloco(
-    OrientacaoModel item,
-  ) async {
-    try {
-      await _firebaseService.saveOrientacao(
-        item.id,
-        item.toJson(),
-      );
-
-      debugPrint(
-        'Orientação salva: '
-        '${item.id} - ${item.titulo}',
-      );
-    } catch (e) {
-      debugPrint(
-        'Erro ao salvar orientação '
-        '${item.id}: $e',
-      );
-    }
-  }
-
-  // ============================================================
-  // ADICIONAR IMAGENS PELO ARQUIVO
+  // IMAGENS
   // ============================================================
 
   Future<void> _adicionarImagens(
@@ -510,71 +492,27 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           extensao = 'webp';
         }
 
-        final String imagemBase64 = 'data:image/$extensao;base64,'
-            '$base64Imagem';
-
         novasImagens.add(
-          imagemBase64,
+          'data:image/$extensao;base64,$base64Imagem',
         );
       }
 
       if (novasImagens.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Não foi possível carregar '
-                'as imagens selecionadas.',
-              ),
-            ),
-          );
-        }
-
         return;
       }
 
       setState(() {
-        item.imagens.addAll(
-          novasImagens,
-        );
-
+        item.imagens.addAll(novasImagens);
         _cardComFoco = item.id;
       });
 
       await _salvarBloco(item);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${novasImagens.length} '
-              'imagem(ns) adicionada(s) à orientação.',
-            ),
-            backgroundColor: CoresApp.sucesso,
-          ),
-        );
-      }
     } catch (e) {
       debugPrint(
         'Erro ao adicionar imagem: $e',
       );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Erro ao adicionar imagem: $e',
-            ),
-            backgroundColor: CoresApp.erro,
-          ),
-        );
-      }
     }
   }
-
-  // ============================================================
-  // COLAR PRINT DO CTRL + V
-  // ============================================================
 
   Future<void> _colarPrint(
     OrientacaoModel item,
@@ -592,57 +530,22 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       final Uint8List? bytes = await Pasteboard.image;
 
       if (bytes == null || bytes.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Nenhuma imagem encontrada na área de transferência.',
-              ),
-            ),
-          );
-        }
-
         return;
       }
 
       final String base64Imagem = base64Encode(bytes);
 
-      final String imagemBase64 = 'data:image/png;base64,'
-          '$base64Imagem';
+      final String imagemBase64 = 'data:image/png;base64,$base64Imagem';
 
       setState(() {
-        item.imagens.add(
-          imagemBase64,
-        );
+        item.imagens.add(imagemBase64);
       });
 
       await _salvarBloco(item);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Print colado no card com sucesso.',
-            ),
-            backgroundColor: CoresApp.sucesso,
-          ),
-        );
-      }
     } catch (e) {
       debugPrint(
         'Erro ao colar print: $e',
       );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Não foi possível colar o print: $e',
-            ),
-            backgroundColor: CoresApp.erro,
-          ),
-        );
-      }
     } finally {
       if (mounted) {
         setState(() {
@@ -651,10 +554,6 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       }
     }
   }
-
-  // ============================================================
-  // REMOVER IMAGEM
-  // ============================================================
 
   Future<void> _removerImagem(
     OrientacaoModel item,
@@ -670,78 +569,6 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
     await _salvarBloco(item);
   }
-
-  // ============================================================
-  // VISUALIZAR IMAGEM
-  // ============================================================
-
-  void _visualizarImagem(
-    String imagem,
-  ) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.90),
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(20),
-          child: Stack(
-            children: [
-              Center(
-                child: InteractiveViewer(
-                  minScale: 0.5,
-                  maxScale: 5.0,
-                  child: Image.memory(
-                    _decodeImagem(imagem),
-                    fit: BoxFit.contain,
-                    errorBuilder: (
-                      context,
-                      error,
-                      stackTrace,
-                    ) {
-                      return Container(
-                        padding: const EdgeInsets.all(30),
-                        decoration: BoxDecoration(
-                          color: CoresApp.superficie,
-                          borderRadius: BorderRadius.circular(
-                            12,
-                          ),
-                        ),
-                        child: const Text(
-                          'Não foi possível abrir esta imagem.',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              Positioned(
-                right: 0,
-                top: 0,
-                child: IconButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ============================================================
-  // DECODIFICAR IMAGEM
-  // ============================================================
 
   Uint8List _decodeImagem(
     String imagem,
@@ -764,12 +591,141 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   }
 
   // ============================================================
-  // REMOVER BLOCO
+  // VISUALIZAR IMAGEM
+  // ============================================================
+
+  void _visualizarImagem(
+    String imagem,
+  ) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.94),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(24),
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 5.0,
+                  child: Image.memory(
+                    _decodeImagem(imagem),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) {
+                      return Container(
+                        padding: const EdgeInsets.all(30),
+                        decoration: BoxDecoration(
+                          color: CoresApp.superficie,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.broken_image_outlined,
+                              color: CoresApp.textoSecundario,
+                              size: 50,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Não foi possível visualizar esta imagem.',
+                              style: TextStyle(
+                                color: CoresApp.textoPrincipal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Material(
+                  color: Colors.black54,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // EXCLUIR BLOCO
   // ============================================================
 
   Future<void> _removerBloco(
     OrientacaoModel item,
   ) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: CoresApp.superficie,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(
+                Icons.delete_outline_rounded,
+                color: CoresApp.erro,
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Excluir orientação',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Deseja realmente excluir "${item.titulo}"?\n\nEssa ação não poderá ser desfeita.',
+            style: const TextStyle(
+              color: CoresApp.textoSecundario,
+              height: 1.5,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.erro,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) {
+      return;
+    }
+
     try {
       await _firebaseService.deleteOrientacao(
         item.id,
@@ -781,11 +737,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-              'Erro ao excluir orientação: $e',
+              'Não foi possível excluir a orientação.',
             ),
-            backgroundColor: CoresApp.erro,
           ),
         );
       }
@@ -800,232 +755,558 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
     setState(() {
       item.dispose();
-
       _orientacoes.remove(item);
 
       if (_cardComFoco == item.id) {
         _cardComFoco = null;
       }
+
+      _timersSalvamento[item.id]?.cancel();
+      _timersSalvamento.remove(item.id);
     });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Orientação excluída com sucesso.',
+        ),
+      ),
+    );
   }
 
   // ============================================================
-  // ALTERAR TÍTULO
+  // MODAL
   // ============================================================
 
-  void _iniciarEdicaoTitulo(
+  void _abrirModalOrientacao(
     OrientacaoModel item,
   ) {
-    setState(() {
-      item.tituloController.text = item.titulo;
+    double modalWidth = item.largura;
+    double modalHeight = item.alturaTexto;
 
-      item.editandoTitulo = true;
-    });
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (
+            context,
+            setStateModal,
+          ) {
+            return Center(
+              child: Stack(
+                children: [
+                  Container(
+                    width: modalWidth,
+                    height: modalHeight,
+                    constraints: const BoxConstraints(
+                      minWidth: 350,
+                      maxWidth: 1100,
+                      minHeight: 300,
+                      maxHeight: 850,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CoresApp.superficie,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: CoresApp.borda,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.55),
+                          blurRadius: 30,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildCabecalhoModal(
+                            item,
+                            context,
+                          ),
+                          const Divider(
+                            color: CoresApp.borda,
+                            height: 1,
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildTituloSecao(
+                                    'CONTEÚDO',
+                                    Icons.description_outlined,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: item.controller,
+                                      maxLines: null,
+                                      expands: true,
+                                      textAlignVertical: TextAlignVertical.top,
+                                      style: const TextStyle(
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 14,
+                                        height: 1.55,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText:
+                                            'Digite aqui a orientação, procedimento ou regra...',
+                                        hintStyle: const TextStyle(
+                                          color: CoresApp.textoSecundario,
+                                          fontSize: 13,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: const BorderSide(
+                                            color: CoresApp.borda,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: const BorderSide(
+                                            color: CoresApp.primaria,
+                                            width: 1.4,
+                                          ),
+                                        ),
+                                        filled: true,
+                                        fillColor:
+                                            CoresApp.fundo.withOpacity(0.45),
+                                        contentPadding:
+                                            const EdgeInsets.all(14),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildTituloSecao(
+                                    'ANEXOS',
+                                    Icons.image_outlined,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildAreaImagens(
+                                    item,
+                                    setStateModal,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          _buildRodapeModal(
+                            item,
+                            modalWidth,
+                            modalHeight,
+                            context,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.resizeDownRight,
+                      child: GestureDetector(
+                        onPanUpdate: (details) {
+                          setStateModal(() {
+                            modalWidth = (modalWidth + details.delta.dx)
+                                .clamp(350.0, 1100.0);
+
+                            modalHeight = (modalHeight + details.delta.dy)
+                                .clamp(300.0, 850.0);
+
+                            item.largura = modalWidth;
+                            item.alturaTexto = modalHeight;
+                          });
+                        },
+                        onPanEnd: (_) {
+                          _salvarBloco(item);
+                        },
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: CoresApp.primaria.withOpacity(0.18),
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(12),
+                              bottomRight: Radius.circular(18),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.open_in_full_rounded,
+                            size: 13,
+                            color: CoresApp.destaque,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
-  void _salvarTitulo(
+  Widget _buildCabecalhoModal(
     OrientacaoModel item,
+    BuildContext dialogContext,
   ) {
-    final novoTitulo = item.tituloController.text.trim();
-
-    setState(() {
-      if (novoTitulo.isNotEmpty) {
-        item.titulo = novoTitulo;
-      }
-
-      item.editandoTitulo = false;
-    });
-
-    _salvarBloco(item);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        16,
+        12,
+        14,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: CoresApp.primaria.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.lightbulb_outline_rounded,
+              color: CoresApp.primaria,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.titulo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Editor de orientação',
+                  style: TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 11,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildIndicadorSalvamento(item),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Fechar',
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            icon: const Icon(
+              Icons.close_rounded,
+              color: CoresApp.textoSecundario,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  // ============================================================
-  // REDIMENSIONAMENTO
-  // ============================================================
-
-  void _redimensionarCard(
+  Widget _buildIndicadorSalvamento(
     OrientacaoModel item,
-    DragUpdateDetails details,
   ) {
-    setState(() {
-      item.largura = (item.largura + details.delta.dx).clamp(
-        260.0,
-        900.0,
+    final salvando = _salvandoIds.contains(item.id);
+
+    final salvo = _ultimoSalvoId == item.id;
+
+    if (salvando) {
+      return const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 13,
+            height: 13,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.8,
+              color: CoresApp.primaria,
+            ),
+          ),
+          SizedBox(width: 6),
+          Text(
+            'Salvando...',
+            style: TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: 11,
+            ),
+          ),
+        ],
       );
-
-      item.alturaTexto = (item.alturaTexto + details.delta.dy).clamp(
-        70.0,
-        700.0,
-      );
-    });
-  }
-
-  // ============================================================
-  // IMAGENS DO CARD
-  // ============================================================
-
-  Widget _buildImagens(
-    OrientacaoModel item,
-  ) {
-    if (item.imagens.isEmpty) {
-      return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 12,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    if (salvo) {
+      return const Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
+          Icon(
+            Icons.check_circle_outline,
+            size: 15,
+            color: CoresApp.sucesso,
+          ),
+          SizedBox(width: 5),
+          Text(
+            'Salvo',
+            style: TextStyle(
+              color: CoresApp.sucesso,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildTituloSecao(
+    String titulo,
+    IconData icone,
+  ) {
+    return Row(
+      children: [
+        Icon(
+          icone,
+          size: 15,
+          color: CoresApp.primaria,
+        ),
+        const SizedBox(width: 7),
+        Text(
+          titulo,
+          style: const TextStyle(
+            color: CoresApp.textoSecundario,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAreaImagens(
+    OrientacaoModel item,
+    StateSetter setStateModal,
+  ) {
+    return SizedBox(
+      height: 86,
+      child: Row(
+        children: [
+          _buildBotaoColarPrint(item),
+          const SizedBox(width: 8),
+          _buildBotaoAdicionarImagem(item),
+          if (item.imagens.isNotEmpty) const SizedBox(width: 12),
+          if (item.imagens.isNotEmpty)
+            Expanded(
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: item.imagens.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  return _buildMiniatura(
+                    item,
+                    index,
+                    setStateModal,
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBotaoAdicionarImagem(
+    OrientacaoModel item,
+  ) {
+    return Tooltip(
+      message: 'Adicionar imagens',
+      child: InkWell(
+        onTap: () => _adicionarImagens(item),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 92,
+          height: 76,
+          decoration: BoxDecoration(
+            color: CoresApp.fundo.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: CoresApp.borda,
+            ),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.image_outlined,
-                color: CoresApp.textoSecundario,
-                size: 17,
+              Icon(
+                Icons.add_photo_alternate_outlined,
+                color: CoresApp.primaria,
+                size: 22,
               ),
-              const SizedBox(
-                width: 7,
-              ),
+              SizedBox(height: 5),
               Text(
-                item.imagens.length == 1
-                    ? 'Print anexado'
-                    : 'Prints anexados '
-                        '(${item.imagens.length})',
-                style: const TextStyle(
+                'Adicionar',
+                style: TextStyle(
                   color: CoresApp.textoSecundario,
-                  fontSize: 12,
+                  fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(
-            height: 8,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMiniatura(
+    OrientacaoModel item,
+    int index,
+    StateSetter setStateModal,
+  ) {
+    return Stack(
+      children: [
+        GestureDetector(
+          onTap: () => _visualizarImagem(
+            item.imagens[index],
           ),
-          SizedBox(
-            height: 110,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: item.imagens.length,
-              separatorBuilder: (
-                context,
-                index,
-              ) =>
-                  const SizedBox(
-                width: 8,
+          child: Container(
+            width: 80,
+            height: 76,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: CoresApp.borda,
               ),
-              itemBuilder: (
-                context,
-                index,
-              ) {
-                final imagem = item.imagens[index];
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: Image.memory(
+                _decodeImagem(
+                  item.imagens[index],
+                ),
+                width: 80,
+                height: 76,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  return const Icon(
+                    Icons.broken_image_outlined,
+                    color: CoresApp.textoSecundario,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: Material(
+            color: Colors.black54,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () async {
+                setStateModal(() {
+                  item.imagens.removeAt(index);
+                });
 
-                return Stack(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        _visualizarImagem(
-                          imagem,
-                        );
-                      },
-                      child: Container(
-                        width: 145,
-                        height: 105,
-                        decoration: BoxDecoration(
-                          color: CoresApp.fundo,
-                          borderRadius: BorderRadius.circular(
-                            9,
-                          ),
-                          border: Border.all(
-                            color: CoresApp.borda,
-                          ),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Image.memory(
-                          _decodeImagem(
-                            imagem,
-                          ),
-                          fit: BoxFit.cover,
-                          errorBuilder: (
-                            context,
-                            error,
-                            stackTrace,
-                          ) {
-                            return const Center(
-                              child: Icon(
-                                Icons.broken_image_outlined,
-                                color: CoresApp.erro,
-                                size: 28,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-
-                    // EXCLUIR IMAGEM
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Material(
-                        color: Colors.black.withOpacity(
-                          0.65,
-                        ),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () {
-                            _removerImagem(
-                              item,
-                              index,
-                            );
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.all(
-                              4,
-                            ),
-                            child: Icon(
-                              Icons.close_rounded,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // NÚMERO
-                    Positioned(
-                      bottom: 4,
-                      left: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(
-                            0.65,
-                          ),
-                          borderRadius: BorderRadius.circular(
-                            5,
-                          ),
-                        ),
-                        child: Text(
-                          '${index + 1}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
+                await _salvarBloco(item);
               },
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 11,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRodapeModal(
+    OrientacaoModel item,
+    double modalWidth,
+    double modalHeight,
+    BuildContext dialogContext,
+  ) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        11,
+        20,
+        11,
+      ),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: CoresApp.borda,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 14,
+            color: CoresApp.textoSecundario,
+          ),
+          const SizedBox(width: 7),
+          const Expanded(
+            child: Text(
+              'As alterações são salvas automaticamente.',
+              style: TextStyle(
+                color: CoresApp.textoSecundario,
+                fontSize: 10,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              item.largura = modalWidth;
+              item.alturaTexto = modalHeight;
+
+              _salvarBloco(item);
+
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text(
+              'Salvar e Fechar',
+              style: TextStyle(
+                color: CoresApp.primaria,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -1034,7 +1315,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   }
 
   // ============================================================
-  // BOTÃO DE COLAR PRINT
+  // BOTÃO COLAR PRINT
   // ============================================================
 
   Widget _buildBotaoColarPrint(
@@ -1045,450 +1326,39 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     return Tooltip(
       message: 'Colar print (Ctrl + V)',
       child: InkWell(
-        onTap: () {
-          _colarPrint(item);
-        },
-        borderRadius: BorderRadius.circular(8),
+        onTap: () => _colarPrint(item),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 9,
-            vertical: 7,
-          ),
+          width: 92,
+          height: 76,
           decoration: BoxDecoration(
             color: selecionado
-                ? CoresApp.primaria.withOpacity(0.15)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(
-              8,
-            ),
+                ? CoresApp.primaria.withOpacity(0.12)
+                : CoresApp.fundo.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: selecionado ? CoresApp.primaria : CoresApp.borda,
             ),
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.content_paste_rounded,
                 color: CoresApp.primaria,
-                size: 17,
+                size: 21,
               ),
-              SizedBox(
-                width: 5,
-              ),
+              const SizedBox(height: 5),
               Text(
-                'Colar print',
-                style: TextStyle(
+                _colandoImagem && selecionado ? 'Colando...' : 'Colar print',
+                style: const TextStyle(
                   color: CoresApp.textoSecundario,
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // BUILD CARD
-  // ============================================================
-
-  Widget _buildCard(
-    OrientacaoModel item,
-  ) {
-    return MouseRegion(
-      onEnter: (_) {
-        if (_cardComFoco != item.id) {
-          setState(() {
-            _cardComFoco = item.id;
-          });
-        }
-      },
-      cursor: SystemMouseCursors.basic,
-      child: Container(
-        width: item.largura,
-        constraints: BoxConstraints(
-          minHeight: item.alturaTexto,
-        ),
-        decoration: BoxDecoration(
-          color: CoresApp.superficie,
-          borderRadius: BorderRadius.circular(
-            14,
-          ),
-          border: Border.all(
-            color: _cardComFoco == item.id
-                ? CoresApp.primaria.withOpacity(
-                    0.45,
-                  )
-                : CoresApp.borda.withOpacity(
-                    0.6,
-                  ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(
-                0.40,
-              ),
-              blurRadius: 12,
-              offset: const Offset(
-                0,
-                6,
-              ),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(
-                16,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ==================================================
-                  // CABEÇALHO
-                  // ==================================================
-
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: item.editandoTitulo
-                            ? Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: item.tituloController,
-                                      autofocus: true,
-                                      style: const TextStyle(
-                                        color: CoresApp.destaque,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        isDense: true,
-                                        contentPadding: EdgeInsets.symmetric(
-                                          vertical: 8,
-                                          horizontal: 10,
-                                        ),
-                                        border: OutlineInputBorder(),
-                                        filled: true,
-                                        fillColor: CoresApp.fundo,
-                                      ),
-                                      onSubmitted: (_) {
-                                        _salvarTitulo(
-                                          item,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.check,
-                                      size: 17,
-                                      color: CoresApp.sucesso,
-                                    ),
-                                    onPressed: () {
-                                      _salvarTitulo(
-                                        item,
-                                      );
-                                    },
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                    ),
-                                    constraints: const BoxConstraints(),
-                                  ),
-                                ],
-                              )
-                            : GestureDetector(
-                                onTap: () {
-                                  _iniciarEdicaoTitulo(
-                                    item,
-                                  );
-                                },
-                                child: Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        item.titulo,
-                                        style: const TextStyle(
-                                          color: CoresApp.destaque,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                      width: 6,
-                                    ),
-                                    const Icon(
-                                      Icons.edit_rounded,
-                                      size: 14,
-                                      color: CoresApp.textoSecundario,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                      ),
-
-                      const SizedBox(
-                        width: 8,
-                      ),
-
-                      // ==================================================
-                      // COLAR PRINT
-                      // ==================================================
-
-                      _buildBotaoColarPrint(
-                        item,
-                      ),
-
-                      const SizedBox(
-                        width: 6,
-                      ),
-
-                      // ==================================================
-                      // ADICIONAR IMAGEM
-                      // ==================================================
-
-                      Tooltip(
-                        message: 'Adicionar imagem',
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.add_photo_alternate_outlined,
-                            color: CoresApp.primaria,
-                            size: 20,
-                          ),
-                          onPressed: () => _adicionarImagens(
-                            item,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ),
-
-                      const SizedBox(
-                        width: 8,
-                      ),
-
-                      // ==================================================
-                      // EXPANDIR / MINIMIZAR
-                      // ==================================================
-
-                      IconButton(
-                        icon: Icon(
-                          item.expandido
-                              ? Icons.expand_less_rounded
-                              : Icons.expand_more_rounded,
-                          color: CoresApp.textoPrincipal,
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            item.expandido = !item.expandido;
-                          });
-
-                          _salvarBloco(
-                            item,
-                          );
-                        },
-                        tooltip: item.expandido ? 'Minimizar' : 'Maximizar',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-
-                      const SizedBox(
-                        width: 8,
-                      ),
-
-                      // ==================================================
-                      // EXCLUIR
-                      // ==================================================
-
-                      IconButton(
-                        icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          color: CoresApp.erro,
-                          size: 20,
-                        ),
-                        onPressed: () => _removerBloco(
-                          item,
-                        ),
-                        tooltip: 'Excluir bloco',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-
-                  // ==================================================
-                  // CONTEÚDO
-                  // ==================================================
-
-                  if (item.expandido) ...[
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    // ==================================================
-                    // ÁREA DE TEXTO
-                    //
-                    // Não possui altura fixa.
-                    // O card começa pequeno e cresce conforme
-                    // o conteúdo aumenta.
-                    // ==================================================
-
-                    TextField(
-                      controller: item.controller,
-                      minLines: 3,
-                      maxLines: null,
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
-                      onTap: () {
-                        setState(() {
-                          _cardComFoco = item.id;
-                        });
-                      },
-                      style: const TextStyle(
-                        color: CoresApp.textoPrincipal,
-                        fontSize: 14,
-                        height: 1.45,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText:
-                            'Digite aqui as regras, links ou orientações...',
-                        hintStyle: TextStyle(
-                          color: CoresApp.textoSecundario,
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: CoresApp.borda,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: CoresApp.borda,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: CoresApp.primaria,
-                          ),
-                        ),
-                        filled: true,
-                        fillColor: CoresApp.fundo,
-                        contentPadding: EdgeInsets.all(
-                          12,
-                        ),
-                      ),
-                    ),
-
-                    // ==================================================
-                    // IMAGENS DENTRO DO MESMO CARD
-                    // ==================================================
-
-                    _buildImagens(
-                      item,
-                    ),
-
-                    const SizedBox(
-                      height: 8,
-                    ),
-
-                    // ==================================================
-                    // INFORMAÇÃO DO CTRL + V
-                    // ==================================================
-
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.keyboard_rounded,
-                          size: 14,
-                          color: CoresApp.textoSecundario.withOpacity(
-                            0.75,
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 5,
-                        ),
-                        Text(
-                          'Clique no card e pressione Ctrl + V para colar um print',
-                          style: TextStyle(
-                            color: CoresApp.textoSecundario.withOpacity(
-                              0.75,
-                            ),
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(
-                      height: 6,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // ==========================================================
-            // ALÇA DE REDIMENSIONAMENTO
-            //
-            // Fica no canto inferior direito.
-            // Arrastando:
-            //   direita  = aumenta largura
-            //   esquerda = diminui largura
-            //   baixo    = aumenta altura
-            //   cima     = diminui altura
-            // ==========================================================
-
-            Positioned(
-              right: 4,
-              bottom: 4,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.resizeDownRight,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onPanUpdate: (details) {
-                    _redimensionarCard(
-                      item,
-                      details,
-                    );
-                  },
-                  onPanEnd: (_) {
-                    _salvarBloco(
-                      item,
-                    );
-                  },
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(
-                        0.12,
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        6,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.open_in_full_rounded,
-                      size: 14,
-                      color: CoresApp.textoSecundario.withOpacity(
-                        0.8,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -1502,6 +1372,12 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   void dispose() {
     _pesquisaController.dispose();
 
+    for (final timer in _timersSalvamento.values) {
+      timer.cancel();
+    }
+
+    _timersSalvamento.clear();
+
     for (final item in _orientacoes) {
       item.dispose();
     }
@@ -1514,13 +1390,11 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: CoresApp.fundo,
-        body: Center(
+        body: const Center(
           child: CircularProgressIndicator(
             color: CoresApp.primaria,
           ),
@@ -1528,45 +1402,32 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       );
     }
 
-    final orientacoesFiltradas = _orientacoes.where(
-      (item) {
-        return item.titulo.toLowerCase().contains(
-              _filtroPesquisa.toLowerCase(),
-            );
-      },
-    ).toList();
+    final orientacoesFiltradas = _orientacoes.where((item) {
+      return item.titulo.toLowerCase().contains(
+            _filtroPesquisa.toLowerCase(),
+          );
+    }).toList();
+
+    final totalImagens = _orientacoes.fold<int>(
+      0,
+      (total, item) => total + item.imagens.length,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-
-      // ==========================================================
-      // CABEÇALHO
-      // ==========================================================
-
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(
-          60,
-        ),
+        preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
           searchQuery: '',
-          onSearchChanged: (String value) {},
+          onSearchChanged: (_) {},
           userName: '',
         ),
       ),
-
-      // ==========================================================
-      // CORPO
-      // ==========================================================
-
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ========================================================
-          // FUNDO
-          // ========================================================
-
           Positioned.fill(
             child: Image.asset(
               AppTheme.caminhoFundo,
@@ -1576,18 +1437,12 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                 error,
                 stackTrace,
               ) {
-                debugPrint(
-                  'Erro ao carregar imagem de fundo: '
-                  '$error',
-                );
-
                 return Container(
                   color: CoresApp.fundo,
                 );
               },
             ),
           ),
-
           Positioned.fill(
             child: Container(
               color: Colors.black.withOpacity(
@@ -1595,374 +1450,981 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               ),
             ),
           ),
-
-          // ========================================================
-          // CONTEÚDO
-          // ========================================================
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ======================================================
-              // TÍTULO + PESQUISA + NOVA ORIENTAÇÃO
-              // ======================================================
+              _buildCabecalhoPagina(
+                totalImagens,
+              ),
+              if (_erroCarregamento != null) _buildErro(),
+              Expanded(
+                child: orientacoesFiltradas.isEmpty && _erroCarregamento == null
+                    ? _buildEstadoVazio()
+                    : LayoutBuilder(
+                        builder: (
+                          context,
+                          constraints,
+                        ) {
+                          final largura = constraints.maxWidth;
 
-              Padding(
-                padding: const EdgeInsets.all(
-                  20,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Orientações do Dia a Dia',
-                      style: TextStyle(
-                        color: CoresApp.textoPrincipal,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
+                          final int colunas = largura >= 1200
+                              ? 3
+                              : largura >= 800
+                                  ? 2
+                                  : 1;
+
+                          final double espacamento = largura >= 1200 ? 10 : 9;
+
+                          return GridView.builder(
+                            padding: const EdgeInsets.fromLTRB(
+                              20,
+                              4,
+                              20,
+                              25,
+                            ),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: colunas,
+                              crossAxisSpacing: espacamento,
+                              mainAxisSpacing: espacamento,
+                              mainAxisExtent: largura >= 1200 ? 76 : 78,
+                            ),
+                            itemCount: orientacoesFiltradas.length,
+                            itemBuilder: (
+                              context,
+                              index,
+                            ) {
+                              return _buildCardOrientacao(
+                                orientacoesFiltradas[index],
+                              );
+                            },
+                          );
+                        },
                       ),
-                    ),
-                    Row(
-                      children: [
-                        // ==================================================
-                        // PESQUISA
-                        // ==================================================
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-                        SizedBox(
-                          width: 280,
-                          child: Autocomplete<String>(
-                            optionsBuilder: (
-                              TextEditingValue textEditingValue,
-                            ) {
-                              if (textEditingValue.text.isEmpty) {
-                                return const Iterable<String>.empty();
-                              }
+  // ============================================================
+  // CABEÇALHO UNIFICADO
+  // ============================================================
 
-                              return _orientacoes
-                                  .map(
-                                    (
-                                      e,
-                                    ) =>
-                                        e.titulo,
-                                  )
-                                  .where(
-                                    (
-                                      titulo,
-                                    ) =>
-                                        titulo.toLowerCase().contains(
-                                              textEditingValue.text
-                                                  .toLowerCase(),
-                                            ),
-                                  );
-                            },
-                            onSelected: (
-                              String selection,
-                            ) {
-                              setState(() {
-                                _filtroPesquisa = selection;
+  Widget _buildCabecalhoPagina(
+    int totalImagens,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        12,
+      ),
+      child: LayoutBuilder(
+        builder: (
+          context,
+          constraints,
+        ) {
+          final largura = constraints.maxWidth;
 
-                                _pesquisaController.text = selection;
-                              });
-                            },
-                            fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                            ) {
-                              return TextField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                onChanged: (
-                                  value,
-                                ) {
-                                  setState(() {
-                                    _filtroPesquisa = value;
+          final bool compacto = largura < 1050;
+          final bool muitoCompacto = largura < 760;
 
-                                    _pesquisaController.text = value;
-                                  });
-                                },
-                                style: const TextStyle(
-                                  color: CoresApp.textoPrincipal,
-                                  fontSize: 14,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: 'Pesquisar orientação...',
-                                  hintStyle: const TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 13,
-                                  ),
-                                  prefixIcon: const Icon(
-                                    Icons.search,
-                                    color: CoresApp.textoSecundario,
-                                    size: 18,
-                                  ),
-                                  suffixIcon:
-                                      _pesquisaController.text.isNotEmpty
-                                          ? IconButton(
-                                              icon: const Icon(
-                                                Icons.clear,
-                                                color: CoresApp.textoSecundario,
-                                                size: 16,
-                                              ),
-                                              onPressed: () {
-                                                setState(
-                                                  () {
-                                                    _pesquisaController.clear();
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: EdgeInsets.all(
+              muitoCompacto ? 14 : 18,
+            ),
+            decoration: BoxDecoration(
+              color: CoresApp.superficie.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: CoresApp.borda.withOpacity(0.9),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.24),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!compacto)
+                  _buildCabecalhoAmplo(
+                    totalImagens,
+                    largura,
+                  )
+                else
+                  _buildCabecalhoCompacto(
+                    totalImagens,
+                    muitoCompacto,
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-                                                    controller.clear();
+  Widget _buildCabecalhoAmplo(
+    int totalImagens,
+    double largura,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _buildIconeTitulo(),
+        const SizedBox(width: 14),
+        Expanded(
+          flex: 3,
+          child: _buildTituloPagina(),
+        ),
+        const SizedBox(width: 20),
+        _buildEstatistica(
+          Icons.auto_awesome_mosaic_outlined,
+          '${_orientacoes.length}',
+          'orientações',
+        ),
+        const SizedBox(width: 8),
+        _buildEstatistica(
+          Icons.collections_outlined,
+          '$totalImagens',
+          'imagens',
+        ),
+        const SizedBox(width: 14),
+        SizedBox(
+          width: largura > 1350 ? 300 : 245,
+          child: _buildPesquisa(),
+        ),
+        const SizedBox(width: 10),
+        _buildBotaoNovaOrientacao(),
+      ],
+    );
+  }
 
-                                                    _filtroPesquisa = '';
-                                                  },
-                                                );
-                                              },
-                                            )
-                                          : null,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                    horizontal: 12,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      10,
-                                    ),
-                                    borderSide: const BorderSide(
-                                      color: CoresApp.borda,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      10,
-                                    ),
-                                    borderSide: const BorderSide(
-                                      color: CoresApp.borda,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      10,
-                                    ),
-                                    borderSide: const BorderSide(
-                                      color: CoresApp.primaria,
-                                    ),
-                                  ),
-                                  filled: true,
-                                  fillColor: CoresApp.superficie,
-                                ),
-                              );
-                            },
-                            optionsViewBuilder: (
-                              context,
-                              onSelected,
-                              options,
-                            ) {
-                              return Align(
-                                alignment: Alignment.topLeft,
-                                child: Material(
-                                  elevation: 8,
-                                  color: Colors.transparent,
-                                  child: Container(
-                                    width: 280,
-                                    decoration: BoxDecoration(
-                                      color: CoresApp.superficie,
-                                      borderRadius: BorderRadius.circular(
-                                        10,
-                                      ),
-                                      border: Border.all(
-                                        color: CoresApp.borda,
-                                      ),
-                                    ),
-                                    child: ListView.builder(
-                                      padding: EdgeInsets.zero,
-                                      shrinkWrap: true,
-                                      itemCount: options.length,
-                                      itemBuilder: (
-                                        context,
-                                        index,
-                                      ) {
-                                        final option = options.elementAt(
-                                          index,
-                                        );
-
-                                        return InkWell(
-                                          onTap: () => onSelected(
-                                            option,
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(
-                                              12,
-                                            ),
-                                            child: Text(
-                                              option,
-                                              style: const TextStyle(
-                                                color: CoresApp.textoPrincipal,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-
-                        const SizedBox(
-                          width: 12,
-                        ),
-
-                        // ==================================================
-                        // NOVA ORIENTAÇÃO
-                        // ==================================================
-
-                        ElevatedButton.icon(
-                          onPressed: _adicionarBloco,
-                          icon: const Icon(
-                            Icons.add_rounded,
-                            size: 18,
-                          ),
-                          label: const Text(
-                            'Nova Orientação',
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: CoresApp.primaria,
-                            foregroundColor: CoresApp.textoPrincipal,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                10,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+  Widget _buildCabecalhoCompacto(
+    int totalImagens,
+    bool muitoCompacto,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            _buildIconeTitulo(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildTituloPagina(),
+            ),
+            if (!muitoCompacto) ...[
+              _buildEstatistica(
+                Icons.auto_awesome_mosaic_outlined,
+                '${_orientacoes.length}',
+                'orientações',
+              ),
+              const SizedBox(width: 8),
+              _buildEstatistica(
+                Icons.collections_outlined,
+                '$totalImagens',
+                'imagens',
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (muitoCompacto)
+          Row(
+            children: [
+              Expanded(
+                child: _buildEstatistica(
+                  Icons.auto_awesome_mosaic_outlined,
+                  '${_orientacoes.length}',
+                  'orientações',
                 ),
               ),
-
-              // ======================================================
-              // ERRO
-              // ======================================================
-
-              if (_erroCarregamento != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(
-                      12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: CoresApp.erro.withOpacity(
-                        0.12,
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        10,
-                      ),
-                      border: Border.all(
-                        color: CoresApp.erro.withOpacity(
-                          0.4,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: CoresApp.erro,
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        const Expanded(
-                          child: Text(
-                            'Não foi possível carregar as orientações do Firebase.\n'
-                            'Verifique o console para ver o erro.',
-                            style: TextStyle(
-                              color: CoresApp.textoPrincipal,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: _carregarDados,
-                          icon: const Icon(
-                            Icons.refresh,
-                            color: CoresApp.primaria,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // ======================================================
-              // ÁREA DOS CARDS
-              // ======================================================
-
+              const SizedBox(width: 8),
               Expanded(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    if (orientacoesFiltradas.isEmpty &&
-                        _erroCarregamento == null)
-                      const Center(
-                        child: Text(
-                          'Nenhuma orientação encontrada.',
-                          style: TextStyle(
-                            color: CoresApp.textoSecundario,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-
-                    // ==================================================
-                    // CARDS
-                    // ==================================================
-
-                    for (final item in orientacoesFiltradas)
-                      Positioned(
-                        left: item.posicao.dx,
-                        top: item.posicao.dy,
-                        child: GestureDetector(
-                          // ==================================================
-                          // ARRASTAR CARD
-                          // ==================================================
-
-                          onPanUpdate: (
-                            details,
-                          ) {
-                            setState(() {
-                              item.posicao += details.delta;
-                            });
-                          },
-
-                          onPanEnd: (_) {
-                            _salvarBloco(
-                              item,
-                            );
-                          },
-
-                          child: _buildCard(
-                            item,
-                          ),
-                        ),
-                      ),
-                  ],
+                child: _buildEstatistica(
+                  Icons.collections_outlined,
+                  '$totalImagens',
+                  'imagens',
                 ),
               ),
             ],
+          ),
+        if (muitoCompacto) const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPesquisa(),
+            ),
+            const SizedBox(width: 10),
+            _buildBotaoNovaOrientacao(
+              compacto: true,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIconeTitulo() {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CoresApp.primaria.withOpacity(0.20),
+            CoresApp.primaria.withOpacity(0.07),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: CoresApp.primaria.withOpacity(0.32),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: CoresApp.primaria.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.lightbulb_outline_rounded,
+        color: CoresApp.primaria,
+        size: 25,
+      ),
+    );
+  }
+
+  Widget _buildTituloPagina() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Orientações',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: CoresApp.textoPrincipal,
+            fontSize: 21,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'Consulte e mantenha seus procedimentos organizados.',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: CoresApp.textoSecundario.withOpacity(0.9),
+            fontSize: 10.5,
+            height: 1.2,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEstatistica(
+    IconData icon,
+    String valor,
+    String legenda,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 11,
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        color: CoresApp.fundo.withOpacity(0.58),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: CoresApp.borda.withOpacity(0.9),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: CoresApp.primaria.withOpacity(0.11),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              size: 14,
+              color: CoresApp.primaria,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            valor,
+            style: const TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            legenda,
+            style: const TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBotaoNovaOrientacao({
+    bool compacto = false,
+  }) {
+    if (compacto) {
+      return Tooltip(
+        message: 'Nova orientação',
+        child: SizedBox(
+          height: 44,
+          width: 46,
+          child: ElevatedButton(
+            onPressed: _adicionarBloco,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CoresApp.primaria,
+              foregroundColor: CoresApp.textoPrincipal,
+              elevation: 3,
+              shadowColor: CoresApp.primaria.withOpacity(0.25),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            child: const Icon(
+              Icons.add_rounded,
+              size: 21,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 42,
+      child: ElevatedButton.icon(
+        onPressed: _adicionarBloco,
+        icon: const Icon(
+          Icons.add_rounded,
+          size: 18,
+        ),
+        label: const Text(
+          'Nova orientação',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: CoresApp.primaria,
+          foregroundColor: CoresApp.textoPrincipal,
+          elevation: 3,
+          shadowColor: CoresApp.primaria.withOpacity(0.25),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPesquisa() {
+    return TextField(
+      controller: _pesquisaController,
+      onChanged: (value) {
+        setState(() {
+          _filtroPesquisa = value;
+        });
+      },
+      style: const TextStyle(
+        color: CoresApp.textoPrincipal,
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        hintText: 'Pesquisar orientação...',
+        hintStyle: const TextStyle(
+          color: CoresApp.textoSecundario,
+          fontSize: 11,
+        ),
+        prefixIcon: Container(
+          width: 42,
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.search_rounded,
+            color: CoresApp.textoSecundario,
+            size: 18,
+          ),
+        ),
+        suffixIcon: _pesquisaController.text.isNotEmpty
+            ? IconButton(
+                tooltip: 'Limpar pesquisa',
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: CoresApp.textoSecundario,
+                  size: 15,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _pesquisaController.clear();
+                    _filtroPesquisa = '';
+                  });
+                },
+              )
+            : null,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 12,
+          horizontal: 8,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(
+            color: CoresApp.borda,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(
+            color: CoresApp.borda,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(
+            color: CoresApp.primaria,
+            width: 1.3,
+          ),
+        ),
+        filled: true,
+        fillColor: CoresApp.fundo.withOpacity(0.60),
+      ),
+    );
+  }
+
+  // ============================================================
+  // ERRO
+  // ============================================================
+
+  Widget _buildErro() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        10,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 9,
+        ),
+        decoration: BoxDecoration(
+          color: CoresApp.erro.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: CoresApp.erro.withOpacity(0.35),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: CoresApp.erro.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: CoresApp.erro,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 9),
+            const Expanded(
+              child: Text(
+                'Não foi possível carregar as orientações do Firebase.',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _carregarDados,
+              icon: const Icon(
+                Icons.refresh_rounded,
+                size: 15,
+              ),
+              label: const Text(
+                'Tentar novamente',
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: CoresApp.primaria,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // ESTADO VAZIO
+  // ============================================================
+
+  Widget _buildEstadoVazio() {
+    final bool pesquisando = _filtroPesquisa.trim().isNotEmpty;
+
+    return Center(
+      child: Container(
+        width: 430,
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: CoresApp.superficie.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: CoresApp.borda,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: CoresApp.primaria.withOpacity(0.10),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: CoresApp.primaria.withOpacity(0.16),
+                ),
+              ),
+              child: Icon(
+                pesquisando
+                    ? Icons.search_off_rounded
+                    : Icons.lightbulb_outline_rounded,
+                color: CoresApp.primaria,
+                size: 31,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              pesquisando
+                  ? 'Nenhuma orientação encontrada'
+                  : 'Nenhuma orientação cadastrada',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: CoresApp.textoPrincipal,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              pesquisando
+                  ? 'Tente pesquisar usando outro termo.'
+                  : 'Crie sua primeira orientação para manter seus procedimentos organizados.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: CoresApp.textoSecundario,
+                fontSize: 11,
+                height: 1.55,
+              ),
+            ),
+            if (!pesquisando) ...[
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _adicionarBloco,
+                icon: const Icon(
+                  Icons.add_rounded,
+                  size: 17,
+                ),
+                label: const Text(
+                  'Criar orientação',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CoresApp.primaria,
+                  foregroundColor: CoresApp.textoPrincipal,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 17,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // CARD
+  // ============================================================
+
+  Widget _buildCardOrientacao(
+    OrientacaoModel item,
+  ) {
+    return _OrientacaoCard(
+      item: item,
+      onTap: () => _abrirModalOrientacao(item),
+      onDelete: () => _removerBloco(item),
+    );
+  }
+}
+
+// ============================================================================
+// CARD — PAINEL COMPACTO PROFISSIONAL
+// ============================================================================
+
+class _OrientacaoCard extends StatefulWidget {
+  final OrientacaoModel item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _OrientacaoCard({
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  State<_OrientacaoCard> createState() => _OrientacaoCardState();
+}
+
+class _OrientacaoCardState extends State<_OrientacaoCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+
+    final bool possuiConteudo = item.controller.text.trim().isNotEmpty;
+
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() {
+          _hovered = true;
+        });
+      },
+      onExit: (_) {
+        setState(() {
+          _hovered = false;
+        });
+      },
+      cursor: SystemMouseCursors.click,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        transform: Matrix4.translationValues(
+          0,
+          _hovered ? -1 : 0,
+          0,
+        ),
+        decoration: BoxDecoration(
+          color: _hovered
+              ? CoresApp.superficie.withOpacity(0.98)
+              : CoresApp.superficie.withOpacity(0.91),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _hovered
+                ? CoresApp.primaria.withOpacity(0.42)
+                : CoresApp.borda.withOpacity(0.85),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(
+                _hovered ? 0.16 : 0.06,
+              ),
+              blurRadius: _hovered ? 12 : 6,
+              offset: Offset(
+                0,
+                _hovered ? 4 : 2,
+              ),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(10),
+              hoverColor: Colors.transparent,
+              splashColor: CoresApp.primaria.withOpacity(0.05),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 3,
+                    height: double.infinity,
+                    decoration: BoxDecoration(
+                      color: _hovered
+                          ? CoresApp.primaria
+                          : CoresApp.primaria.withOpacity(0.50),
+                    ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(
+                              milliseconds: 150,
+                            ),
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: _hovered
+                                  ? CoresApp.primaria.withOpacity(0.15)
+                                  : CoresApp.primaria.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(
+                                color: CoresApp.primaria.withOpacity(
+                                  _hovered ? 0.26 : 0.12,
+                                ),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.lightbulb_outline_rounded,
+                              color: CoresApp.primaria,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.titulo,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: _hovered
+                                        ? CoresApp.textoPrincipal
+                                        : CoresApp.destaque,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      possuiConteudo
+                                          ? Icons.check_circle_outline_rounded
+                                          : Icons.edit_note_rounded,
+                                      size: 10,
+                                      color: possuiConteudo
+                                          ? CoresApp.sucesso
+                                          : CoresApp.textoSecundario,
+                                    ),
+                                    const SizedBox(
+                                      width: 4,
+                                    ),
+                                    Flexible(
+                                      child: Text(
+                                        possuiConteudo
+                                            ? 'Conteúdo disponível'
+                                            : 'Sem conteúdo',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: CoresApp.textoSecundario,
+                                          fontSize: 8,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            flex: 5,
+                            child: Container(
+                              height: 38,
+                              padding: const EdgeInsets.only(
+                                left: 10,
+                                right: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(
+                                    color: CoresApp.borda.withOpacity(0.8),
+                                  ),
+                                ),
+                              ),
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                possuiConteudo
+                                    ? item.controller.text.replaceAll(
+                                        '\n',
+                                        ' ',
+                                      )
+                                    : 'Clique para adicionar o conteúdo...',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: possuiConteudo
+                                      ? CoresApp.textoSecundario
+                                      : CoresApp.textoSecundario.withOpacity(
+                                          0.55,
+                                        ),
+                                  fontSize: 9.5,
+                                  height: 1.25,
+                                  fontStyle: possuiConteudo
+                                      ? FontStyle.normal
+                                      : FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          if (item.imagens.isNotEmpty)
+                            _buildIndicadorAnexos(
+                              item.imagens.length,
+                            ),
+                          if (item.imagens.isNotEmpty) const SizedBox(width: 5),
+                          AnimatedOpacity(
+                            opacity: _hovered ? 1 : 0,
+                            duration: const Duration(milliseconds: 120),
+                            child: IgnorePointer(
+                              ignoring: !_hovered,
+                              child: Container(
+                                width: 27,
+                                height: 27,
+                                decoration: BoxDecoration(
+                                  color: CoresApp.erro.withOpacity(0.07),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                child: IconButton(
+                                  tooltip: 'Excluir orientação',
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: CoresApp.erro,
+                                    size: 14,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: widget.onDelete,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 130),
+                            width: 25,
+                            height: 27,
+                            decoration: BoxDecoration(
+                              color: _hovered
+                                  ? CoresApp.primaria.withOpacity(0.08)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: _hovered
+                                  ? CoresApp.primaria
+                                  : CoresApp.textoSecundario,
+                              size: 18,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIndicadorAnexos(
+    int quantidade,
+  ) {
+    return Container(
+      height: 25,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: CoresApp.fundo.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: CoresApp.borda.withOpacity(0.9),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.image_outlined,
+            size: 11,
+            color: CoresApp.primaria,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$quantidade',
+            style: const TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontSize: 8.5,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ],
       ),

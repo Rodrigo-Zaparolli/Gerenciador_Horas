@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
@@ -103,11 +104,28 @@ class FirebaseService {
 
       final Map<String, dynamic> data = Map<String, dynamic>.from(item);
 
-      final DateTime? startDate = _parseDate(data['startDate']);
+      debugPrint(
+        '''
+========== DEBUG E-DESK ==========
+subId: ${data['subId']}
+edeskSolicitacao: ${data['edeskSolicitacao']}
+edeskUrl: ${data['edeskUrl']}
+edeskIdTrabalho: ${data['edeskIdTrabalho']}
+==================================
+''',
+      );
 
-      final DateTime? planStart = _parseDate(data['planStart']);
+      final DateTime? startDate = _parseDate(
+        data['startDate'],
+      );
 
-      final DateTime? planEnd = _parseDate(data['planEnd']);
+      final DateTime? planStart = _parseDate(
+        data['planStart'],
+      );
+
+      final DateTime? planEnd = _parseDate(
+        data['planEnd'],
+      );
 
       tasks.add(
         TaskModel(
@@ -122,13 +140,30 @@ class FirebaseService {
               data['horasTrabalhadas']?.toString() ??
               '00:00',
           hourType: data['hourType']?.toString() ?? 'Hs Cobradas',
+
+// ========================================================
+// E-DESK
+// ========================================================
+
+          edeskSolicitacao:
+              data['edeskSolicitacao']?.toString().trim().isNotEmpty == true
+                  ? data['edeskSolicitacao'].toString().trim()
+                  : null,
+
+          edeskUrl: data['edeskUrl']?.toString().trim().isNotEmpty == true
+              ? data['edeskUrl'].toString().trim()
+              : null,
+
+          edeskIdTrabalho:
+              data['edeskIdTrabalho']?.toString().trim().isNotEmpty == true
+                  ? data['edeskIdTrabalho'].toString().trim()
+                  : null,
         ),
       );
     }
 
     return tasks;
   }
-
   // ============================================================
   // FIRESTORE -> PROJECT MODEL
   // ============================================================
@@ -146,6 +181,60 @@ class FirebaseService {
     final List<TaskModel> subTasks = _parseSubTasks(
       data['subTasks'],
     );
+
+// ============================================================
+// GARANTIR E-DESK EM PROJETOS ANTIGOS
+// ============================================================
+//
+// Se o projeto foi criado antes da implementação dos campos
+// E-Desk, os campos podem estar ausentes/null no Firestore.
+//
+// Nesse caso reconstruímos automaticamente:
+// projeto + subId.
+//
+// Exemplo:
+// 2263797 + 18 -> 2263797 / 18
+// 2263797 + 31 -> 2263797 / 31
+// ============================================================
+
+    final String projetoEdesk =
+        (data['id']?.toString().trim().isNotEmpty == true)
+            ? data['id'].toString().trim()
+            : doc.id.trim();
+
+    for (final task in subTasks) {
+      if (task.edeskSolicitacao == null ||
+          task.edeskSolicitacao!.trim().isEmpty) {
+        task.edeskSolicitacao = projetoEdesk;
+      } else {
+        task.edeskSolicitacao = task.edeskSolicitacao!.trim();
+      }
+
+      if (task.edeskIdTrabalho == null ||
+          task.edeskIdTrabalho!.trim().isEmpty) {
+        task.edeskIdTrabalho = task.subId.trim();
+      } else {
+        task.edeskIdTrabalho = task.edeskIdTrabalho!.trim();
+      }
+
+      if (task.edeskUrl != null) {
+        task.edeskUrl = task.edeskUrl!.trim();
+
+        if (task.edeskUrl!.isEmpty) {
+          task.edeskUrl = null;
+        }
+      }
+
+      debugPrint('''
+========== E-DESK NORMALIZADO ==========
+Projeto: $projetoEdesk
+Tarefa: ${task.subId}
+Solicitação: ${task.edeskSolicitacao}
+ID Trabalho: ${task.edeskIdTrabalho}
+URL: ${task.edeskUrl}
+========================================
+''');
+    }
 
     final String resolvedHours = data['estimatedHours']?.toString() ??
         data['workedHours']?.toString() ??
@@ -228,9 +317,9 @@ class FirebaseService {
     return _projectFromFirestore(doc);
   }
 
-  // ============================================================
-  // SALVAR PROJETO
-  // ============================================================
+// ============================================================
+// SALVAR PROJETO
+// ============================================================
 
   Future<void> saveProject(
     ProjectModel project, [
@@ -246,6 +335,75 @@ class FirebaseService {
       );
     }
 
+    // ============================================================
+    // GARANTIR DADOS DO E-DESK NAS TAREFAS
+    // ============================================================
+    //
+    // A solicitação do E-Desk corresponde ao ID do projeto.
+    //
+    // O número do trabalho corresponde ao subId da tarefa.
+    //
+    // Exemplo:
+    //
+    // Projeto: 2263797
+    // Tarefa: 31
+    //
+    // Resultado:
+    // edeskSolicitacao = 2263797
+    // edeskIdTrabalho = 31
+    //
+    // ============================================================
+
+    if (project.subTasks != null) {
+      for (final task in project.subTasks!) {
+        final String projetoEdesk = project.id.trim();
+        final String tarefaEdesk = task.subId.trim();
+
+        if (task.edeskSolicitacao == null ||
+            task.edeskSolicitacao!.trim().isEmpty) {
+          task.edeskSolicitacao = projetoEdesk;
+        } else {
+          task.edeskSolicitacao = task.edeskSolicitacao!.trim();
+        }
+
+        if (task.edeskIdTrabalho == null ||
+            task.edeskIdTrabalho!.trim().isEmpty) {
+          task.edeskIdTrabalho = tarefaEdesk;
+        } else {
+          task.edeskIdTrabalho = task.edeskIdTrabalho!.trim();
+        }
+
+        if (task.edeskUrl != null) {
+          task.edeskUrl = task.edeskUrl!.trim();
+
+          if (task.edeskUrl!.isEmpty) {
+            task.edeskUrl = null;
+          }
+        }
+
+        debugPrint('''
+========== FIREBASE SAVE E-DESK ==========
+Projeto: ${project.id}
+Tarefa: ${task.subId}
+Solicitação: ${task.edeskSolicitacao}
+ID Trabalho: ${task.edeskIdTrabalho}
+URL: ${task.edeskUrl}
+==========================================
+''');
+      }
+    }
+
+    // ============================================================
+    // SE O PROJETO ESTÁ FINALIZADO
+    // ============================================================
+    //
+    // IMPORTANTE:
+    // O bloco E-DESK precisa executar ANTES daqui.
+    //
+    // Assim finalizarProjeto() recebe as tarefas já preenchidas.
+    //
+    // ============================================================
+
     if (project.status == 'TRAB_FIM') {
       await finalizarProjeto(
         project,
@@ -255,27 +413,56 @@ class FirebaseService {
       return;
     }
 
+    // ============================================================
+    // CONVERTER PROJETO PARA JSON
+    // ============================================================
+
     final Map<String, dynamic> data = project.toJson();
+
+    // ============================================================
+    // GARANTIR CAMPOS PRINCIPAIS
+    // ============================================================
 
     data['id'] = project.id;
     data['estimatedHours'] = project.estimatedHours;
     data['workedHours'] = project.estimatedHours;
     data['horasTrabalhadas'] = project.estimatedHours;
 
+    // ============================================================
+    // GARANTIR SUBTASKS NO JSON
+    // ============================================================
+
+    if (project.subTasks != null) {
+      data['subTasks'] = project.subTasks!.map((task) {
+        return task.toJson();
+      }).toList();
+    } else {
+      data['subTasks'] = <Map<String, dynamic>>[];
+    }
+
+    // ============================================================
+    // CHECKLIST
+    // ============================================================
+
     data['checklist'] = List<Map<String, dynamic>>.from(
       project.checklist.map(
-        (item) => Map<String, dynamic>.from(
-          item,
-        ),
+        (item) => Map<String, dynamic>.from(item),
       ),
     );
+
+    // ============================================================
+    // SALVAR
+    // ============================================================
 
     await _projectsRef.doc(targetDocId).set(
           data,
           SetOptions(merge: true),
         );
-  }
 
+    debugPrint(
+      'Projeto $targetDocId salvo com sucesso no Firestore.',
+    );
+  }
   // ============================================================
   // CHECKLIST
   // ============================================================
@@ -1134,4 +1321,22 @@ class FirebaseService {
   Future<void> deleteTimeLog(
     String s,
   ) async {}
+
+  Future<void> addProject(
+    ProjectModel project,
+  ) async {
+    await saveProject(
+      project,
+      project.id,
+    );
+  }
+
+  Future<void> updateProject(
+    ProjectModel project,
+  ) async {
+    await saveProject(
+      project,
+      project.id,
+    );
+  }
 }

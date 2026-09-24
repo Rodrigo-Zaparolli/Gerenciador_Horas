@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart"
+    },
+    {
+      "name": "E-Desk Bot",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/edesk_bot/main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/edesk_bot",
+      "args": [
+        "${workspaceFolder}/edesk_bot/request.json"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1"
+      }
+    }
+  ]
+}

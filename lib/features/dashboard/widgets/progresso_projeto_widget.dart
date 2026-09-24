@@ -22,7 +22,6 @@ class ProgressoProjetoWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalProjectHours = parseTimeToHours(activeProject.estimatedHours);
 
-    // Soma dinâmica de todas as horas cadastradas nas sub-etapas do projeto
     final workedHours =
         _getExecutedHoursForProject(activeProject.id.toString());
 
@@ -36,8 +35,10 @@ class ProgressoProjetoWidget extends StatelessWidget {
     final subTasks = activeProject.subTasks ?? [];
 
     double maxSubEstimated = 1.0;
+
     for (final sub in subTasks) {
       final est = parseTimeToHours(sub.estimatedHours);
+
       if (est > maxSubEstimated) {
         maxSubEstimated = est;
       }
@@ -46,58 +47,89 @@ class ProgressoProjetoWidget extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 9,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFF13131A),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Colors.white.withOpacity(0.06),
-          width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withOpacity(0.28),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ========================================================
-          // COLUNA ESQUERDA: COMPACTADA (flex: 4)
-          // ========================================================
+          // ============================================================
+          // ESQUERDA
+          // ============================================================
           Expanded(
             flex: 4,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${activeProject.id} ${activeProject.client}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF0099FF),
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  activeProject.serviceType,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.date_range,
-                        size: 11, color: Colors.white54),
+                    Container(
+                      width: 23,
+                      height: 23,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0099FF).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.work_outline_rounded,
+                        color: Color(0xFF0099FF),
+                        size: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${activeProject.id} ${activeProject.client}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF0099FF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 2),
+
+                Padding(
+                  padding: const EdgeInsets.only(left: 29),
+                  child: Text(
+                    activeProject.serviceType,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.52),
+                      fontSize: 9,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 6),
+
+                Row(
+                  children: [
+                    Icon(
+                      Icons.date_range_outlined,
+                      size: 10,
+                      color: Colors.white.withOpacity(0.35),
+                    ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
@@ -105,106 +137,187 @@ class ProgressoProjetoWidget extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 10,
+                          color: Colors.white.withOpacity(0.40),
+                          fontSize: 8,
                         ),
                       ),
                     ),
                   ],
                 ),
+
                 const Spacer(),
+
+                // ======================================================
+                // TOTAL / TRAB / REST
+                // ======================================================
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.03),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white.withOpacity(0.04)),
+                    color: Colors.white.withOpacity(0.025),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.045),
+                    ),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildMiniInfo('Total', formatHours(totalProjectHours),
-                          Colors.white),
-                      _buildMiniInfo('Trab.', formatHours(workedHours),
-                          Colors.greenAccent),
-                      _buildMiniInfo('Rest.', formatHours(remainingHours),
-                          Colors.orangeAccent),
+                      Expanded(
+                        child: _buildMiniInfo(
+                          'Total',
+                          formatHours(totalProjectHours),
+                          Colors.white,
+                        ),
+                      ),
+                      _buildDivider(),
+                      Expanded(
+                        child: _buildMiniInfo(
+                          'Trab.',
+                          formatHours(workedHours),
+                          Colors.greenAccent,
+                        ),
+                      ),
+                      _buildDivider(),
+                      Expanded(
+                        child: _buildMiniInfo(
+                          'Rest.',
+                          formatHours(remainingHours),
+                          Colors.orangeAccent,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF17231B),
-                    borderRadius: BorderRadius.circular(6),
-                    border:
-                        Border.all(color: Colors.greenAccent.withOpacity(0.5)),
-                  ),
-                  child: Text(
-                    '% Realizado hs: $percentRealized%',
-                    style: const TextStyle(
+
+                const SizedBox(height: 4),
+
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.trending_up_rounded,
+                      size: 11,
                       color: Colors.greenAccent,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
                     ),
-                  ),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        'Realizado',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.40),
+                          fontSize: 8,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$percentRealized%',
+                      style: const TextStyle(
+                        color: Colors.greenAccent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
 
+          // ============================================================
+          // DIVISOR
+          // ============================================================
           Container(
             width: 1,
-            margin: const EdgeInsets.symmetric(vertical: 4),
+            margin: const EdgeInsets.symmetric(vertical: 2),
             color: Colors.white.withOpacity(0.06),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
 
-          // ========================================================
-          // COLUNA DIREITA: AMPLIADA PARA AS BARRAS (flex: 8)
-          // ========================================================
+          // ============================================================
+          // DIREITA
+          // ============================================================
           Expanded(
             flex: 8,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Etapas do Projeto',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+                // ------------------------------------------------------
+                // CABEÇALHO
+                // ------------------------------------------------------
+                SizedBox(
+                  height: 20,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.account_tree_outlined,
+                        size: 13,
+                        color: Color(0xFF0099FF),
+                      ),
+                      const SizedBox(width: 4),
+                      const Flexible(
+                        child: Text(
+                          'Etapas do Projeto',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (subTasks.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Text(
+                          '${subTasks.length}',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.30),
+                            fontSize: 8,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 6),
+
+                const SizedBox(height: 4),
+
+                // ------------------------------------------------------
+                // LISTA
+                // ------------------------------------------------------
                 Expanded(
                   child: subTasks.isEmpty
                       ? const Center(
                           child: Text(
                             'Nenhuma etapa cadastrada',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: Colors.white38,
-                              fontSize: 10.5,
+                              fontSize: 9,
                             ),
                           ),
                         )
-                      : ListView.separated(
+                      : ListView.builder(
                           padding: EdgeInsets.zero,
                           physics: const ClampingScrollPhysics(),
                           itemCount: subTasks.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 4),
                           itemBuilder: (context, index) {
                             final sub = subTasks[index];
+
                             final targetId = '${activeProject.id}_${sub.subId}';
+
                             final executed =
                                 _getExecutedHoursForTarget(targetId);
+
                             final estimated =
                                 parseTimeToHours(sub.estimatedHours);
 
@@ -217,6 +330,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                             final ratio = maxSubEstimated > 0
                                 ? (estimated / maxSubEstimated)
                                 : 0.0;
+
                             final widthFactor =
                                 (0.35 + (0.65 * ratio)).clamp(0.35, 1.0);
 
@@ -226,69 +340,173 @@ class ProgressoProjetoWidget extends StatelessWidget {
 
                             const dateRangeStr = '13/04 - 14/04';
 
-                            return Row(
-                              children: [
-                                Expanded(
-                                  flex: 6,
-                                  child: Text(
-                                    '${sub.stage} - $percent% - $dateRangeStr',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.85),
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.w500,
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: SizedBox(
+                                height: 29,
+                                child: Row(
+                                  children: [
+                                    // ==========================================
+                                    // INFORMAÇÕES DA ETAPA
+                                    // ==========================================
+                                    Expanded(
+                                      flex: 5,
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 3,
+                                            height: 16,
+                                            decoration: BoxDecoration(
+                                              color: percent >= 100
+                                                  ? Colors.greenAccent
+                                                  : const Color(0xFF0099FF),
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Nome da etapa
+                                                SizedBox(
+                                                  height: 11,
+                                                  child: Text(
+                                                    sub.stage,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 8.5,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+
+                                                const SizedBox(height: 1),
+
+                                                // Percentual + data
+                                                Row(
+                                                  children: [
+                                                    Text(
+                                                      '$percent%',
+                                                      style: TextStyle(
+                                                        color: percent >= 100
+                                                            ? Colors.greenAccent
+                                                            : const Color(
+                                                                0xFF35B5FF,
+                                                              ),
+                                                        fontSize: 7,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Flexible(
+                                                      child: Text(
+                                                        dateRangeStr,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          color: Colors.white
+                                                              .withOpacity(
+                                                            0.28,
+                                                          ),
+                                                          fontSize: 6.5,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  flex: 6,
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: FractionallySizedBox(
-                                      widthFactor: widthFactor,
-                                      child: Container(
-                                        height: 18,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.04),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                          border: Border.all(
-                                              color: Colors.white
-                                                  .withOpacity(0.08)),
-                                        ),
-                                        child: Stack(
-                                          alignment: Alignment.centerLeft,
-                                          children: [
-                                            FractionallySizedBox(
-                                              widthFactor: fillFactor,
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF0099FF)
-                                                      .withOpacity(0.4),
-                                                  borderRadius:
-                                                      BorderRadius.circular(3),
+
+                                    const SizedBox(width: 5),
+
+                                    // ==========================================
+                                    // BARRA
+                                    // ==========================================
+                                    Expanded(
+                                      flex: 5,
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: FractionallySizedBox(
+                                          widthFactor: widthFactor,
+                                          child: SizedBox(
+                                            height: 16,
+                                            child: Stack(
+                                              fit: StackFit.expand,
+                                              children: [
+                                                // Fundo
+                                                Container(
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white
+                                                        .withOpacity(0.035),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      4,
+                                                    ),
+                                                    border: Border.all(
+                                                      color: Colors.white
+                                                          .withOpacity(0.055),
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
-                                            ),
-                                            Center(
-                                              child: Text(
-                                                formatHours(executed),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.w700,
+
+                                                // Progresso
+                                                FractionallySizedBox(
+                                                  widthFactor: fillFactor,
+                                                  alignment:
+                                                      Alignment.centerLeft,
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(
+                                                        0xFF0099FF,
+                                                      ).withOpacity(0.48),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        3,
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
+
+                                                // Horas
+                                                Center(
+                                                  child: FittedBox(
+                                                    fit: BoxFit.scaleDown,
+                                                    child: Text(
+                                                      formatHours(executed),
+                                                      maxLines: 1,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 7,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                          ],
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             );
                           },
                         ),
@@ -301,52 +519,99 @@ class ProgressoProjetoWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildMiniInfo(String label, String value, Color color) {
+  // ============================================================
+  // MINI INFORMAÇÃO
+  // ============================================================
+  Widget _buildMiniInfo(
+    String label,
+    String value,
+    Color color,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
-          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 8.5),
-        ),
-        Text(
-          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-              color: color, fontSize: 10.5, fontWeight: FontWeight.w700),
+            color: Colors.white.withOpacity(0.36),
+            fontSize: 7,
+          ),
+        ),
+        const SizedBox(height: 1),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
       ],
     );
   }
 
+  // ============================================================
+  // DIVISOR
+  // ============================================================
+  Widget _buildDivider() {
+    return Container(
+      width: 1,
+      height: 17,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      color: Colors.white.withOpacity(0.06),
+    );
+  }
+
+  // ============================================================
+  // HORAS EXECUTADAS DO PROJETO
+  // ============================================================
   double _getExecutedHoursForProject(String projectId) {
     double total = 0;
+
     final subTasks = activeProject.subTasks ?? [];
 
     // Soma as horas de cada sub-etapa baseada no targetId correspondente
     for (final sub in subTasks) {
       final targetId = '${projectId}_${sub.subId}';
+
       total += _getExecutedHoursForTarget(targetId);
     }
 
     // Também valida logs diretos caso existam salvos com o projectId
     for (final log in timeLogs) {
       if (log.projectId.toString() == projectId) {
-        bool alreadyCounted = subTasks.any(
-            (sub) => log.targetId.toString() == '${projectId}_${sub.subId}');
+        final alreadyCounted = subTasks.any(
+          (sub) => log.targetId.toString() == '${projectId}_${sub.subId}',
+        );
+
         if (!alreadyCounted) {
           total += parseTimeToHours(log.durationFormatted);
         }
       }
     }
+
     return total;
   }
 
+  // ============================================================
+  // HORAS EXECUTADAS DA ETAPA
+  // ============================================================
   double _getExecutedHoursForTarget(String targetId) {
     double total = 0;
+
     for (final log
         in timeLogs.where((l) => l.targetId.toString() == targetId)) {
       total += parseTimeToHours(log.durationFormatted);
     }
+
     return total;
   }
 }

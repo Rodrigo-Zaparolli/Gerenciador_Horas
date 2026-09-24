@@ -126,6 +126,7 @@ class CoresDashboard {
   static const Color tabelaBorda = Color(0x14FFFFFF);
   static const Color tabelaDivisor = Color(0x1A334155);
   static const Color tabelaHover = Color(0x0DFFFFFF);
+  static const Color tabelaHover1 = Color(0x267C3AED);
 
   // =============================================================
   // ALERTAS

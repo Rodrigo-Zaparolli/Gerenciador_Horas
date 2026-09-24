@@ -1,5 +1,3 @@
-// ignore_for_file: unused_element
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
@@ -15,12 +13,15 @@ class CompletedProjectsScreen extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelectTab;
 
+  /// Mantido para não quebrar chamadas existentes da navegação.
+  final String userName;
+
   const CompletedProjectsScreen({
     super.key,
     required this.firebaseService,
     required this.selectedIndex,
     required this.onSelectTab,
-    required String userName,
+    required this.userName,
   });
 
   @override
@@ -29,20 +30,12 @@ class CompletedProjectsScreen extends StatefulWidget {
 }
 
 class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
-  // ============================================================
-  // CONTROLES DA TABELA
-  // ============================================================
-
   final ScrollController _horizontalController = ScrollController();
   final ScrollController _verticalController = ScrollController();
 
   final Set<String> _expandedProjectIds = {};
 
   String _searchQuery = '';
-
-  // ============================================================
-  // SERVIÇO DE HORAS
-  // ============================================================
 
   final TimeLogStore _timeLogStore = TimeLogStore();
 
@@ -54,28 +47,30 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     List<dynamic> projects,
   ) {
     return projects.map<Map<String, dynamic>>((project) {
-      if (project is Map<String, dynamic>) {
-        return Map<String, dynamic>.from(project);
+      final dynamic data = project;
+
+      if (data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(data);
       }
 
       try {
         return {
-          'id': project.id,
-          'id2': project.id2,
-          'client': project.client,
-          'serviceType': project.serviceType,
-          'stage': project.stage,
-          'task': project.task,
-          'status': project.status,
-          'startDate': project.startDate,
-          'estimatedHours': project.estimatedHours,
-          'leader': project.leader,
-          'hourType': project.hourType,
-          'excelLink': project.excelLink,
-          'folderPath': project.folderPath,
-          'observacao': project.observacao,
-          'finalizedAt': project.finalizedAt,
-          'subTasks': (project.subTasks ?? [])
+          'id': data.id,
+          'id2': data.id2,
+          'client': data.client,
+          'serviceType': data.serviceType,
+          'stage': data.stage,
+          'task': data.task,
+          'status': data.status,
+          'startDate': data.startDate,
+          'estimatedHours': data.estimatedHours,
+          'leader': data.leader,
+          'hourType': data.hourType,
+          'excelLink': data.excelLink,
+          'folderPath': data.folderPath,
+          'observacao': data.observacao,
+          'finalizedAt': data.finalizedAt,
+          'subTasks': (data.subTasks ?? [])
               .map<Map<String, dynamic>>(
                 (task) => {
                   'subId': task.subId,
@@ -105,11 +100,17 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   ) {
     final query = _searchQuery.trim().toLowerCase();
 
+    final completed = projects.where((project) {
+      final status = project['status']?.toString().trim().toUpperCase() ?? '';
+
+      return status == 'TRAB_FIM';
+    }).toList();
+
     if (query.isEmpty) {
-      return projects;
+      return completed;
     }
 
-    return projects.where((project) {
+    return completed.where((project) {
       final id = project['id']?.toString().toLowerCase() ?? '';
       final id2 = project['id2']?.toString().toLowerCase() ?? '';
       final client = project['client']?.toString().toLowerCase() ?? '';
@@ -128,7 +129,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // CONVERSÃO DE DATAS
+  // DATAS
   // ============================================================
 
   DateTime? _parseDate(dynamic value) {
@@ -152,6 +153,107 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
     return null;
   }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return '-';
+    }
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year.toString().substring(2)}';
+  }
+
+  String _formatDateTime(DateTime? date) {
+    if (date == null) {
+      return '-';
+    }
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year.toString().substring(2)} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  // ============================================================
+  // HORAS
+  // ============================================================
+
+  int _timeToMinutes(String value) {
+    final text = value.trim();
+
+    if (text.isEmpty) {
+      return 0;
+    }
+
+    try {
+      final parts = text.split(':');
+
+      if (parts.length == 2) {
+        final hours = int.tryParse(parts[0]) ?? 0;
+        final minutes = int.tryParse(parts[1]) ?? 0;
+
+        return (hours * 60) + minutes;
+      }
+
+      final decimal = double.tryParse(
+        text.replaceAll(',', '.'),
+      );
+
+      if (decimal != null) {
+        return (decimal * 60).round();
+      }
+    } catch (_) {}
+
+    return 0;
+  }
+
+  String _minutesToTime(int totalMinutes) {
+    if (totalMinutes < 0) {
+      totalMinutes = 0;
+    }
+
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}';
+  }
+
+  int _getLogMinutes(TimeLog log) {
+    final duration = log.durationFormatted?.trim() ?? '';
+
+    if (duration.isNotEmpty) {
+      final parsedDuration = _timeToMinutes(duration);
+
+      if (parsedDuration > 0) {
+        return parsedDuration;
+      }
+    }
+
+    if (log.hours != null) {
+      return (log.hours! * 60).round();
+    }
+
+    final start = log.startTime.trim();
+    final end = log.endTime.trim();
+
+    if (start.isNotEmpty && end.isNotEmpty) {
+      final startMinutes = _timeToMinutes(start);
+      final endMinutes = _timeToMinutes(end);
+
+      if (endMinutes >= startMinutes) {
+        return endMinutes - startMinutes;
+      }
+    }
+
+    return 0;
+  }
+
+  // ============================================================
+  // VALORES
+  // ============================================================
 
   String _stringValue(
     Map<String, dynamic> project,
@@ -184,87 +286,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         .toList();
   }
 
-  String _formatDate(DateTime? date) {
-    if (date == null) {
-      return '-';
-    }
-
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year.toString().substring(2)}';
-  }
-
-  String _formatDateTime(DateTime? date) {
-    if (date == null) {
-      return '-';
-    }
-
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year.toString().substring(2)} '
-        '${date.hour.toString().padLeft(2, '0')}:'
-        '${date.minute.toString().padLeft(2, '0')}';
-  }
-
   // ============================================================
-  // CONVERSÃO DE HORAS
-  // ============================================================
-
-  int _timeToMinutes(String value) {
-    final text = value.trim();
-
-    if (text.isEmpty) {
-      return 0;
-    }
-
-    try {
-      final parts = text.split(':');
-
-      if (parts.length == 2) {
-        final hours = int.tryParse(parts[0]) ?? 0;
-        final minutes = int.tryParse(parts[1]) ?? 0;
-
-        return (hours * 60) + minutes;
-      }
-
-      final decimal = double.tryParse(text.replaceAll(',', '.')) ?? 0;
-
-      return (decimal * 60).round();
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  String _minutesToTime(int totalMinutes) {
-    final safeMinutes = totalMinutes < 0 ? 0 : totalMinutes;
-
-    final hours = safeMinutes ~/ 60;
-    final minutes = safeMinutes % 60;
-
-    return '${hours.toString().padLeft(2, '0')}:'
-        '${minutes.toString().padLeft(2, '0')}';
-  }
-
-  int _getLogMinutes(TimeLog log) {
-    final duration = log.durationFormatted.trim();
-
-    if (duration.isNotEmpty) {
-      final durationMinutes = _timeToMinutes(duration);
-
-      if (durationMinutes > 0) {
-        return durationMinutes;
-      }
-    }
-
-    if (log.hours != null) {
-      return (log.hours! * 60).round();
-    }
-
-    return 0;
-  }
-
-  // ============================================================
-  // CORES DOS STATUS
+  // CORES DE STATUS
   // ============================================================
 
   Color _getStatusColor(String status) {
@@ -287,23 +310,434 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // CABEÇALHO DAS COLUNAS
+  // DECORAÇÕES
   // ============================================================
 
-  Widget _buildTableHeader(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        color: CoresApp.textoSecundario,
-        fontSize: TamanhosApp.tabelaFonteCabecalho,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.2,
+  BoxDecoration _cardDecoration({
+    Color? borderColor,
+    Color? backgroundColor,
+    double radius = 14,
+  }) {
+    return BoxDecoration(
+      color: backgroundColor ?? CoresDashboard.tabelaFundo,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: borderColor ?? CoresDashboard.tabelaBorda,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: CoresApp.overlay.withOpacity(0.14),
+          blurRadius: 18,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // CARD DE INDICADOR
+  // ============================================================
+
+  Widget _buildStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String description,
+    Color? accentColor,
+  }) {
+    final color = accentColor ?? CoresApp.destaque;
+
+    return Container(
+      constraints: const BoxConstraints(
+        minWidth: 130,
+        maxWidth: 220,
+        minHeight: 72,
+        maxHeight: 78,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.035),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.16),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: color.withOpacity(0.18),
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.55,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color.withOpacity(0.80),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // TEXTO DAS CÉLULAS
+  // TÍTULO DA PÁGINA
+  // ============================================================
+
+  Widget _buildPageTitleContent() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 5,
+          height: 54,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                CoresApp.sucesso,
+                CoresApp.destaque,
+              ],
+            ),
+            borderRadius: BorderRadius.circular(5),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: CoresApp.sucesso.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: CoresApp.sucesso.withOpacity(0.20),
+            ),
+          ),
+          child: const Icon(
+            Icons.task_alt_rounded,
+            color: CoresApp.sucesso,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 11),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Projetos Finalizados',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.25,
+                ),
+              ),
+              SizedBox(height: 3),
+              Text(
+                'Histórico completo dos trabalhos concluídos',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: CoresApp.textoSecundario,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // PESQUISA
+  // ============================================================
+
+  Widget _buildHeaderSearch() {
+    return TextField(
+      onChanged: (value) {
+        setState(() {
+          _searchQuery = value;
+        });
+      },
+      style: const TextStyle(
+        color: CoresApp.textoPrincipal,
+        fontSize: 12,
+      ),
+      decoration: InputDecoration(
+        hintText: 'Buscar por ID, cliente, serviço, líder ou etapa...',
+        hintStyle: TextStyle(
+          color: CoresApp.textoSecundario.withOpacity(0.45),
+          fontSize: 11,
+        ),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          color: CoresApp.destaque,
+          size: 18,
+        ),
+        suffixIcon: _searchQuery.trim().isNotEmpty
+            ? IconButton(
+                tooltip: 'Limpar pesquisa',
+                onPressed: () {
+                  setState(() {
+                    _searchQuery = '';
+                  });
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: CoresApp.textoSecundario,
+                  size: 16,
+                ),
+              )
+            : null,
+        filled: true,
+        fillColor: CoresTelas.campoFormulario,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(11),
+          borderSide: BorderSide(
+            color: CoresApp.bordaSuave,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(
+            color: CoresApp.destaque,
+            width: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // TÍTULO + INDICADORES
+  // ============================================================
+
+  Widget _buildPageTitle({
+    required List<Map<String, dynamic>> allProjects,
+    required List<Map<String, dynamic>> completedProjects,
+    required int totalSubTasks,
+    required DateTime? latestFinalized,
+  }) {
+    final int completedCount = allProjects.where((project) {
+      final status = project['status']?.toString().trim().toUpperCase() ?? '';
+      return status == 'TRAB_FIM';
+    }).length;
+
+    final stats = [
+      _buildStatCard(
+        icon: Icons.folder_copy_rounded,
+        label: 'Projetos',
+        value: '$completedCount',
+        description: 'concluídos',
+        accentColor: CoresApp.sucesso,
+      ),
+      _buildStatCard(
+        icon: Icons.account_tree_rounded,
+        label: 'Etapas',
+        value: '$totalSubTasks',
+        description: 'registradas',
+        accentColor: CoresApp.destaque,
+      ),
+      _buildStatCard(
+        icon: Icons.event_available_rounded,
+        label: 'Última Conclusão',
+        value: _formatDate(latestFinalized),
+        description: 'data registrada',
+        accentColor: CoresDashboard.statusFinalizado,
+      ),
+      _buildStatCard(
+        icon: Icons.filter_alt_rounded,
+        label: 'Exibindo',
+        value: '${completedProjects.length}',
+        description: _searchQuery.trim().isEmpty
+            ? 'todos os projetos'
+            : 'resultado da busca',
+        accentColor: CoresApp.destaqueVerde,
+      ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      decoration: _cardDecoration(
+        backgroundColor: CoresDashboard.tabelaFundo.withOpacity(0.97),
+        radius: 15,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 5,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      CoresApp.sucesso,
+                      CoresApp.destaque,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(15),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final double width = constraints.maxWidth;
+
+                  if (width >= 1350) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: _buildPageTitleContent(),
+                            ),
+                            const SizedBox(width: 18),
+                            Expanded(
+                              flex: 7,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  for (int i = 0; i < stats.length; i++) ...[
+                                    Expanded(
+                                      child: stats[i],
+                                    ),
+                                    if (i < stats.length - 1)
+                                      const SizedBox(width: 8),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildHeaderSearch(),
+                      ],
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildPageTitleContent(),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: stats
+                            .map(
+                              (stat) => SizedBox(
+                                width: (width - 24) / 2 > 150
+                                    ? (width - 24) / 2
+                                    : double.infinity,
+                                child: stat,
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildHeaderSearch(),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // CABEÇALHO DA TABELA
+  // ============================================================
+
+  Widget _buildTableHeader(String text) {
+    return Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        color: CoresApp.textoSecundario,
+        fontSize: TamanhosApp.tabelaFonteCabecalho,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.4,
+      ),
+    );
+  }
+
+  // ============================================================
+  // TEXTO DA CÉLULA
   // ============================================================
 
   Widget _buildCellText(
@@ -343,14 +777,16 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 22,
+            width: 21,
             child: hasSubtasks
-                ? Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_right_rounded,
-                    color: CoresApp.destaque,
-                    size: TamanhosApp.iconeTabela,
+                ? AnimatedRotation(
+                    turns: isExpanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: CoresApp.destaque,
+                      size: 18,
+                    ),
                   )
                 : null,
           ),
@@ -365,7 +801,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 TamanhosApp.raioBadge,
               ),
               border: Border.all(
-                color: CoresApp.destaque.withOpacity(0.35),
+                color: CoresApp.destaque.withOpacity(0.32),
                 width: TamanhosApp.espessuraBorda,
               ),
             ),
@@ -384,7 +820,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // BADGE DE FINALIZADO
+  // STATUS FINALIZADO
   // ============================================================
 
   Widget _buildCompletedStatusBadge() {
@@ -393,15 +829,15 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 9,
-        vertical: 4,
+        vertical: 5,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withOpacity(0.11),
         borderRadius: BorderRadius.circular(
           TamanhosApp.raioBadge,
         ),
         border: Border.all(
-          color: color.withOpacity(0.65),
+          color: color.withOpacity(0.45),
           width: TamanhosApp.espessuraBorda,
         ),
       ),
@@ -428,7 +864,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // BADGE DA SUBTAREFA
+  // STATUS DA ETAPA
   // ============================================================
 
   Widget _buildTaskStatusBadge(String status) {
@@ -437,13 +873,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 8,
-        vertical: 3,
+        vertical: 4,
       ),
       decoration: BoxDecoration(
         color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: color.withOpacity(0.55),
+          color: color.withOpacity(0.45),
           width: TamanhosApp.espessuraBorda,
         ),
       ),
@@ -459,133 +895,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // ABRIR LINK / ARQUIVO / PASTA
-  // ============================================================
-
-  Future<bool> _openResource(String value) async {
-    final cleanValue = value.trim();
-
-    if (cleanValue.isEmpty) {
-      return false;
-    }
-
-    try {
-      Uri? uri;
-
-      if (cleanValue.startsWith('http://') ||
-          cleanValue.startsWith('https://')) {
-        uri = Uri.tryParse(cleanValue);
-      } else if (cleanValue.startsWith('file://')) {
-        uri = Uri.tryParse(cleanValue);
-      } else {
-        uri = Uri.file(cleanValue);
-      }
-
-      if (uri == null) {
-        return false;
-      }
-
-      if (await canLaunchUrl(uri)) {
-        return await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-      }
-    } catch (_) {}
-
-    return false;
-  }
-
-  // ============================================================
-  // BOTÃO DE ARQUIVO
-  // ============================================================
-
-  Widget _buildResourceButton({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-    required bool available,
-    required VoidCallback onPressed,
-  }) {
-    return InkWell(
-      onTap: available ? onPressed : null,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: double.infinity,
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: available
-              ? color.withOpacity(0.07)
-              : CoresApp.textoPrincipal.withOpacity(0.025),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: available
-                ? color.withOpacity(0.25)
-                : CoresDashboard.tabelaBorda,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: available
-                    ? color.withOpacity(0.12)
-                    : CoresApp.textoPrincipal.withOpacity(0.035),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(
-                icon,
-                color: available
-                    ? color
-                    : CoresApp.textoSecundario.withOpacity(0.45),
-                size: 21,
-              ),
-            ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: available
-                          ? CoresApp.textoPrincipal
-                          : CoresApp.textoSecundario.withOpacity(0.55),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    available ? subtitle : 'Não cadastrado para este projeto',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: CoresApp.textoSecundario,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (available)
-              Icon(
-                Icons.open_in_new_rounded,
-                color: color,
-                size: 18,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // AÇÕES DO PROJETO FINALIZADO
+  // AÇÕES
   // ============================================================
 
   Widget _buildActionControls(
@@ -610,20 +920,19 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         vertical: 2,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.textoPrincipal.withOpacity(0.018),
-        borderRadius: BorderRadius.circular(8),
+        color: CoresApp.textoPrincipal.withOpacity(0.025),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(
+          color: CoresDashboard.tabelaBorda.withOpacity(0.65),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (hasExcel || hasFolder)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                Icons.link_rounded,
-                color: CoresApp.destaqueVerde,
-                size: TamanhosApp.iconeAcao,
-              ),
+            _buildActionButton(
+              icon: Icons.link_rounded,
+              color: CoresApp.destaqueVerde,
               tooltip: 'Abrir arquivo/link',
               onPressed: () async {
                 if (hasExcel) {
@@ -634,13 +943,19 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       uri,
                       mode: LaunchMode.externalApplication,
                     );
-
                     return;
                   }
                 }
 
                 if (hasFolder) {
-                  final uri = Uri.tryParse(folderPath);
+                  Uri? uri;
+
+                  if (folderPath.startsWith('http://') ||
+                      folderPath.startsWith('https://')) {
+                    uri = Uri.tryParse(folderPath);
+                  } else {
+                    uri = Uri.file(folderPath);
+                  }
 
                   if (uri != null && await canLaunchUrl(uri)) {
                     await launchUrl(
@@ -651,386 +966,53 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 }
               },
             ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.undo_rounded,
-              color: CoresApp.destaqueVerde,
-              size: TamanhosApp.iconeAcao,
-            ),
-            tooltip: 'Reabrir projeto',
-            onPressed: () {
-              _reopenProject(project);
-            },
+          _buildActionButton(
+            icon: Icons.undo_rounded,
+            color: CoresApp.destaqueVerde,
+            tooltip: 'Reabrir trabalho',
+            onPressed: () => _reopenProject(project),
           ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.visibility_rounded,
-              color: CoresApp.destaque,
-              size: TamanhosApp.iconeAcao,
-            ),
+          _buildActionButton(
+            icon: Icons.visibility_rounded,
+            color: CoresApp.destaque,
             tooltip: 'Visualizar trabalho',
-            onPressed: () {
-              _viewProject(project);
-            },
+            onPressed: () => _viewProject(project),
           ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.delete_outline_rounded,
-              color: CoresApp.erro,
-              size: TamanhosApp.iconeAcao,
-            ),
+          _buildActionButton(
+            icon: Icons.delete_outline_rounded,
+            color: CoresApp.erro,
             tooltip: 'Excluir do histórico',
-            onPressed: () {
-              _deleteProjectFromHistory(project);
-            },
+            onPressed: () => _deleteProjectFromHistory(project),
           ),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // REABRIR PROJETO FINALIZADO
-  // ============================================================
-
-  Future<void> _reopenProject(
-    Map<String, dynamic> project,
-  ) async {
-    final String id = project['id']?.toString().trim() ?? '';
-
-    if (id.isEmpty) {
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: CoresDashboard.tabelaFundo,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: CoresDashboard.tabelaBorda,
-            ),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: CoresApp.destaqueVerde.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.undo_rounded,
-                  color: CoresApp.destaqueVerde,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Reabrir projeto?',
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'O projeto "$id" voltará para os projetos ativos.\n\n'
-            'As etapas, horários, arquivo Excel e pasta vinculada '
-            'serão preservados.',
-            style: TextStyle(
-              color: CoresApp.textoSecundario,
-              height: 1.45,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: CoresApp.textoSecundario,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CoresApp.destaqueVerde,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              icon: const Icon(
-                Icons.undo_rounded,
-                size: 17,
-              ),
-              label: const Text(
-                'Reabrir',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-            ),
-          ],
-        );
-      },
+  Widget _buildActionButton({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(
+          minWidth: 31,
+          minHeight: 31,
+        ),
+        padding: EdgeInsets.zero,
+        splashRadius: 18,
+        onPressed: onPressed,
+        icon: Icon(
+          icon,
+          color: color,
+          size: TamanhosApp.iconeAcao,
+        ),
+      ),
     );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      await widget.firebaseService.reopenCompletedProject(id);
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: CoresApp.destaqueVerde,
-          content: Row(
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  'Projeto $id reaberto e devolvido aos projetos ativos.',
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: CoresApp.erro,
-          content: Text(
-            'Erro ao reabrir o projeto $id: $e',
-          ),
-        ),
-      );
-    }
-  }
-
-  // ============================================================
-  // EXCLUIR SOMENTE DO HISTÓRICO DE FINALIZADOS
-  // ============================================================
-
-  Future<void> _deleteProjectFromHistory(
-    Map<String, dynamic> project,
-  ) async {
-    final id = project['id']?.toString().trim() ?? '';
-
-    if (id.isEmpty) {
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: CoresDashboard.tabelaFundo,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            'Excluir do histórico?',
-            style: TextStyle(
-              color: CoresApp.textoPrincipal,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Text(
-            'O trabalho "$id" será excluído do histórico '
-            'de projetos finalizados.\n\n'
-            'Essa ação não poderá ser desfeita.',
-            style: TextStyle(
-              color: CoresApp.textoSecundario,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: CoresApp.textoSecundario,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CoresApp.erro,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Excluir'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      await widget.firebaseService.deleteCompletedProject(id);
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Trabalho $id excluído do histórico.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erro ao excluir o trabalho: $e',
-          ),
-          backgroundColor: CoresApp.erro,
-        ),
-      );
-    }
-  }
-
-  // ============================================================
-  // EXCLUIR PROJETO (COMPLETO)
-  // ============================================================
-
-  Future<void> _deleteProject(
-    Map<String, dynamic> project,
-  ) async {
-    final id = project['id']?.toString().trim() ?? '';
-
-    if (id.isEmpty) {
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: CoresDashboard.tabelaFundo,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            'Excluir projeto?',
-            style: TextStyle(
-              color: CoresApp.textoPrincipal,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Text(
-            'O projeto "$id" será completamente excluído do sistema.\n\n'
-            'Essa ação não poderá ser desfeita.',
-            style: TextStyle(
-              color: CoresApp.textoSecundario,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: CoresApp.textoSecundario,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CoresApp.erro,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Excluir'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      await widget.firebaseService.deleteProject(id);
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Projeto $id excluído com sucesso.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erro ao excluir o projeto: $e',
-          ),
-          backgroundColor: CoresApp.erro,
-        ),
-      );
-    }
   }
 
   // ============================================================
@@ -1040,7 +1022,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   DataRow _buildProjectRow(
     Map<String, dynamic> project,
   ) {
-    final id = _stringValue(project, 'id');
+    final id = _stringValue(
+      project,
+      'id',
+    );
 
     final id2 = _stringValue(
       project,
@@ -1143,7 +1128,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           _buildCellText(
             client,
             color: CoresApp.textoPrincipal,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
           ),
         ),
         DataCell(
@@ -1170,7 +1155,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         DataCell(
           _buildCellText(
             estimatedHours,
-            color: CoresApp.textoSecundario,
+            color: CoresApp.destaque,
+            fontWeight: FontWeight.w700,
           ),
         ),
         DataCell(
@@ -1319,11 +1305,11 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             color: CoresApp.textoSecundario,
           ),
         ),
-        DataCell(
+        const DataCell(
           Icon(
             Icons.check_circle_rounded,
             color: CoresApp.sucesso,
-            size: 19,
+            size: 18,
           ),
         ),
         const DataCell(
@@ -1334,7 +1320,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // GERA AS LINHAS DA TABELA
+  // GERA LINHAS
   // ============================================================
 
   List<DataRow> _generateRows(
@@ -1374,48 +1360,61 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   // ============================================================
 
   Widget _buildEmptyState() {
+    final bool searching = _searchQuery.trim().isNotEmpty;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
         horizontal: 30,
-        vertical: 40,
+        vertical: 55,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            width: 68,
+            height: 68,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: CoresApp.sucesso.withOpacity(0.08),
-              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  CoresApp.sucesso.withOpacity(0.12),
+                  CoresApp.destaque.withOpacity(0.06),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(19),
               border: Border.all(
                 color: CoresApp.sucesso.withOpacity(0.20),
               ),
             ),
             child: Icon(
-              Icons.task_alt_rounded,
-              color: CoresApp.sucesso,
-              size: 42,
+              searching ? Icons.search_off_rounded : Icons.task_alt_rounded,
+              color: searching ? CoresApp.textoSecundario : CoresApp.sucesso,
+              size: 32,
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            'Nenhum trabalho finalizado',
-            style: TextStyle(
+            searching
+                ? 'Nenhum resultado encontrado'
+                : 'Nenhum trabalho finalizado',
+            style: const TextStyle(
               color: CoresApp.textoPrincipal,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 6),
           Text(
-            _searchQuery.trim().isEmpty
-                ? 'Os trabalhos concluídos aparecerão aqui automaticamente.'
-                : 'Nenhum trabalho concluído corresponde à pesquisa.',
+            searching
+                ? 'Nenhum trabalho concluído corresponde à pesquisa.'
+                : 'Os trabalhos concluídos aparecerão aqui automaticamente.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: CoresApp.textoSecundario,
-              fontSize: 12,
+              fontSize: 10.5,
             ),
           ),
         ],
@@ -1424,242 +1423,306 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // TABELA COMPLETA
+  // TABELA
   // ============================================================
 
   Widget _buildCompletedProjectsTable(
     List<Map<String, dynamic>> completedProjects,
   ) {
+    final bool empty = completedProjects.isEmpty;
+
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: CoresDashboard.tabelaFundo,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: CoresApp.borda,
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+      decoration: _cardDecoration(
+        radius: TamanhosApp.raioTabela,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 4,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    CoresApp.primaria,
-                    CoresApp.sucesso,
-                  ],
+      child: Column(
+        children: [
+          Container(
+            height: 4,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  CoresApp.sucesso,
+                  CoresApp.destaque,
+                ],
+              ),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(
+                  TamanhosApp.raioTabela,
                 ),
               ),
             ),
-            completedProjects.isEmpty
-                ? _buildEmptyState()
-                : ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxHeight: 500,
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              11,
+              14,
+              10,
+            ),
+            decoration: BoxDecoration(
+              color: CoresDashboard.tabelaCabecalho,
+              border: Border(
+                bottom: BorderSide(
+                  color: CoresDashboard.tabelaBorda,
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: CoresApp.sucesso.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: CoresApp.sucesso.withOpacity(0.15),
                     ),
-                    child: Scrollbar(
+                  ),
+                  child: const Icon(
+                    Icons.task_alt_rounded,
+                    color: CoresApp.sucesso,
+                    size: 19,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Trabalhos Finalizados',
+                        style: TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Histórico de projetos concluídos',
+                        style: TextStyle(
+                          color: CoresApp.textoSecundario,
+                          fontSize: 9.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: CoresApp.sucesso.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: CoresApp.sucesso.withOpacity(0.18),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: CoresApp.sucesso,
+                        size: 13,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${completedProjects.length} CONCLUÍDO'
+                        '${completedProjects.length == 1 ? '' : 'S'}',
+                        style: const TextStyle(
+                          color: CoresApp.sucesso,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: empty
+                ? Center(
+                    child: _buildEmptyState(),
+                  )
+                : Scrollbar(
+                    controller: _verticalController,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
                       controller: _verticalController,
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        controller: _verticalController,
-                        scrollDirection: Axis.vertical,
+                      scrollDirection: Axis.vertical,
+                      child: Scrollbar(
+                        controller: _horizontalController,
+                        thumbVisibility: true,
+                        notificationPredicate: (notification) =>
+                            notification.depth == 1,
                         child: SingleChildScrollView(
                           controller: _horizontalController,
                           scrollDirection: Axis.horizontal,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minWidth: MediaQuery.of(context).size.width - 40,
+                          child: DataTable(
+                            showCheckboxColumn: false,
+                            columnSpacing: 18,
+                            horizontalMargin: 10,
+                            headingRowHeight: 46,
+                            dataRowMinHeight: 30,
+                            dataRowMaxHeight: 38,
+                            dividerThickness: 0.35,
+                            headingRowColor: WidgetStateProperty.all(
+                              CoresDashboard.tabelaCabecalho,
                             ),
-                            child: DataTable(
-                              showCheckboxColumn: false,
-                              columnSpacing: 18.0,
-                              horizontalMargin: 18.0,
-                              headingRowHeight: 52,
-                              dataRowMinHeight: 32,
-                              dataRowMaxHeight: 40,
-                              dividerThickness: 0.5,
-                              headingRowColor: WidgetStateProperty.all(
-                                CoresDashboard.tabelaCabecalho,
-                              ),
-                              dataRowColor: WidgetStateProperty.resolveWith(
-                                (states) {
-                                  if (states.contains(
-                                    WidgetState.hovered,
-                                  )) {
-                                    return CoresDashboard.tabelaHover;
-                                  }
+                            dataRowColor: WidgetStateProperty.resolveWith(
+                              (states) {
+                                if (states.contains(
+                                  WidgetState.hovered,
+                                )) {
+                                  return CoresDashboard.tabelaHover;
+                                }
 
-                                  return null;
-                                },
+                                return null;
+                              },
+                            ),
+                            columns: [
+                              DataColumn(
+                                label: _buildTableHeader('ID'),
                               ),
-                              columns: [
-                                DataColumn(
-                                  label: _buildTableHeader('ID'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Nº'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Cliente'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Tipo de Serviço',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Informações',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Status',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Data Início / Fim',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Hs Estimadas',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Líder Prj',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Tipo HS',
-                                  ),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader(
-                                    'Ações',
-                                  ),
-                                ),
-                              ],
-                              rows: _generateRows(
-                                completedProjects,
+                              DataColumn(
+                                label: _buildTableHeader('Nº'),
                               ),
+                              DataColumn(
+                                label: _buildTableHeader('Cliente'),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader(
+                                  'Tipo de Serviço',
+                                ),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader(
+                                  'Informações',
+                                ),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader('Status'),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader(
+                                  'Data Início / Fim',
+                                ),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader(
+                                  'Hs Estimadas',
+                                ),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader(
+                                  'Líder Prj',
+                                ),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader(
+                                  'Tipo HS',
+                                ),
+                              ),
+                              DataColumn(
+                                label: _buildTableHeader('Ações'),
+                              ),
+                            ],
+                            rows: _generateRows(
+                              completedProjects,
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // CABEÇALHO DA SEÇÃO DE HORAS
+  // CARD DE RESUMO DAS HORAS
   // ============================================================
 
-  Widget _buildHoursSectionHeader({
-    required int totalMinutes,
-    required int totalLogs,
+  Widget _buildHoursSummaryCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required String subtitle,
+    required Color color,
   }) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: CoresApp.primaria.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withOpacity(0.055),
+        borderRadius: BorderRadius.circular(11),
         border: Border.all(
-          color: CoresApp.primaria.withOpacity(0.18),
+          color: color.withOpacity(0.16),
         ),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(9),
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: CoresApp.primaria.withOpacity(0.12),
+              color: color.withOpacity(0.10),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Icon(
-              Icons.schedule_rounded,
-              color: CoresApp.primaria,
-              size: 21,
+              icon,
+              color: color,
+              size: 18,
             ),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 9),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Horas Trabalhadas',
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '$totalLogs apontamento(s) cadastrado(s)',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
-            decoration: BoxDecoration(
-              color: CoresApp.primaria.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                color: CoresApp.primaria.withOpacity(0.22),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'TOTAL',
-                  style: TextStyle(
+                  title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: CoresApp.textoSecundario,
                     fontSize: 8,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
+                    letterSpacing: 0.35,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _minutesToTime(totalMinutes),
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: CoresApp.primaria,
-                    fontSize: 16,
+                    color: color,
+                    fontSize: 17,
                     fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 8.5,
                   ),
                 ),
               ],
@@ -1671,256 +1734,201 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // LINHA DE APONTAMENTO DE HORAS
+  // BADGE REGISTRADO
   // ============================================================
 
-  Widget _buildTimeLogRow(TimeLog log) {
-    final date = log.date;
-
-    final duration = log.durationFormatted.trim().isNotEmpty
-        ? log.durationFormatted.trim()
-        : log.hours != null
-            ? _minutesToTime(
-                (log.hours! * 60).round(),
-              )
-            : '00:00';
-
-    final taskName = log.taskName?.trim() ?? '';
-    final projectName = log.projectName?.trim() ?? '';
-    final typeHs = log.typeHs?.trim() ?? '';
-
-    final description = log.description?.trim() ?? '';
-
-    String taskText = taskName;
-
-    if (taskText.isEmpty) {
-      taskText = projectName;
-    }
-
-    if (taskText.isEmpty) {
-      taskText = description;
-    }
-
-    if (taskText.isEmpty) {
-      taskText = 'Projeto';
-    }
-
-    final hourType = typeHs.isEmpty ? 'Não informado' : typeHs;
+  Widget _buildRegisteredBadge(bool registered) {
+    final color = registered ? CoresApp.sucesso : CoresApp.textoSecundario;
 
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(
-        bottom: 7,
-      ),
       padding: const EdgeInsets.symmetric(
-        horizontal: 11,
-        vertical: 10,
+        horizontal: 7,
+        vertical: 4,
       ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: color.withOpacity(0.20),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            registered ? Icons.check_circle_rounded : Icons.schedule_rounded,
+            color: color,
+            size: 13,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            registered ? 'REGISTRADO' : 'PENDENTE',
+            style: TextStyle(
+              color: color,
+              fontSize: 7.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // LINHA DE HORAS
+  // ============================================================
+
+  Widget _buildTimeLogCard(TimeLog log) {
+    final int minutes = _getLogMinutes(log);
+
+    final String duration = log.durationFormatted.trim().isNotEmpty
+        ? log.durationFormatted.trim()
+        : _minutesToTime(minutes);
+
+    final String date = _formatDate(log.date);
+
+    final String startTime =
+        log.startTime.trim().isEmpty ? '--:--' : log.startTime.trim();
+
+    final String endTime =
+        log.endTime.trim().isEmpty ? '--:--' : log.endTime.trim();
+
+    final String typeHs = log.typeHs?.trim().isNotEmpty == true
+        ? log.typeHs!.trim()
+        : 'Não informado';
+
+    final String taskName = log.taskName?.trim().isNotEmpty == true
+        ? log.taskName!.trim()
+        : 'Tarefa não informada';
+
+    final String description = log.description?.trim().isNotEmpty == true
+        ? log.description!.trim()
+        : '';
+
+    return Container(
+      margin: const EdgeInsets.only(
+        bottom: 8,
+      ),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: CoresApp.textoPrincipal.withOpacity(0.025),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.65),
+          color: CoresDashboard.tabelaBorda,
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 38,
             height: 38,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: CoresApp.sucesso.withOpacity(0.10),
+              color: CoresApp.destaque.withOpacity(0.09),
               borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: CoresApp.destaque.withOpacity(0.14),
+              ),
             ),
-            child: Icon(
+            child: const Icon(
               Icons.access_time_rounded,
-              color: CoresApp.sucesso,
+              color: CoresApp.destaque,
               size: 19,
             ),
           ),
           const SizedBox(width: 10),
-
-          // DATA
-          SizedBox(
-            width: 70,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'DATA',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 7,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _formatDate(date),
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // INÍCIO
-          SizedBox(
-            width: 65,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'INÍCIO',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 7,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  log.startTime.trim().isEmpty ? '-' : log.startTime.trim(),
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // FIM
-          SizedBox(
-            width: 65,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'FIM',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 7,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  log.endTime.trim().isEmpty ? '-' : log.endTime.trim(),
-                  style: TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // DURAÇÃO
-          SizedBox(
-            width: 75,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'DURAÇÃO',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 7,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  duration,
-                  style: TextStyle(
-                    color: CoresApp.sucesso,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // TAREFA
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ETAPA / TAREFA',
-                    style: TextStyle(
-                      color: CoresApp.textoSecundario,
-                      fontSize: 7,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        taskName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    taskText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: CoresApp.textoPrincipal,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(width: 8),
+                    _buildRegisteredBadge(
+                      log.isRegistered,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 5,
+                  children: [
+                    _buildTimeLogSmallInfo(
+                      icon: Icons.calendar_today_rounded,
+                      text: date,
+                    ),
+                    _buildTimeLogSmallInfo(
+                      icon: Icons.play_arrow_rounded,
+                      text: startTime,
+                    ),
+                    _buildTimeLogSmallInfo(
+                      icon: Icons.stop_rounded,
+                      text: endTime,
+                    ),
+                    _buildTimeLogSmallInfo(
+                      icon: Icons.timer_rounded,
+                      text: duration,
+                      highlight: true,
+                    ),
+                    _buildTimeLogSmallInfo(
+                      icon: Icons.category_outlined,
+                      text: typeHs,
+                    ),
+                  ],
+                ),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CoresApp.textoPrincipal.withOpacity(0.025),
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.notes_rounded,
+                          color: CoresApp.textoSecundario,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            description,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: CoresApp.textoSecundario,
+                              fontSize: 9,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-
-          // TIPO DE HORA
-          SizedBox(
-            width: 95,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 7,
-                vertical: 5,
-              ),
-              decoration: BoxDecoration(
-                color: CoresApp.destaque.withOpacity(0.07),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                hourType,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: CoresApp.destaque,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 7),
-
-          // REGISTRADO
-          Tooltip(
-            message: 'Hora cadastrada',
-            child: Icon(
-              Icons.check_circle_rounded,
-              color: CoresApp.sucesso,
-              size: 17,
+              ],
             ),
           ),
         ],
@@ -1928,79 +1936,70 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     );
   }
 
-  // ============================================================
-  // LISTA DE HORAS DO PROJETO
-  // ============================================================
-
-  Widget _buildProjectTimeLogs(
-    String projectId,
-  ) {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: CoresApp.erro.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: CoresApp.erro.withOpacity(0.20),
+  Widget _buildTimeLogSmallInfo({
+    required IconData icon,
+    required String text,
+    bool highlight = false,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          color: highlight ? CoresApp.destaque : CoresApp.textoSecundario,
+          size: 12,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            color: highlight ? CoresApp.destaque : CoresApp.textoSecundario,
+            fontSize: 8.5,
+            fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
           ),
         ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              color: CoresApp.erro,
-              size: 19,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Usuário não autenticado. Não foi possível carregar as horas.',
-                style: TextStyle(
-                  color: CoresApp.textoSecundario,
-                  fontSize: 10,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+      ],
+    );
+  }
 
+  // ============================================================
+  // SEÇÃO DE HORAS
+  // ============================================================
+
+  Widget _buildProjectHoursSection(
+    String projectId,
+    User user,
+  ) {
     return StreamBuilder<List<TimeLog>>(
       stream: _timeLogStore.streamProjectTimeLogs(
         user.uid,
         projectId,
       ),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(
-              vertical: 25,
+              vertical: 24,
+              horizontal: 16,
             ),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    color: CoresApp.primaria,
-                  ),
+            decoration: BoxDecoration(
+              color: CoresApp.destaque.withOpacity(0.035),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: CoresApp.destaque.withOpacity(0.13),
+              ),
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: CoresApp.destaque,
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Carregando horas trabalhadas...',
-                  style: TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         }
@@ -2008,18 +2007,17 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         if (snapshot.hasError) {
           return Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: CoresApp.erro.withOpacity(0.07),
-              borderRadius: BorderRadius.circular(10),
+              color: CoresApp.erro.withOpacity(0.045),
+              borderRadius: BorderRadius.circular(11),
               border: Border.all(
-                color: CoresApp.erro.withOpacity(0.20),
+                color: CoresApp.erro.withOpacity(0.18),
               ),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
+                const Icon(
                   Icons.error_outline_rounded,
                   color: CoresApp.erro,
                   size: 19,
@@ -2027,12 +2025,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Não foi possível carregar as horas deste projeto.\n'
-                    '${snapshot.error}',
-                    style: TextStyle(
+                    'Não foi possível carregar os horários: ${snapshot.error}',
+                    style: const TextStyle(
                       color: CoresApp.textoSecundario,
-                      fontSize: 10,
-                      height: 1.35,
+                      fontSize: 9.5,
                     ),
                   ),
                 ),
@@ -2041,179 +2037,196 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           );
         }
 
-        final logs = (snapshot.data ?? <TimeLog>[])
-            .where(
-              (log) => log.isRegistered,
-            )
-            .toList();
-
-        logs.sort(
-          (a, b) => b.date.compareTo(a.date),
-        );
+        final logs = snapshot.data ?? <TimeLog>[];
 
         int totalMinutes = 0;
+        int registeredCount = 0;
 
         for (final log in logs) {
           totalMinutes += _getLogMinutes(log);
+
+          if (log.isRegistered) {
+            registeredCount++;
+          }
         }
 
-        if (logs.isEmpty) {
-          return Column(
-            children: [
-              _buildHoursSectionHeader(
-                totalMinutes: 0,
-                totalLogs: 0,
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 24,
-                ),
-                decoration: BoxDecoration(
-                  color: CoresApp.textoPrincipal.withOpacity(0.025),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: CoresApp.borda.withOpacity(0.60),
-                  ),
-                ),
-                child: Column(
+        final String totalHours = _minutesToTime(
+          totalMinutes,
+        );
+
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: CoresApp.destaque.withOpacity(0.025),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: CoresApp.destaque.withOpacity(0.14),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Icon(
-                      Icons.schedule_outlined,
-                      color: CoresApp.textoSecundario.withOpacity(0.50),
-                      size: 32,
-                    ),
-                    const SizedBox(height: 9),
-                    Text(
-                      'Nenhuma hora cadastrada',
-                      style: TextStyle(
-                        color: CoresApp.textoPrincipal,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      width: 35,
+                      height: 35,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: CoresApp.destaque.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: const Icon(
+                        Icons.access_time_filled_rounded,
+                        color: CoresApp.destaque,
+                        size: 18,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Este projeto não possui apontamentos registrados.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 9,
+                    const SizedBox(width: 9),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Horas trabalhadas',
+                            style: TextStyle(
+                              color: CoresApp.textoPrincipal,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Apontamentos cadastrados neste projeto',
+                            style: TextStyle(
+                              color: CoresApp.textoSecundario,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: logs.isNotEmpty
+                            ? CoresApp.destaque.withOpacity(0.09)
+                            : CoresApp.textoSecundario.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${logs.length} apontamento(s)',
+                        style: TextStyle(
+                          color: logs.isNotEmpty
+                              ? CoresApp.destaque
+                              : CoresApp.textoSecundario,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          );
-        }
-
-        return Column(
-          children: [
-            _buildHoursSectionHeader(
-              totalMinutes: totalMinutes,
-              totalLogs: logs.length,
-            ),
-            const SizedBox(height: 10),
-
-            // Cabeçalho da tabela de horas
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 11,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: CoresDashboard.tabelaCabecalho,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 48),
-                  SizedBox(
-                    width: 70,
-                    child: Text(
-                      'DATA',
-                      style: TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildHoursSummaryCard(
+                        icon: Icons.timer_rounded,
+                        title: 'Total trabalhado',
+                        value: totalHours,
+                        subtitle: 'horas registradas no projeto',
+                        color: CoresApp.destaque,
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 65,
-                    child: Text(
-                      'INÍCIO',
-                      style: TextStyle(
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildHoursSummaryCard(
+                        icon: Icons.receipt_long_rounded,
+                        title: 'Apontamentos',
+                        value: '${logs.length}',
+                        subtitle: 'lançamento(s) encontrado(s)',
                         color: CoresApp.textoSecundario,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 65,
-                    child: Text(
-                      'FIM',
-                      style: TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildHoursSummaryCard(
+                        icon: Icons.check_circle_rounded,
+                        title: 'Registrados',
+                        value: '$registeredCount',
+                        subtitle: 'apontamento(s) registrado(s)',
+                        color: CoresApp.sucesso,
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 75,
-                    child: Text(
-                      'DURAÇÃO',
-                      style: TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                  ],
+                ),
+                const SizedBox(height: 13),
+                if (logs.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 15,
+                      vertical: 22,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CoresApp.textoPrincipal.withOpacity(0.018),
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(
+                        color: CoresDashboard.tabelaBorda,
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'ETAPA / TAREFA',
-                      style: TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.schedule_outlined,
+                          color: CoresApp.textoSecundario,
+                          size: 26,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Nenhum horário encontrado',
+                          style: TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Não existem apontamentos de horas '
+                          'salvos para o projeto $projectId.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: CoresApp.textoSecundario,
+                            fontSize: 8.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else ...[
+                  const Text(
+                    'Lançamentos de horas',
+                    style: TextStyle(
+                      color: CoresApp.textoPrincipal,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  SizedBox(
-                    width: 95,
-                    child: Text(
-                      'TIPO DE HORA',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
+                  const SizedBox(height: 8),
+                  ...logs.map(
+                    (log) => _buildTimeLogCard(log),
                   ),
-                  const SizedBox(width: 24),
                 ],
-              ),
+              ],
             ),
-
-            const SizedBox(height: 5),
-
-            ...logs.map(
-              (log) => _buildTimeLogRow(log),
-            ),
-          ],
+          ),
         );
       },
     );
@@ -2231,8 +2244,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     final serviceType = project['serviceType']?.toString() ?? '-';
     final leader = project['leader']?.toString() ?? '-';
     final estimatedHours = project['estimatedHours']?.toString() ?? '00:00';
-    final excelLink = project['excelLink']?.toString().trim() ?? '';
-    final folderPath = project['folderPath']?.toString().trim() ?? '';
 
     final startDate = _parseDate(
       project['startDate'],
@@ -2242,374 +2253,591 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       project['finalizedAt'],
     );
 
-    final subTasks = _getSubTasks(
+    final subTasks = _getSubTasks(project);
+
+    final excelLink = _stringValue(
       project,
+      'excelLink',
     );
+
+    final folderPath = _stringValue(
+      project,
+      'folderPath',
+    );
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null || id.trim().isEmpty || id == '-') {
+      return;
+    }
 
     showDialog<void>(
       context: context,
-      builder: (dialogContext) {
+      builder: (context) {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
+            horizontal: 30,
+            vertical: 25,
           ),
-          child: Container(
+          child: ConstrainedBox(
             constraints: const BoxConstraints(
-              maxWidth: 900,
+              maxWidth: 980,
               maxHeight: 850,
             ),
-            decoration: BoxDecoration(
-              color: CoresTelas.fundoModal,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: CoresApp.borda,
+            child: Container(
+              decoration: BoxDecoration(
+                color: CoresDashboard.tabelaFundo,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: CoresDashboard.tabelaBorda,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: CoresApp.overlay.withOpacity(0.35),
+                    blurRadius: 30,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
-                  blurRadius: 30,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ==================================================
-                // CABEÇALHO DO MODAL
-                // ==================================================
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ==================================================
+                    // CABEÇALHO DO MODAL
+                    // ==================================================
 
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(
-                    20,
-                    18,
-                    16,
-                    16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: CoresTelas.fundoModalSecundario,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(18),
-                    ),
-                    border: Border(
-                      bottom: BorderSide(
-                        color: CoresApp.borda,
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(
+                        20,
+                        16,
+                        12,
+                        16,
                       ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: CoresApp.sucesso.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: CoresApp.sucesso.withOpacity(0.3),
+                      decoration: BoxDecoration(
+                        color: CoresDashboard.tabelaCabecalho,
+                        border: Border(
+                          bottom: BorderSide(
+                            color: CoresDashboard.tabelaBorda,
                           ),
-                        ),
-                        child: Icon(
-                          Icons.task_alt_rounded,
-                          color: CoresApp.sucesso,
-                          size: 24,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Trabalho finalizado',
-                              style: TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  CoresApp.sucesso.withOpacity(0.14),
+                                  CoresApp.destaque.withOpacity(0.07),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: CoresApp.sucesso.withOpacity(0.20),
                               ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              'Projeto $id',
-                              style: TextStyle(
-                                color: CoresApp.textoSecundario,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Fechar',
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        icon: Icon(
-                          Icons.close_rounded,
-                          color: CoresApp.textoSecundario,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ==================================================
-                // CONTEÚDO
-                // ==================================================
-
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ==========================================
-                        // INFORMAÇÕES DO PROJETO
-                        // ==========================================
-
-                        Text(
-                          'Informações do projeto',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: CoresTelas.campoFormulario.withOpacity(0.4),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: CoresApp.borda,
+                            child: const Icon(
+                              Icons.task_alt_rounded,
+                              color: CoresApp.sucesso,
+                              size: 23,
                             ),
                           ),
-                          child: Column(
-                            children: [
-                              _infoRow('ID', id),
-                              _infoRow('Cliente', client),
-                              _infoRow(
-                                'Tipo de Serviço',
-                                serviceType,
-                              ),
-                              _infoRow('Líder', leader),
-                              _infoRow(
-                                'Horas Estimadas',
-                                estimatedHours,
-                              ),
-                              _infoRow(
-                                'Data Início',
-                                _formatDate(startDate),
-                              ),
-                              _infoRow(
-                                'Finalizado em',
-                                _formatDateTime(finalizedAt),
-                              ),
-                              _infoRow(
-                                'Etapas',
-                                subTasks.length.toString(),
-                                isLast: true,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 18),
-
-                        // ==========================================
-                        // STATUS
-                        // ==========================================
-
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: CoresApp.sucesso.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: CoresApp.sucesso.withOpacity(0.24),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Trabalho finalizado',
+                                  style: TextStyle(
+                                    color: CoresApp.textoPrincipal,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Projeto $id • Histórico concluído',
+                                  style: const TextStyle(
+                                    color: CoresApp.textoSecundario,
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.check_circle_rounded,
-                                size: 18,
-                                color: CoresApp.sucesso,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: CoresApp.sucesso.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: CoresApp.sucesso.withOpacity(0.16),
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'TRAB_FIM',
-                                style: TextStyle(
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_circle_rounded,
                                   color: CoresApp.sucesso,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
+                                  size: 13,
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'FINALIZADO',
+                                  style: TextStyle(
+                                    color: CoresApp.sucesso,
+                                    fontSize: 7.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          IconButton(
+                            tooltip: 'Fechar',
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: CoresApp.textoSecundario,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ==================================================
+                    // CONTEÚDO
+                    // ==================================================
+
+                    Expanded(
+                      child: Scrollbar(
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ==================================================
+                              // INFORMAÇÕES PRINCIPAIS
+                              // ==================================================
+
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildInfoCard(
+                                      icon: Icons.business_rounded,
+                                      title: 'Cliente',
+                                      value: client,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildInfoCard(
+                                      icon: Icons.work_outline_rounded,
+                                      title: 'Tipo de Serviço',
+                                      value: serviceType,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildInfoCard(
+                                      icon: Icons.person_outline_rounded,
+                                      title: 'Líder',
+                                      value: leader,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildInfoCard(
+                                      icon: Icons.schedule_rounded,
+                                      title: 'Horas Estimadas',
+                                      value: estimatedHours,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildInfoCard(
+                                      icon: Icons.calendar_today_rounded,
+                                      title: 'Data de Início',
+                                      value: _formatDate(startDate),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildInfoCard(
+                                      icon: Icons.event_available_rounded,
+                                      title: 'Finalizado em',
+                                      value: _formatDateTime(finalizedAt),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // ==================================================
+                              // STATUS
+                              // ==================================================
+
+                              const SizedBox(height: 18),
+
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: CoresApp.sucesso.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(11),
+                                  border: Border.all(
+                                    color: CoresApp.sucesso.withOpacity(0.18),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: CoresApp.sucesso,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'TRAB_FIM',
+                                      style: TextStyle(
+                                        color: CoresApp.sucesso,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '${subTasks.length} etapa(s)',
+                                      style: const TextStyle(
+                                        color: CoresApp.textoSecundario,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const Spacer(),
-                              Text(
-                                'Concluído',
-                                style: TextStyle(
-                                  color: CoresApp.textoSecundario,
-                                  fontSize: 10,
-                                ),
+
+                              // ==================================================
+                              // HORAS TRABALHADAS
+                              // ==================================================
+
+                              const SizedBox(height: 18),
+
+                              _buildProjectHoursSection(
+                                id,
+                                user,
                               ),
+
+                              // ==================================================
+                              // ETAPAS
+                              // ==================================================
+
+                              if (subTasks.isNotEmpty) ...[
+                                const SizedBox(height: 18),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.account_tree_rounded,
+                                      color: CoresApp.destaque,
+                                      size: 17,
+                                    ),
+                                    const SizedBox(width: 7),
+                                    const Text(
+                                      'Etapas do projeto',
+                                      style: TextStyle(
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 7),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            CoresApp.destaque.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        '${subTasks.length}',
+                                        style: const TextStyle(
+                                          color: CoresApp.destaque,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 9),
+                                ...subTasks.map(
+                                  (task) {
+                                    final stage = _stringValue(
+                                      task,
+                                      'stage',
+                                      '-',
+                                    );
+
+                                    final status = _stringValue(
+                                      task,
+                                      'status',
+                                      'TRAB_FIM',
+                                    );
+
+                                    final taskStart = _parseDate(
+                                      task['startDate'],
+                                    );
+
+                                    final taskEnd = _parseDate(
+                                      task['planEnd'],
+                                    );
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(
+                                        bottom: 7,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 9,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: CoresApp.textoPrincipal
+                                            .withOpacity(0.025),
+                                        borderRadius: BorderRadius.circular(9),
+                                        border: Border.all(
+                                          color: CoresDashboard.tabelaBorda,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 30,
+                                            height: 30,
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: CoresApp.sucesso
+                                                  .withOpacity(0.08),
+                                              borderRadius:
+                                                  BorderRadius.circular(7),
+                                            ),
+                                            child: const Icon(
+                                              Icons.check_rounded,
+                                              color: CoresApp.sucesso,
+                                              size: 17,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 9),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  stage,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  '${_formatDate(taskStart)} - '
+                                                  '${_formatDate(taskEnd)}',
+                                                  style: const TextStyle(
+                                                    color: CoresApp
+                                                        .textoSecundario,
+                                                    fontSize: 9.5,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          _buildTaskStatusBadge(status),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+
+                              // ==================================================
+                              // RECURSOS
+                              // ==================================================
+
+                              if (excelLink.trim().isNotEmpty ||
+                                  folderPath.trim().isNotEmpty) ...[
+                                const SizedBox(height: 18),
+                                const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.folder_open_rounded,
+                                      color: CoresApp.destaque,
+                                      size: 17,
+                                    ),
+                                    SizedBox(width: 7),
+                                    Text(
+                                      'Recursos',
+                                      style: TextStyle(
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 9),
+                                Row(
+                                  children: [
+                                    if (excelLink.trim().isNotEmpty)
+                                      Expanded(
+                                        child: _buildResourceButton(
+                                          icon: Icons.table_view_rounded,
+                                          title: 'Arquivo Excel',
+                                          subtitle: 'Abrir arquivo/link',
+                                          onPressed: () async {
+                                            final uri = Uri.tryParse(
+                                              excelLink,
+                                            );
+
+                                            if (uri != null &&
+                                                await canLaunchUrl(uri)) {
+                                              await launchUrl(
+                                                uri,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                    if (excelLink.trim().isNotEmpty &&
+                                        folderPath.trim().isNotEmpty)
+                                      const SizedBox(width: 10),
+                                    if (folderPath.trim().isNotEmpty)
+                                      Expanded(
+                                        child: _buildResourceButton(
+                                          icon: Icons.folder_rounded,
+                                          title: 'Pasta do projeto',
+                                          subtitle: 'Abrir pasta',
+                                          onPressed: () async {
+                                            Uri uri;
+
+                                            if (folderPath.startsWith(
+                                                  'http://',
+                                                ) ||
+                                                folderPath.startsWith(
+                                                  'https://',
+                                                )) {
+                                              uri = Uri.parse(
+                                                folderPath,
+                                              );
+                                            } else {
+                                              uri = Uri.file(
+                                                folderPath,
+                                              );
+                                            }
+
+                                            if (await canLaunchUrl(uri)) {
+                                              await launchUrl(
+                                                uri,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
-
-                        const SizedBox(height: 22),
-
-                        // ==========================================
-                        // HORAS TRABALHADAS
-                        // ==========================================
-
-                        _buildProjectTimeLogs(id),
-
-                        const SizedBox(height: 22),
-
-                        // ==========================================
-                        // ARQUIVOS
-                        // ==========================================
-
-                        Text(
-                          'Arquivos do projeto',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'Abra os arquivos e a pasta vinculados a este trabalho.',
-                          style: TextStyle(
-                            color: CoresApp.textoSecundario,
-                            fontSize: 10,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        _buildResourceButton(
-                          icon: Icons.table_chart_rounded,
-                          color: CoresApp.destaqueVerde,
-                          title: 'Arquivo Excel',
-                          subtitle: excelLink.isEmpty
-                              ? 'Não há arquivo Excel cadastrado.'
-                              : excelLink,
-                          available: excelLink.isNotEmpty,
-                          onPressed: () async {
-                            final opened = await _openResource(
-                              excelLink,
-                            );
-
-                            if (!mounted) {
-                              return;
-                            }
-
-                            if (!opened) {
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Não foi possível abrir o arquivo Excel.',
-                                  ),
-                                  backgroundColor: CoresApp.erro,
-                                ),
-                              );
-                            }
-                          },
-                        ),
-
-                        const SizedBox(height: 9),
-
-                        _buildResourceButton(
-                          icon: Icons.folder_open_rounded,
-                          color: CoresApp.destaque,
-                          title: 'Pasta do projeto',
-                          subtitle: folderPath.isEmpty
-                              ? 'Não há pasta cadastrada.'
-                              : folderPath,
-                          available: folderPath.isNotEmpty,
-                          onPressed: () async {
-                            final opened = await _openResource(
-                              folderPath,
-                            );
-
-                            if (!mounted) {
-                              return;
-                            }
-
-                            if (!opened) {
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Não foi possível abrir a pasta do projeto.',
-                                  ),
-                                  backgroundColor: CoresApp.erro,
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ==================================================
-                // RODAPÉ
-                // ==================================================
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(
-                    20,
-                    12,
-                    20,
-                    14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: CoresTelas.fundoModalSecundario,
-                    borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(18),
-                    ),
-                    border: Border(
-                      top: BorderSide(
-                        color: CoresApp.borda,
                       ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        child: Text(
-                          'Fechar',
-                          style: TextStyle(
-                            color: CoresApp.destaque,
-                            fontWeight: FontWeight.w700,
+
+                    // ==================================================
+                    // RODAPÉ
+                    // ==================================================
+
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(
+                        20,
+                        10,
+                        20,
+                        14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CoresDashboard.tabelaCabecalho,
+                        border: Border(
+                          top: BorderSide(
+                            color: CoresDashboard.tabelaBorda,
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 15,
+                            ),
+                            label: const Text(
+                              'Fechar',
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: CoresApp.destaque,
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         );
@@ -2618,45 +2846,435 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   // ============================================================
-  // LINHA DE INFORMAÇÃO DO MODAL
+  // CARD DE INFORMAÇÃO
   // ============================================================
 
-  Widget _infoRow(
-    String label,
-    String value, {
-    bool isLast = false,
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String value,
   }) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: isLast ? 0 : 9,
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: CoresApp.textoPrincipal.withOpacity(0.025),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(
+          color: CoresDashboard.tabelaBorda,
+        ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 125,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: CoresApp.textoSecundario,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: CoresApp.destaque.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: CoresApp.destaque,
+              size: 17,
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: CoresApp.textoPrincipal,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CoresApp.textoSecundario,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  // ============================================================
+  // RECURSO
+  // ============================================================
+
+  Widget _buildResourceButton({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onPressed,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: CoresApp.destaque.withOpacity(0.045),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: CoresApp.destaque.withOpacity(0.15),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: CoresApp.destaque.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: CoresApp.destaque,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: CoresApp.textoPrincipal,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: CoresApp.textoSecundario,
+                      fontSize: 9,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.open_in_new_rounded,
+              color: CoresApp.destaque,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // REABRIR PROJETO
+  // ============================================================
+
+  Future<void> _reopenProject(
+    Map<String, dynamic> project,
+  ) async {
+    final id = project['id']?.toString() ?? '';
+
+    if (id.isEmpty) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: CoresDashboard.tabelaFundo,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: CoresApp.destaqueVerde.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.undo_rounded,
+                  color: CoresApp.destaqueVerde,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Reabrir trabalho?',
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'O trabalho "$id" será devolvido para a lista de projetos ativos.',
+            style: const TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: 11,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: CoresApp.textoSecundario,
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.destaqueVerde,
+                foregroundColor: Colors.black,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              icon: const Icon(
+                Icons.undo_rounded,
+                size: 16,
+              ),
+              label: const Text(
+                'Reabrir',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await widget.firebaseService.reopenCompletedProject(id);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Trabalho $id reaberto com sucesso.',
+          ),
+          backgroundColor: CoresApp.sucesso,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao reabrir o trabalho: $e',
+          ),
+          backgroundColor: CoresApp.erro,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // EXCLUIR DO HISTÓRICO
+  // ============================================================
+
+  Future<void> _deleteProjectFromHistory(
+    Map<String, dynamic> project,
+  ) async {
+    final id = project['id']?.toString() ?? '';
+
+    if (id.isEmpty) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: CoresDashboard.tabelaFundo,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: CoresApp.erro.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: CoresApp.erro,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Excluir do histórico?',
+                  style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'O trabalho "$id" será excluído do histórico. '
+            'Essa ação não poderá ser desfeita.',
+            style: const TextStyle(
+              color: CoresApp.textoSecundario,
+              fontSize: 11,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: CoresApp.textoSecundario,
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.erro,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 16,
+              ),
+              label: const Text(
+                'Excluir',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await widget.firebaseService.deleteCompletedProject(id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _expandedProjectIds.remove(id);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Trabalho $id removido do histórico.',
+          ),
+          backgroundColor: CoresApp.sucesso,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao excluir o trabalho: $e',
+          ),
+          backgroundColor: CoresApp.erro,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
   }
 
   // ============================================================
@@ -2667,9 +3285,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   void dispose() {
     _horizontalController.dispose();
     _verticalController.dispose();
-
     _timeLogStore.dispose();
-
     super.dispose();
   }
 
@@ -2684,170 +3300,185 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       appBar: Cabecalho(
         selectedIndex: widget.selectedIndex,
         onSelectTab: widget.onSelectTab,
-        searchQuery: _searchQuery,
-        onSearchChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-        },
-        userName: '',
+        searchQuery: '',
+        onSearchChanged: (_) {},
+        userName: widget.userName,
       ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: const AssetImage(
-              AppTheme.caminhoFundo,
-            ),
-            fit: BoxFit.cover,
-            colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(
-                AppTheme.opacidadeFundo,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: AppTheme.opacidadeFundo,
+                child: Image.asset(
+                  AppTheme.caminhoFundo,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
-              BlendMode.darken,
             ),
           ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28.0),
-          child: StreamBuilder<List<Map<String, dynamic>>>(
-            stream: widget.firebaseService.getCompletedProjectsStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
-                return Center(
-                  child: CircularProgressIndicator(
-                    color: CoresApp.primaria,
-                  ),
-                );
-              }
-
-              if (snapshot.hasError) {
-                return Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: CoresDashboard.card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: CoresApp.erro.withOpacity(0.30),
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                0,
+                12,
+                0,
+                12,
+              ),
+              child: StreamBuilder(
+                stream: widget.firebaseService.getCompletedProjectsStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: _cardDecoration(
+                          radius: 14,
+                        ),
+                        child: const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: CoresApp.destaque,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.error_outline_rounded,
-                          color: CoresApp.erro,
-                          size: 42,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Erro ao carregar trabalhos finalizados',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${snapshot.error}',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: CoresApp.textoSecundario,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
+                    );
+                  }
 
-              final List<dynamic> rawProjects = snapshot.data != null
-                  ? List<dynamic>.from(
-                      snapshot.data!,
-                    )
-                  : <dynamic>[];
-
-              final allProjects = _convertProjects(rawProjects);
-
-              final completedProjects = _filterProjects(allProjects);
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: CoresApp.sucesso,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Projetos Finalizados',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: CoresApp.textoPrincipal,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: CoresApp.sucesso.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          color: CoresDashboard.tabelaFundo,
+                          borderRadius: BorderRadius.circular(15),
                           border: Border.all(
-                            color: CoresApp.sucesso.withOpacity(0.35),
+                            color: CoresApp.erro.withOpacity(0.30),
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: CoresApp.overlay.withOpacity(0.18),
+                              blurRadius: 18,
+                              offset: const Offset(0, 7),
+                            ),
+                          ],
                         ),
-                        child: Row(
+                        child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.check_circle_outline_rounded,
-                              color: CoresApp.sucesso,
-                              size: 16,
+                            Container(
+                              width: 56,
+                              height: 56,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: CoresApp.erro.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(
+                                Icons.error_outline_rounded,
+                                color: CoresApp.erro,
+                                size: 28,
+                              ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Erro ao carregar trabalhos finalizados',
+                              style: TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
                             Text(
-                              '${completedProjects.length} CONCLUÍDO(S)',
+                              '${snapshot.error}',
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
-                                color: CoresApp.sucesso,
+                                color: CoresApp.textoSecundario,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5,
                               ),
                             ),
                           ],
                         ),
                       ),
+                    );
+                  }
+
+                  final List<dynamic> rawProjects = snapshot.data is List
+                      ? List<dynamic>.from(
+                          snapshot.data as List,
+                        )
+                      : <dynamic>[];
+
+                  final allProjects = _convertProjects(
+                    rawProjects,
+                  );
+
+                  final completedProjects = _filterProjects(
+                    allProjects,
+                  );
+
+                  int totalSubTasks = 0;
+
+                  for (final project in completedProjects) {
+                    totalSubTasks += _getSubTasks(project).length;
+                  }
+
+                  DateTime? latestFinalized;
+
+                  for (final project in completedProjects) {
+                    final date = _parseDate(
+                      project['finalizedAt'],
+                    );
+
+                    if (date == null) {
+                      continue;
+                    }
+
+                    if (latestFinalized == null ||
+                        date.isAfter(latestFinalized!)) {
+                      latestFinalized = date;
+                    }
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
+                        child: _buildPageTitle(
+                          allProjects: allProjects,
+                          completedProjects: completedProjects,
+                          totalSubTasks: totalSubTasks,
+                          latestFinalized: latestFinalized,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                          ),
+                          child: _buildCompletedProjectsTable(
+                            completedProjects,
+                          ),
+                        ),
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: 24),
-                  _buildCompletedProjectsTable(
-                    completedProjects,
-                  ),
-                ],
-              );
-            },
+                  );
+                },
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

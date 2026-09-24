@@ -9,6 +9,7 @@
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
   errors:
+    unused_element: ignore
     valid_regexps: ignore
 include: package:flutter_lints/flutter.yaml
 

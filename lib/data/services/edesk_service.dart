@@ -1,64 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
-<<<<<<< HEAD
-
+import 'package:gerenciador_horas/data/services/edesk_python.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 /// ================================================================
-/// DADOS DO TRABALHO
+/// DADOS DO TRABALHO E-DESK
 /// ================================================================
-///
-/// Representa os dados que serão preenchidos na tela
-/// TrabalhoRetroativo.aspx do E-Desk.
-///
-/// IMPORTANTE:
-/// - solicitacao e idTrabalho identificam o trabalho existente
-///   no E-Desk.
-/// - Eles permanecem no modelo para a próxima etapa da integração.
-/// - Não são enviados arbitrariamente como campos de formulário,
-///   pois ainda precisamos preservar exatamente os campos que o
-///   próprio E-Desk utiliza na página.
-///
-class EdeskWorkData {
-  final Uri pageUri;
 
-  /// Número/identificador da solicitação no E-Desk.
-  final String solicitacao;
-
-  /// Identificador do trabalho existente.
-  final String idTrabalho;
-
-  /// Data do trabalho.
-  final String data;
-
-  /// Hora inicial.
-  final String horaInicio;
-
-  /// Hora final.
-  final String horaFim;
-
-  /// Tipo de registro selecionado no E-Desk.
-  final String tipoRegistro;
-
-  /// Nome/descrição da tarefa.
-  final String tarefa;
-
-  /// Descrição detalhada do trabalho.
-  final String descricao;
-
-  /// GTT, quando aplicável.
-  final String? gtt;
-
-  /// Equipamento, quando aplicável.
-  final String? equipamento;
-
-  /// Atendimento, quando aplicável.
-  final String? atendimento;
-
-  /// Motivo, quando aplicável.
-=======
-import 'package:http/http.dart' as http;
-
-/// Dados necessários para registrar um trabalho no E-Desk.
 class EdeskWorkData {
   final Uri pageUri;
   final String solicitacao;
@@ -69,10 +19,11 @@ class EdeskWorkData {
   final String tipoRegistro;
   final String tarefa;
   final String descricao;
+  final String trabalhoRealizado;
+
   final String? gtt;
   final String? equipamento;
   final String? atendimento;
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   final String? motivo;
 
   const EdeskWorkData({
@@ -85,42 +36,75 @@ class EdeskWorkData {
     required this.tipoRegistro,
     required this.tarefa,
     required this.descricao,
+    this.trabalhoRealizado = '',
     this.gtt,
     this.equipamento,
     this.atendimento,
     this.motivo,
   });
+
+  String get referencia {
+    final solicitacaoValue = solicitacao.trim();
+    final trabalhoValue = idTrabalho.trim();
+
+    if (solicitacaoValue.isEmpty && trabalhoValue.isEmpty) {
+      return '';
+    }
+
+    if (trabalhoValue.isEmpty) {
+      return solicitacaoValue;
+    }
+
+    if (solicitacaoValue.isEmpty) {
+      return trabalhoValue;
+    }
+
+    return '$solicitacaoValue/$trabalhoValue';
+  }
+
+  EdeskWorkData copyWith({
+    Uri? pageUri,
+    String? solicitacao,
+    String? idTrabalho,
+    String? data,
+    String? horaInicio,
+    String? horaFim,
+    String? tipoRegistro,
+    String? tarefa,
+    String? descricao,
+    String? trabalhoRealizado,
+    String? gtt,
+    String? equipamento,
+    String? atendimento,
+    String? motivo,
+  }) {
+    return EdeskWorkData(
+      pageUri: pageUri ?? this.pageUri,
+      solicitacao: solicitacao ?? this.solicitacao,
+      idTrabalho: idTrabalho ?? this.idTrabalho,
+      data: data ?? this.data,
+      horaInicio: horaInicio ?? this.horaInicio,
+      horaFim: horaFim ?? this.horaFim,
+      tipoRegistro: tipoRegistro ?? this.tipoRegistro,
+      tarefa: tarefa ?? this.tarefa,
+      descricao: descricao ?? this.descricao,
+      trabalhoRealizado: trabalhoRealizado ?? this.trabalhoRealizado,
+      gtt: gtt ?? this.gtt,
+      equipamento: equipamento ?? this.equipamento,
+      atendimento: atendimento ?? this.atendimento,
+      motivo: motivo ?? this.motivo,
+    );
+  }
 }
 
-<<<<<<< HEAD
 /// ================================================================
-/// RESULTADO DO ENVIO
+/// RESULTADO
 /// ================================================================
-///
-/// Retorna informações suficientes para a interface decidir
-/// o que fazer depois da tentativa de envio.
-///
-class EdeskSendResult {
-  /// Indica se a resposta foi considerada aceitável.
-  final bool confirmed;
 
-  /// Código HTTP retornado.
-  final int statusCode;
-
-  /// Mensagem amigável para exibição.
-  final String message;
-
-  /// Corpo bruto retornado pelo E-Desk.
-  ///
-  /// Mantido para diagnóstico e para refinarmos posteriormente
-  /// a confirmação da gravação.
-=======
-/// Resultado da tentativa de envio para o E-Desk.
 class EdeskSendResult {
   final bool confirmed;
   final int statusCode;
   final String message;
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   final String responseBody;
 
   const EdeskSendResult({
@@ -131,23 +115,29 @@ class EdeskSendResult {
   });
 }
 
-<<<<<<< HEAD
+/// ================================================================
+/// EXCEÇÕES
+/// ================================================================
+
+class EdeskException implements Exception {
+  final String message;
+
+  const EdeskException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+class EdeskAuthenticationException extends EdeskException {
+  const EdeskAuthenticationException(
+    super.message,
+  );
+}
+
 /// ================================================================
 /// SERVIÇO E-DESK
 /// ================================================================
-///
-/// Responsável exclusivamente pela comunicação HTTP com o E-Desk.
-///
-/// A interface gráfica NÃO deve conhecer:
-/// - cookies;
-/// - VIEWSTATE;
-/// - EVENTVALIDATION;
-/// - UpdatePanel;
-/// - __ASYNCPOST;
-/// - detalhes do POST.
-///
-/// Tudo isso fica concentrado neste serviço.
-///
+
 class EdeskService {
   EdeskService({
     http.Client? client,
@@ -155,40 +145,16 @@ class EdeskService {
 
   final http.Client _client;
 
+  final Map<String, String> _cookies = {};
+
   /// ==============================================================
   /// SESSÃO
   /// ==============================================================
 
-  /// Cookies da sessão atualmente autenticada.
-  final Map<String, String> _cookies = {};
-
-  /// Retorna os cookies atuais somente para leitura.
-  ///
-  /// Não permite que código externo altere diretamente o mapa.
-  Map<String, String> get cookies {
-    return Map.unmodifiable(_cookies);
-  }
-
-  /// Define os cookies de uma sessão já autenticada.
-  ///
-  /// Não armazena credenciais permanentemente.
-  /// Apenas mantém os cookies em memória durante a utilização
-  /// deste serviço.
-=======
-/// Serviço de comunicação com o E-Desk.
-class EdeskService {
-  EdeskService({http.Client? client}) : _client = client ?? http.Client();
-
-  final http.Client _client;
-
-  /// Cookies da sessão atual.
-  final Map<String, String> _cookies = {};
-
-  /// Retorna os cookies atuais sem permitir alteração externa.
   Map<String, String> get cookies => Map.unmodifiable(_cookies);
 
-  /// Define os cookies de uma sessão já autenticada.
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
+  bool get hasSession => _cookies.isNotEmpty;
+
   void setSessionCookies(
     Map<String, String> cookies,
   ) {
@@ -197,639 +163,786 @@ class EdeskService {
       ..addAll(cookies);
   }
 
-<<<<<<< HEAD
-  /// Remove a sessão atual.
-=======
-  /// Limpa a sessão atual.
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
   void clearSession() {
     _cookies.clear();
   }
 
-<<<<<<< HEAD
-  /// Indica se existe alguma informação de sessão armazenada.
-  bool get hasSession {
-    return _cookies.isNotEmpty;
+  /// ==============================================================
+  /// URL OFICIAL DA LISTA
+  /// ==============================================================
+
+  static final Uri listaSolicitacaoPadrao = Uri.parse(
+    'https://promob.e-desk.com.br/Portal/'
+    'ListaSolicitacao.aspx'
+    '?GUID=ff841454-6398-4e36-84e5-0ce750d161a5',
+  );
+
+  /// ==============================================================
+  /// ABRIR URL
+  /// ==============================================================
+
+  Future<bool> abrirEdesk({
+    Uri? uri,
+  }) async {
+    final target = uri ?? listaSolicitacaoPadrao;
+
+    try {
+      return await launchUrl(
+        target,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      throw EdeskException(
+        'Não foi possível abrir o E-Desk no navegador: $e',
+      );
+    }
   }
 
   /// ==============================================================
-  /// ENVIO DO TRABALHO
+  /// ABRIR URL INFORMADA
   /// ==============================================================
 
-  Future<EdeskSendResult> sendWork(
-    EdeskWorkData work,
-  ) async {
-    // ============================================================
-    // 1. VALIDAR DADOS BÁSICOS
-    // ============================================================
+  Future<bool> abrirPorUrl({
+    required String url,
+  }) async {
+    final uri = Uri.tryParse(
+      url.trim(),
+    );
 
-    _validateWorkData(work);
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+      return false;
+    }
 
-    // ============================================================
-    // 2. ABRIR A PÁGINA DO TRABALHO
-    // ============================================================
-    //
-    // O GET é importante porque o E-Desk utiliza estado dinâmico
-    // do ASP.NET WebForms.
-    //
-    // Não podemos reutilizar um VIEWSTATE antigo.
-    //
+    return abrirEdesk(
+      uri: uri,
+    );
+  }
 
-    late final http.Response getResponse;
+  /// ==============================================================
+  /// ABRIR LISTA
+  /// ==============================================================
 
-    try {
-      getResponse = await _client.get(
-        work.pageUri,
-        headers: _headers(),
+  Future<bool> abrirListaSolicitacoes() {
+    return abrirEdesk(
+      uri: listaSolicitacaoPadrao,
+    );
+  }
+
+  /// ==============================================================
+  /// RESOLVER URL REAL DO TRABALHO
+  /// ==============================================================
+
+  Future<Uri> resolveWorkPageUri({
+    required String solicitacao,
+    required String idTrabalho,
+    Uri? listaUri,
+  }) async {
+    final solicitacaoNumero = solicitacao.trim();
+
+    final trabalhoNumero = idTrabalho.trim();
+
+    if (solicitacaoNumero.isEmpty) {
+      throw const EdeskException(
+        'O número da solicitação não foi informado.',
       );
-    } on Exception catch (e) {
+    }
+
+    if (trabalhoNumero.isEmpty) {
+      throw const EdeskException(
+        'O número do trabalho não foi informado.',
+      );
+    }
+
+    final origem = listaUri ?? listaSolicitacaoPadrao;
+
+    debugPrint(
+      '[E-Desk] Procurando trabalho '
+      '$solicitacaoNumero/$trabalhoNumero',
+    );
+
+    debugPrint(
+      '[E-Desk] Lista: $origem',
+    );
+
+    final listaResponse = await _getPage(
+      origem,
+      operation: 'localizar a solicitação $solicitacaoNumero',
+    );
+
+    final listaHtml = _decodeResponse(
+      listaResponse,
+    );
+
+    _ensureAuthenticated(
+      listaResponse,
+      listaHtml,
+    );
+
+    debugPrint(
+      '[E-Desk] Lista carregada. '
+      'HTML: ${listaHtml.length} caracteres',
+    );
+
+    final direto = _findWorkLinkInHtml(
+      html: listaHtml,
+      solicitacao: solicitacaoNumero,
+      trabalho: trabalhoNumero,
+      baseUri: origem,
+    );
+
+    if (direto != null) {
+      final resultado = _toRetroactiveUri(
+        direto,
+      );
+
+      debugPrint(
+        '[E-Desk] Trabalho encontrado diretamente:',
+      );
+
+      debugPrint(
+        '[E-Desk] $resultado',
+      );
+
+      return resultado;
+    }
+
+    final solicitacaoUri = _findSolicitationLink(
+      html: listaHtml,
+      solicitacao: solicitacaoNumero,
+      baseUri: origem,
+    );
+
+    if (solicitacaoUri == null) {
       throw EdeskException(
-        'Erro ao conectar ao E-Desk: $e',
+        'A solicitação $solicitacaoNumero '
+        'não foi encontrada na lista do E-Desk.',
       );
     }
 
-    // Atualiza cookies caso o servidor tenha enviado novos cookies.
-    _storeCookies(getResponse);
-
-    // ============================================================
-    // 3. VERIFICAR RESPOSTA DO GET
-    // ============================================================
-
-    if (_isRedirectToLogin(getResponse)) {
-      throw const EdeskAuthenticationException(
-        'A sessão do E-Desk não está autenticada ou expirou.',
-      );
-    }
-
-=======
-  /// Envia um trabalho para o E-Desk.
-  Future<EdeskSendResult> sendWork(
-    EdeskWorkData work,
-  ) async {
-    // ==========================================================
-    // 1. ABRIR A PÁGINA DO TRABALHO
-    // ==========================================================
-
-    final getResponse = await _client.get(
-      work.pageUri,
-      headers: _headers(),
+    debugPrint(
+      '[E-Desk] Solicitação encontrada:',
     );
 
-    _storeCookies(getResponse);
+    debugPrint(
+      '[E-Desk] $solicitacaoUri',
+    );
 
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-    if (getResponse.statusCode != 200) {
+    final solicitacaoResponse = await _getPage(
+      solicitacaoUri,
+      operation: 'abrir a solicitação $solicitacaoNumero',
+    );
+
+    final solicitacaoHtml = _decodeResponse(
+      solicitacaoResponse,
+    );
+
+    _ensureAuthenticated(
+      solicitacaoResponse,
+      solicitacaoHtml,
+    );
+
+    debugPrint(
+      '[E-Desk] Página da solicitação carregada. '
+      'HTML: ${solicitacaoHtml.length} caracteres',
+    );
+
+    final trabalhoUri = _findWorkLinkInHtml(
+      html: solicitacaoHtml,
+      solicitacao: solicitacaoNumero,
+      trabalho: trabalhoNumero,
+      baseUri: solicitacaoUri,
+    );
+
+    if (trabalhoUri == null) {
       throw EdeskException(
-        'Não foi possível abrir a página do E-Desk. '
-        'HTTP ${getResponse.statusCode}.',
+        'A solicitação $solicitacaoNumero foi encontrada, '
+        'mas o trabalho $trabalhoNumero não foi localizado.',
       );
     }
 
-<<<<<<< HEAD
-    final html = _decodeResponse(getResponse);
-
-    // ============================================================
-    // 4. VERIFICAR SE RECEBEMOS UMA PÁGINA VÁLIDA
-    // ============================================================
-
-    if (_looksLikeLoginPage(html)) {
-      throw const EdeskAuthenticationException(
-        'O E-Desk retornou a tela de login. '
-        'A sessão atual não está autenticada.',
-      );
-    }
-
-    // ============================================================
-    // 5. EXTRAIR CAMPOS HIDDEN
-    // ============================================================
-    //
-    // ASP.NET WebForms utiliza campos como:
-    //
-    // __VIEWSTATE
-    // __VIEWSTATEGENERATOR
-    // __EVENTVALIDATION
-    // __EVENTTARGET
-    // __EVENTARGUMENT
-    //
-    // Esses valores podem mudar a cada carregamento.
-    //
-=======
-    final html = utf8.decode(
-      getResponse.bodyBytes,
-      allowMalformed: true,
+    final resultado = _toRetroactiveUri(
+      trabalhoUri,
     );
 
-    // ==========================================================
-    // 2. EXTRAIR CAMPOS HIDDEN DO ASP.NET WEB FORMS
-    // ==========================================================
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-
-    final hiddenFields = _extractHiddenFields(html);
-
-    if (hiddenFields.isEmpty) {
-      throw const EdeskAuthenticationException(
-        'A página do E-Desk não retornou os campos '
-<<<<<<< HEAD
-        'de estado do formulário. '
-        'A sessão pode não estar autenticada ou a página '
-        'retornada não é o formulário esperado.',
-      );
-    }
-
-    // ============================================================
-    // 6. PREPARAR FORMULÁRIO
-    // ============================================================
-
-=======
-        'de estado. A sessão pode não estar autenticada.',
-      );
-    }
-
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-    final form = <String, String>{
-      ...hiddenFields,
-    };
-
-<<<<<<< HEAD
-    // ============================================================
-    // 7. PREENCHER CAMPOS DO TRABALHO
-    // ============================================================
-
-    form[r'ctl00$cph1$txtDatTem'] = work.data;
-
-    form[r'ctl00$cph1$txtHorIni'] = work.horaInicio;
-
-    form[r'ctl00$cph1$txtHorFin'] = work.horaFim;
-
-    form[r'ctl00$cph1$ddlTipReg'] = work.tipoRegistro;
-
-    form[r'ctl00$cph1$txlTtr$txtDes'] = work.tarefa;
-
-    form[r'ctl00$cph1$txtDet'] = work.descricao;
-
-    // ============================================================
-    // 8. CAMPOS OPCIONAIS
-    // ============================================================
-
-=======
-    // ==========================================================
-    // 3. CAMPOS DO TRABALHO
-    // ==========================================================
-
-    form[r'ctl00$cph1$txtDatTem'] = work.data;
-    form[r'ctl00$cph1$txtHorIni'] = work.horaInicio;
-    form[r'ctl00$cph1$txtHorFin'] = work.horaFim;
-    form[r'ctl00$cph1$ddlTipReg'] = work.tipoRegistro;
-    form[r'ctl00$cph1$txlTtr$txtDes'] = work.tarefa;
-    form[r'ctl00$cph1$txtDet'] = work.descricao;
-
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-    if (work.gtt != null) {
-      form[r'ctl00$cph1$txlGtt$txtDes'] = work.gtt!;
-    }
-
-    if (work.equipamento != null) {
-      form[r'ctl00$cph1$txlEqt$txtDes'] = work.equipamento!;
-    }
-
-    if (work.atendimento != null) {
-      form[r'ctl00$cph1$txlAte$txtDes'] = work.atendimento!;
-    }
-
-    if (work.motivo != null) {
-      form[r'ctl00$cph1$txtRea'] = work.motivo!;
-    }
-
-<<<<<<< HEAD
-    // ============================================================
-    // 9. CONFIGURAR ASP.NET AJAX / UPDATEPANEL
-    // ============================================================
-
-    form[r'ctl00$scmF'] = r'ctl00$cph1$uppG|ctl00$cph1$BtAtu';
-
-    form['__EVENTTARGET'] = '';
-
-    form['__EVENTARGUMENT'] = '';
-
-    form['__ASYNCPOST'] = 'true';
-
-    // Botão responsável pelo salvamento.
-    form[r'ctl00$cph1$BtAtu'] = 'Salvar';
-
-    // ============================================================
-    // 10. ENVIAR POST
-    // ============================================================
-
-    late final http.Response postResponse;
-
-    try {
-      postResponse = await _client.post(
-        work.pageUri,
-        headers: {
-          ..._headers(),
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Referer': work.pageUri.toString(),
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: form,
-      );
-    } on Exception catch (e) {
-      throw EdeskException(
-        'Erro ao enviar os dados para o E-Desk: $e',
-      );
-    }
-
-    // O servidor pode atualizar cookies durante o POST.
-    _storeCookies(postResponse);
-
-    // ============================================================
-    // 11. DECODIFICAR RESPOSTA
-    // ============================================================
-
-    final body = _decodeResponse(postResponse);
-
-    // ============================================================
-    // 12. VERIFICAR AUTENTICAÇÃO
-    // ============================================================
-
-    if (_looksLikeLoginPage(body)) {
-      throw const EdeskAuthenticationException(
-        'O E-Desk retornou a tela de login durante o envio. '
-        'A sessão pode ter expirado.',
-      );
-    }
-
-    // ============================================================
-    // 13. VERIFICAR ERROS CONHECIDOS
-    // ============================================================
-
-    if (_containsServerError(body)) {
-      return EdeskSendResult(
-        confirmed: false,
-        statusCode: postResponse.statusCode,
-        message: 'O E-Desk retornou uma mensagem de erro durante o salvamento.',
-        responseBody: body,
-      );
-    }
-
-    // ============================================================
-    // 14. VERIFICAR STATUS HTTP
-    // ============================================================
-
-    if (postResponse.statusCode < 200 || postResponse.statusCode >= 300) {
-      return EdeskSendResult(
-        confirmed: false,
-        statusCode: postResponse.statusCode,
-        message: 'O E-Desk retornou HTTP ${postResponse.statusCode}. '
-            'O salvamento não pôde ser confirmado.',
-        responseBody: body,
-      );
-    }
-
-    // ============================================================
-    // 15. ANALISAR RESPOSTA AJAX
-    // ============================================================
-    //
-    // O E-Desk utiliza ASP.NET AJAX.
-    //
-    // Uma resposta HTTP 200 não significa necessariamente que
-    // o registro foi salvo.
-    //
-    // Por isso mantemos uma análise específica da resposta.
-    //
-
-    final ajaxAnalysis = _analyzeAjaxResponse(body);
-
-    if (ajaxAnalysis.isError) {
-      return EdeskSendResult(
-        confirmed: false,
-        statusCode: postResponse.statusCode,
-        message: ajaxAnalysis.message,
-        responseBody: body,
-      );
-    }
-
-    // ============================================================
-    // 16. RESULTADO
-    // ============================================================
-    //
-    // Neste momento consideramos a solicitação HTTP aceita pelo
-    // servidor, mas mantemos a mensagem explícita para não confundir
-    // "HTTP aceito" com "registro definitivamente confirmado".
-    //
-    // Na próxima etapa podemos implementar uma confirmação real,
-    // por exemplo:
-    //
-    // POST -> GET novamente -> verificar se o registro apareceu
-    // no Retroativo.
-    //
-
-    return EdeskSendResult(
-      confirmed: true,
-      statusCode: postResponse.statusCode,
-      message: 'O E-Desk aceitou a solicitação de salvamento.',
-=======
-    // ==========================================================
-    // 4. CONFIGURAÇÃO DO ASP.NET AJAX / UPDATEPANEL
-    // ==========================================================
-
-    form[r'ctl00$scmF'] = r'ctl00$cph1$uppG|ctl00$cph1$BtAtu';
-    form['__EVENTTARGET'] = '';
-    form['__EVENTARGUMENT'] = '';
-    form['__ASYNCPOST'] = 'true';
-
-    // Configurando o disparador do evento de clique do UpdatePanel
-    form[r'ctl00$cph1$BtAtu'] = 'Salvar';
-
-    // ==========================================================
-    // 5. ENVIAR POST
-    // ==========================================================
-
-    final postResponse = await _client.post(
-      work.pageUri,
-      headers: {
-        ..._headers(),
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'Referer': work.pageUri.toString(),
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: form,
+    debugPrint(
+      '[E-Desk] ========================================',
     );
 
-    _storeCookies(postResponse);
-
-    // ==========================================================
-    // 6. ANALISAR RESPOSTA
-    // ==========================================================
-
-    final body = utf8.decode(
-      postResponse.bodyBytes,
-      allowMalformed: true,
+    debugPrint(
+      '[E-Desk] TRABALHO ENCONTRADO',
     );
 
-    final confirmed = postResponse.statusCode >= 200 &&
-        postResponse.statusCode < 300 &&
-        !_containsError(body);
+    debugPrint(
+      '[E-Desk] Solicitação: $solicitacaoNumero',
+    );
 
-    return EdeskSendResult(
-      confirmed: confirmed,
-      statusCode: postResponse.statusCode,
-      message: confirmed
-          ? 'O E-Desk aceitou a solicitação HTTP.'
-          : 'O E-Desk retornou uma resposta que não pôde ser confirmada como gravação.',
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-      responseBody: body,
+    debugPrint(
+      '[E-Desk] Trabalho: $trabalhoNumero',
+    );
+
+    debugPrint(
+      '[E-Desk] URL REAL:',
+    );
+
+    debugPrint(
+      '[E-Desk] $resultado',
+    );
+
+    debugPrint(
+      '[E-Desk] ========================================',
+    );
+
+    return resultado;
+  }
+
+  /// ==============================================================
+  /// ABRIR POR REFERÊNCIA
+  /// ==============================================================
+
+  Future<bool> abrirPorReferencia({
+    required String solicitacao,
+    required String idTrabalho,
+  }) async {
+    final solicitacaoNumero = solicitacao.trim();
+
+    final trabalhoNumero = idTrabalho.trim();
+
+    if (solicitacaoNumero.isEmpty || trabalhoNumero.isEmpty) {
+      throw const EdeskException(
+        'Não foi possível identificar a solicitação '
+        'e o trabalho.',
+      );
+    }
+
+    final uri = await resolveWorkPageUri(
+      solicitacao: solicitacaoNumero,
+      idTrabalho: trabalhoNumero,
+    );
+
+    return abrirEdesk(
+      uri: uri,
     );
   }
 
-<<<<<<< HEAD
-  // ==============================================================
-  // VALIDAÇÃO
-  // ==============================================================
+  /// ==============================================================
+  /// RESOLVER E ABRIR
+  /// ==============================================================
 
-  void _validateWorkData(
-    EdeskWorkData work,
-  ) {
-    if (work.pageUri.toString().trim().isEmpty) {
-      throw const EdeskException(
-        'A URL do trabalho no E-Desk não foi informada.',
-      );
-    }
+  Future<bool> resolverEAbrir({
+    required String solicitacao,
+    required String idTrabalho,
+    Uri? listaUri,
+  }) async {
+    final uri = await resolveWorkPageUri(
+      solicitacao: solicitacao,
+      idTrabalho: idTrabalho,
+      listaUri: listaUri,
+    );
 
-    if (work.data.trim().isEmpty) {
-      throw const EdeskException(
-        'A data do trabalho não foi informada.',
-      );
-    }
-
-    if (work.horaInicio.trim().isEmpty) {
-      throw const EdeskException(
-        'A hora inicial não foi informada.',
-      );
-    }
-
-    if (work.horaFim.trim().isEmpty) {
-      throw const EdeskException(
-        'A hora final não foi informada.',
-      );
-    }
-
-    if (work.tipoRegistro.trim().isEmpty) {
-      throw const EdeskException(
-        'O tipo de registro não foi informado.',
-      );
-    }
-
-    if (work.tarefa.trim().isEmpty) {
-      throw const EdeskException(
-        'A tarefa não foi informada.',
-      );
-    }
+    return abrirEdesk(
+      uri: uri,
+    );
   }
 
-  // ==============================================================
-  // HEADERS
-  // ==============================================================
+  /// ==============================================================
+  /// ENVIAR POR REFERÊNCIA
+  /// ==============================================================
 
-  Map<String, String> _headers() {
-    return {
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
-          '*/*;q=0.8',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-          'AppleWebKit/537.36 '
-          '(KHTML, like Gecko) '
-          'Chrome/140.0.0.0 Safari/537.36',
-=======
-  // ============================================================
-  // HEADERS
-  // ============================================================
+  Future<EdeskSendResult> sendWorkByReference({
+    required EdeskWorkData work,
+    Uri? listaUri,
+  }) async {
+    final pageUri = await resolveWorkPageUri(
+      solicitacao: work.solicitacao,
+      idTrabalho: work.idTrabalho,
+      listaUri: listaUri,
+    );
 
-  Map<String, String> _headers() {
-    return {
-      'Accept':
-          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-      if (_cookies.isNotEmpty) 'Cookie': _cookieHeader(),
-    };
-  }
-
-<<<<<<< HEAD
-  // ==============================================================
-  // COOKIE HEADER
-  // ==============================================================
-=======
-  // ============================================================
-  // COOKIE HEADER
-  // ============================================================
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-
-  String _cookieHeader() {
-    return _cookies.entries
-        .map(
-          (entry) => '${entry.key}=${entry.value}',
-        )
-        .join('; ');
-  }
-
-<<<<<<< HEAD
-  // ==============================================================
-  // ARMAZENAR COOKIES
-  // ==============================================================
-=======
-  // ============================================================
-  // ARMAZENAR COOKIES
-  // ============================================================
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-
-  void _storeCookies(
-    http.Response response,
-  ) {
-    final values = response.headers['set-cookie'];
-
-    if (values == null || values.isEmpty) {
-      return;
-    }
-
-<<<<<<< HEAD
-    // Alguns servidores retornam múltiplos cookies no mesmo header.
-=======
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-    final cookies = values.split(
-      RegExp(
-        r',(?=\s*[^;,=]+\s*=)',
+    return sendWork(
+      work.copyWith(
+        pageUri: pageUri,
       ),
     );
-
-    for (final cookie in cookies) {
-      final firstPart = cookie.split(';').first.trim();
-
-      final separator = firstPart.indexOf('=');
-
-      if (separator <= 0) {
-        continue;
-      }
-
-      final name = firstPart.substring(0, separator).trim();
-
-      final value = firstPart.substring(separator + 1).trim();
-
-<<<<<<< HEAD
-      if (name.isEmpty) {
-        continue;
-      }
-
-      // Cookies expirados podem vir vazios.
-      //
-      // Não removemos automaticamente aqui porque alguns ambientes
-      // utilizam cookies especiais durante a navegação.
-      _cookies[name] = value;
-    }
   }
 
-  // ==============================================================
-  // DECODIFICAR RESPONSE
-  // ==============================================================
+  /// ==============================================================
+  /// HTTP GET
+  /// ==============================================================
 
-  String _decodeResponse(
-    http.Response response,
-  ) {
-    return utf8.decode(
-      response.bodyBytes,
-      allowMalformed: true,
+  Future<http.Response> _getPage(
+    Uri uri, {
+    required String operation,
+  }) async {
+    late final http.Response response;
+
+    try {
+      response = await _client
+          .get(
+            uri,
+            headers: _headers(),
+          )
+          .timeout(
+            const Duration(
+              seconds: 30,
+            ),
+          );
+    } on TimeoutException {
+      throw EdeskException(
+        'Tempo esgotado ao $operation no E-Desk.',
+      );
+    } on Exception catch (e) {
+      throw EdeskException(
+        _connectionErrorMessage(
+          operation: operation,
+          uri: uri,
+          error: e,
+        ),
+      );
+    }
+
+    _storeCookies(
+      response,
     );
-  }
 
-  // ==============================================================
-  // EXTRAIR CAMPOS HIDDEN
-  // ==============================================================
-=======
-      if (name.isNotEmpty) {
-        _cookies[name] = value;
+    _debugResponse(
+      operation: 'GET $operation',
+      uri: uri,
+      response: response,
+    );
+
+    if (response.statusCode >= 300 && response.statusCode < 400) {
+      if (_isRedirectToLogin(
+        response,
+      )) {
+        throw const EdeskAuthenticationException(
+          'A sessão do E-Desk não está autenticada '
+          'ou expirou.',
+        );
       }
     }
+
+    if (response.statusCode != 200) {
+      throw EdeskException(
+        'Não foi possível $operation. '
+        'HTTP ${response.statusCode}.',
+      );
+    }
+
+    return response;
   }
 
-  // ============================================================
-// EXTRAIR CAMPOS HIDDEN
-// ============================================================
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
+  /// ==============================================================
+  /// LOCALIZAR SOLICITAÇÃO
+  /// ==============================================================
 
-  Map<String, String> _extractHiddenFields(
-    String html,
-  ) {
-    final fields = <String, String>{};
+  Uri? _findSolicitationLink({
+    required String html,
+    required String solicitacao,
+    required Uri baseUri,
+  }) {
+    final anchors = _extractAnchors(
+      html,
+    );
 
-    final inputPattern = RegExp(
-      r'''<input[^>]*type\s*=\s*["']hidden["'][^>]*>''',
+    for (final anchor in anchors) {
+      final href = anchor.href;
+
+      final text = _normalizeHtmlText(
+        anchor.text,
+      );
+
+      if (href == null || href.isEmpty) {
+        continue;
+      }
+
+      final lowerHref = href.toLowerCase();
+
+      if (!lowerHref.contains(
+        'solicitacao.aspx',
+      )) {
+        continue;
+      }
+
+      if (_containsVisibleNumber(
+            text,
+            solicitacao,
+          ) ||
+          _containsVisibleNumber(
+            href,
+            solicitacao,
+          )) {
+        return _resolveHref(
+          baseUri,
+          href,
+        );
+      }
+    }
+
+    final rows = RegExp(
+      r'<tr\b[^>]*>(.*?)</tr>',
       caseSensitive: false,
       dotAll: true,
     );
 
-    for (final match in inputPattern.allMatches(html)) {
-      final tag = match.group(0);
+    for (final match in rows.allMatches(html)) {
+      final row = match.group(1) ?? '';
 
-      if (tag == null) {
-        continue;
-      }
-
-<<<<<<< HEAD
-      final name = _attribute(
-        tag,
-        'name',
+      final rowText = _normalizeHtmlText(
+        row,
       );
-=======
-      final name = _attribute(tag, 'name');
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
 
-      if (name == null || name.isEmpty) {
+      if (!_containsVisibleNumber(
+        rowText,
+        solicitacao,
+      )) {
         continue;
       }
 
-<<<<<<< HEAD
-      final value = _attribute(
-            tag,
-            'value',
-          ) ??
-          '';
+      for (final anchor in _extractAnchors(row)) {
+        final href = anchor.href;
 
-      fields[name] = value;
-=======
-      fields[name] = _attribute(tag, 'value') ?? '';
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
+        if (href != null &&
+            href.isNotEmpty &&
+            href.toLowerCase().contains(
+                  'solicitacao.aspx',
+                )) {
+          return _resolveHref(
+            baseUri,
+            href,
+          );
+        }
+      }
     }
 
-    return fields;
+    return null;
   }
 
-<<<<<<< HEAD
-  // ==============================================================
-  // LER ATRIBUTO HTML
-  // ==============================================================
-=======
-// ============================================================
-// LER ATRIBUTO HTML
-// ============================================================
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
+  /// ==============================================================
+  /// LOCALIZAR TRABALHO
+  /// ==============================================================
 
-  String? _attribute(
-    String tag,
-    String attributeName,
-  ) {
-    final pattern = RegExp(
-      '''$attributeName\\s*=\\s*["']([^"']*)["']''',
-      caseSensitive: false,
+  Uri? _findWorkLinkInHtml({
+    required String html,
+    required String solicitacao,
+    required String trabalho,
+    required Uri baseUri,
+  }) {
+    final anchors = _extractAnchors(
+      html,
     );
 
-    final match = pattern.firstMatch(tag);
+    for (final anchor in anchors) {
+      final href = anchor.href;
 
-    return match?.group(1);
+      final text = _normalizeHtmlText(
+        anchor.text,
+      );
+
+      if (href == null || href.isEmpty) {
+        continue;
+      }
+
+      if (!_isWorkHref(
+        href,
+      )) {
+        continue;
+      }
+
+      if (_containsVisibleNumber(
+        text,
+        trabalho,
+      )) {
+        return _resolveHref(
+          baseUri,
+          href,
+        );
+      }
+    }
+
+    final rows = RegExp(
+      r'<tr\b[^>]*>(.*?)</tr>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    for (final match in rows.allMatches(html)) {
+      final row = match.group(1) ?? '';
+
+      final rowText = _normalizeHtmlText(
+        row,
+      );
+
+      if (!_containsVisibleNumber(
+        rowText,
+        trabalho,
+      )) {
+        continue;
+      }
+
+      for (final anchor in _extractAnchors(row)) {
+        final href = anchor.href;
+
+        if (href != null &&
+            _isWorkHref(
+              href,
+            )) {
+          return _resolveHref(
+            baseUri,
+            href,
+          );
+        }
+      }
+    }
+
+    for (final anchor in anchors) {
+      final href = anchor.href;
+
+      if (href == null ||
+          !_isWorkHref(
+            href,
+          )) {
+        continue;
+      }
+
+      final marker = html.indexOf(
+        href,
+      );
+
+      if (marker < 0) {
+        continue;
+      }
+
+      final start = marker > 1200 ? marker - 1200 : 0;
+
+      final end = marker + href.length + 1200 > html.length
+          ? html.length
+          : marker + href.length + 1200;
+
+      final context = _normalizeHtmlText(
+        html.substring(
+          start,
+          end,
+        ),
+      );
+
+      if (_containsVisibleNumber(
+        context,
+        trabalho,
+      )) {
+        return _resolveHref(
+          baseUri,
+          href,
+        );
+      }
+    }
+
+    return null;
   }
 
-<<<<<<< HEAD
-  // ==============================================================
-  // VERIFICAR REDIRECIONAMENTO
-  // ==============================================================
+  /// ==============================================================
+  /// IDENTIFICAR LINK DE TRABALHO
+  /// ==============================================================
+
+  bool _isWorkHref(
+    String href,
+  ) {
+    final normalized = href.toLowerCase();
+
+    return normalized.contains(
+          'trabalho.aspx',
+        ) ||
+        normalized.contains(
+          'trabalhoretroativo.aspx',
+        );
+  }
+
+  /// ==============================================================
+  /// VERIFICAR NÚMERO EXATO
+  /// ==============================================================
+
+  bool _containsVisibleNumber(
+    String text,
+    String number,
+  ) {
+    final normalizedText = _normalizeHtmlText(
+      text,
+    );
+
+    final value = number.trim();
+
+    if (value.isEmpty) {
+      return false;
+    }
+
+    final pattern = RegExp(
+      r'(?<!\d)' + RegExp.escape(value) + r'(?!\d)',
+    );
+
+    return pattern.hasMatch(
+      normalizedText,
+    );
+  }
+
+  /// ==============================================================
+  /// EXTRAIR LINKS
+  /// ==============================================================
+
+  List<_HtmlAnchor> _extractAnchors(
+    String html,
+  ) {
+    final anchors = <_HtmlAnchor>[];
+
+    final pattern = RegExp(
+      r'''<a\b[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>''',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    for (final match in pattern.allMatches(html)) {
+      final href = match.group(1) ?? match.group(2);
+
+      final text = match.group(3) ?? '';
+
+      anchors.add(
+        _HtmlAnchor(
+          href,
+          text,
+        ),
+      );
+    }
+
+    return anchors;
+  }
+
+  /// ==============================================================
+  /// RESOLVER HREF
+  /// ==============================================================
+
+  Uri _resolveHref(
+    Uri baseUri,
+    String href,
+  ) {
+    final cleaned = href
+        .replaceAll(
+          '&amp;',
+          '&',
+        )
+        .replaceAll(
+          '&#39;',
+          "'",
+        )
+        .replaceAll(
+          '&quot;',
+          '"',
+        )
+        .trim();
+
+    final parsed = Uri.tryParse(
+      cleaned,
+    );
+
+    if (parsed == null) {
+      throw EdeskException(
+        'O E-Desk retornou um link inválido.',
+      );
+    }
+
+    return parsed.hasScheme
+        ? parsed
+        : baseUri.resolve(
+            cleaned,
+          );
+  }
+
+  /// ==============================================================
+  /// TRABALHO -> TRABALHORETROATIVO
+  /// ==============================================================
+
+  Uri _toRetroactiveUri(
+    Uri uri,
+  ) {
+    final path = uri.path;
+
+    if (path.toLowerCase().endsWith(
+          '/trabalhoretroativo.aspx',
+        )) {
+      return uri;
+    }
+
+    if (path.toLowerCase().endsWith(
+          '/trabalho.aspx',
+        )) {
+      return uri.replace(
+        path: '${path.substring(
+          0,
+          path.length - 'Trabalho.aspx'.length,
+        )}'
+            'TrabalhoRetroativo.aspx',
+      );
+    }
+
+    return uri;
+  }
+
+  /// ==============================================================
+  /// NORMALIZAR HTML
+  /// ==============================================================
+
+  String _normalizeHtmlText(
+    String value,
+  ) {
+    return value
+        .replaceAll(
+          RegExp(
+            r'<[^>]+>',
+          ),
+          ' ',
+        )
+        .replaceAll(
+          '&nbsp;',
+          ' ',
+        )
+        .replaceAll(
+          '&amp;',
+          '&',
+        )
+        .replaceAll(
+          '&quot;',
+          '"',
+        )
+        .replaceAll(
+          '&#39;',
+          "'",
+        )
+        .replaceAll(
+          RegExp(
+            r'\s+',
+          ),
+          ' ',
+        )
+        .trim();
+  }
+
+  /// ==============================================================
+  /// AUTENTICAÇÃO
+  /// ==============================================================
+
+  void _ensureAuthenticated(
+    http.Response response,
+    String html,
+  ) {
+    if (_isRedirectToLogin(
+          response,
+        ) ||
+        _looksLikeLoginPage(
+          html,
+        )) {
+      throw const EdeskAuthenticationException(
+        'O E-Desk retornou a tela de login. '
+        'A sessão HTTP do aplicativo não está autenticada.',
+      );
+    }
+  }
 
   bool _isRedirectToLogin(
     http.Response response,
@@ -844,42 +957,45 @@ class EdeskService {
       return false;
     }
 
-    return _looksLikeLoginUrl(location);
+    return _looksLikeLoginUrl(
+      location,
+    );
   }
-
-  // ==============================================================
-  // VERIFICAR PÁGINA DE LOGIN
-  // ==============================================================
 
   bool _looksLikeLoginPage(
     String body,
   ) {
     final normalized = body.toLowerCase();
 
-    const markers = [
-      'login',
-      'entrar',
-      'senha',
-      'usuário',
-      'usuario',
-      'promob identity',
-    ];
+    final hasLoginMarker = normalized.contains(
+          'promob identity',
+        ) ||
+        normalized.contains(
+          'login.aspx',
+        ) ||
+        normalized.contains(
+          'signin',
+        ) ||
+        normalized.contains(
+          'entrar',
+        );
 
-    // Não basta encontrar uma palavra isolada como "login",
-    // pois páginas normais podem conter esse texto.
-    //
-    // Procuramos combinações mais características.
-    final hasLoginMarker = normalized.contains('promob identity') ||
-        normalized.contains('login.aspx') ||
-        normalized.contains('signin') ||
-        normalized.contains('entrar');
+    final hasPasswordField = normalized.contains(
+          'type="password"',
+        ) ||
+        normalized.contains(
+          "type='password'",
+        );
 
-    final hasPasswordField = normalized.contains('type="password"') ||
-        normalized.contains("type='password'");
-
-    final hasUserField = normalized.contains('usuário') ||
-        normalized.contains('usuario') ||
-        normalized.contains('username');
+    final hasUserField = normalized.contains(
+          'usuário',
+        ) ||
+        normalized.contains(
+          'usuario',
+        ) ||
+        normalized.contains(
+          'username',
+        );
 
     if (hasLoginMarker && hasPasswordField) {
       return true;
@@ -892,164 +1008,368 @@ class EdeskService {
     return false;
   }
 
-  // ==============================================================
-  // VERIFICAR URL DE LOGIN
-  // ==============================================================
-
   bool _looksLikeLoginUrl(
     String url,
   ) {
     final normalized = url.toLowerCase();
 
-    return normalized.contains('login') ||
-        normalized.contains('signin') ||
-        normalized.contains('identity');
-  }
-
-  // ==============================================================
-  // VERIFICAR ERROS DO SERVIDOR
-  // ==============================================================
-
-  bool _containsServerError(
-=======
-  // ============================================================
-  // VERIFICAR ERROS NA RESPOSTA
-  // ============================================================
-
-  bool _containsError(
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-    String body,
-  ) {
-    final normalized = body.toLowerCase();
-
-    const markers = [
-<<<<<<< HEAD
-      'server error',
-      'http error 500',
-      'exception details',
-      'stack trace',
-      'erro ao salvar',
-      'erro ao gravar',
-      'não foi possível salvar',
-      'nao foi possivel salvar',
-      'não foi possível gravar',
-      'nao foi possivel gravar',
-=======
-      'exception',
-      'server error',
-      'erro ao salvar',
-      'não foi possível salvar',
-      'nao foi possivel salvar',
-      'alert(',
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-    ];
-
-    return markers.any(
-      normalized.contains,
-    );
-  }
-
-<<<<<<< HEAD
-  // ==============================================================
-  // ANALISAR RESPOSTA ASP.NET AJAX
-  // ==============================================================
-
-  _AjaxResponseAnalysis _analyzeAjaxResponse(
-    String body,
-  ) {
-    final normalized = body.toLowerCase();
-
-    // ------------------------------------------------------------
-    // Erros explícitos conhecidos.
-    // ------------------------------------------------------------
-
-    const errorMarkers = [
-      'server error',
-      'exception',
-      'erro ao salvar',
-      'erro ao gravar',
-      'não foi possível salvar',
-      'nao foi possivel salvar',
-      'não foi possível gravar',
-      'nao foi possivel gravar',
-    ];
-
-    for (final marker in errorMarkers) {
-      if (normalized.contains(marker)) {
-        return const _AjaxResponseAnalysis(
-          isError: true,
-          message: 'O E-Desk retornou um erro durante o processamento.',
+    return normalized.contains(
+          'login',
+        ) ||
+        normalized.contains(
+          'signin',
+        ) ||
+        normalized.contains(
+          'identity',
         );
-      }
+  }
+
+  /// ==============================================================
+  /// COOKIES
+  /// ==============================================================
+
+  void _storeCookies(
+    http.Response response,
+  ) {
+    final values = response.headers['set-cookie'];
+
+    if (values == null || values.isEmpty) {
+      return;
     }
 
-    // ------------------------------------------------------------
-    // ASP.NET AJAX normalmente retorna uma resposta contendo
-    // informações delimitadas pelo mecanismo de PageRequestManager.
-    //
-    // Não exigimos uma palavra específica de sucesso aqui porque
-    // ainda precisamos observar a resposta real do E-Desk durante
-    // o primeiro teste.
-    // ------------------------------------------------------------
+    final cookies = values.split(
+      RegExp(
+        r',(?=\s*[^;,=]+\s*=)',
+      ),
+    );
 
-    return const _AjaxResponseAnalysis(
-      isError: false,
-      message: 'Resposta processada sem erro explícito.',
+    for (final cookie in cookies) {
+      final firstPart = cookie.split(';').first.trim();
+
+      final separator = firstPart.indexOf(
+        '=',
+      );
+
+      if (separator <= 0) {
+        continue;
+      }
+
+      final name = firstPart
+          .substring(
+            0,
+            separator,
+          )
+          .trim();
+
+      final value = firstPart
+          .substring(
+            separator + 1,
+          )
+          .trim();
+
+      if (name.isNotEmpty) {
+        _cookies[name] = value;
+      }
+    }
+  }
+
+  Map<String, String> _headers() {
+    final headers = <String, String>{
+      'Accept': 'text/html,application/xhtml+xml,'
+          'application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+          'AppleWebKit/537.36 '
+          '(KHTML, like Gecko) '
+          'Chrome/140.0.0.0 Safari/537.36',
+    };
+
+    if (_cookies.isNotEmpty) {
+      headers['Cookie'] = _cookieHeader();
+    }
+
+    return headers;
+  }
+
+  String _cookieHeader() {
+    return _cookies.entries
+        .map(
+          (entry) => '${entry.key}=${entry.value}',
+        )
+        .join('; ');
+  }
+
+  /// ==============================================================
+  /// RESPONSE
+  /// ==============================================================
+
+  String _decodeResponse(
+    http.Response response,
+  ) {
+    return utf8.decode(
+      response.bodyBytes,
+      allowMalformed: true,
     );
   }
 
-  // ==============================================================
-  // DISPOSE
-  // ==============================================================
-=======
-  // ============================================================
-  // DISPOSE
-  // ============================================================
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
+  /// ==============================================================
+  /// DEBUG
+  /// ==============================================================
+
+  void _debugResponse({
+    required String operation,
+    required Uri uri,
+    required http.Response response,
+  }) {
+    final contentType = response.headers['content-type'] ?? 'não informado';
+
+    final location = response.headers['location'];
+
+    debugPrint(
+      '[E-Desk][$operation] '
+      'HTTP ${response.statusCode} '
+      'host=${uri.host} '
+      'content-type=$contentType'
+      '${location != null ? ' location=${_sanitizeLocation(location)}' : ''}',
+    );
+  }
+
+  String _sanitizeLocation(
+    String location,
+  ) {
+    final uri = Uri.tryParse(
+      location,
+    );
+
+    if (uri == null) {
+      return '<redirect>';
+    }
+
+    return Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+    ).toString();
+  }
+
+  /// ==============================================================
+  /// SEND WORK
+  /// ==============================================================
+
+  Future<EdeskSendResult> sendWork(
+    EdeskWorkData work,
+  ) async {
+    final referencia = work.referencia;
+
+    debugPrint(
+      '[E-Desk] Abrindo trabalho '
+      '$referencia',
+    );
+
+    final abriu = await abrirEdesk(
+      uri: work.pageUri,
+    );
+
+    return EdeskSendResult(
+      confirmed: abriu,
+      statusCode: abriu ? 200 : 0,
+      message: abriu
+          ? 'E-Desk aberto no navegador para conferir '
+              '$referencia.'
+          : 'Não foi possível abrir o E-Desk para '
+              '$referencia.',
+      responseBody: '',
+    );
+  }
+
+  /// ==============================================================
+  /// ERRO DE CONEXÃO
+  /// ==============================================================
+
+  String _connectionErrorMessage({
+    required String operation,
+    required Uri uri,
+    required Exception error,
+  }) {
+    final detail = error.toString().trim();
+
+    return 'Erro ao $operation no E-Desk. '
+        'Tipo: ${error.runtimeType}. '
+        'Detalhe: '
+        '${detail.isEmpty ? 'sem detalhes adicionais' : detail}. '
+        'Servidor: ${uri.host}.';
+  }
+
+  /// ==============================================================
+  /// EXECUTAR COMENTÁRIO VIA PYTHON
+  /// ==============================================================
+
+  /// ==============================================================
+  /// EXECUTAR COMENTÁRIO VIA PYTHON
+  /// ==============================================================
+  Future<EdeskSendResult> executarComentarioViaPython({
+    required Uri pageUri,
+    required String solicitacao,
+    required String idTrabalho,
+    required String tipoComentario,
+    required String texto,
+    String? imagemBase64,
+    required bool enviar,
+  }) async {
+    final solicitacaoValue = solicitacao.trim();
+    final trabalhoValue = idTrabalho.trim();
+
+    // =============================================================
+    // O ID DO TRABALHO É OBRIGATÓRIO
+    // =============================================================
+    if (trabalhoValue.isEmpty) {
+      return const EdeskSendResult(
+        confirmed: false,
+        statusCode: 0,
+        message: 'O ID do trabalho E-Desk não foi informado.',
+        responseBody: '',
+      );
+    }
+
+    // =============================================================
+    // SOLICITAÇÃO
+    //
+    // A solicitação pode estar vazia.
+    //
+    // Nesse caso o Python recebe:
+    //
+    // "solicitacao": ""
+    //
+    // e poderá localizar a solicitação a partir do ID do trabalho.
+    // =============================================================
+
+    debugPrint(
+      '[E-Desk] ========================================',
+    );
+
+    debugPrint(
+      '[E-Desk] Executando comentário via Python',
+    );
+
+    debugPrint(
+      '[E-Desk] Solicitação: '
+      '${solicitacaoValue.isEmpty ? "<não informada>" : solicitacaoValue}',
+    );
+
+    debugPrint(
+      '[E-Desk] ID Trabalho: $trabalhoValue',
+    );
+
+    debugPrint(
+      '[E-Desk] URL: $pageUri',
+    );
+
+    debugPrint(
+      '[E-Desk] Tipo: $tipoComentario',
+    );
+
+    debugPrint(
+      '[E-Desk] Enviar: $enviar',
+    );
+
+    debugPrint(
+      '[E-Desk] ========================================',
+    );
+
+    // =============================================================
+    // REQUEST PARA O PYTHON
+    // =============================================================
+    final requestJson = jsonEncode({
+      'url': pageUri.toString(),
+
+      // Pode ser vazio.
+      // O Python deverá resolver pelo idTrabalho.
+      'solicitacao': solicitacaoValue,
+
+      'idTrabalho': trabalhoValue,
+
+      'tipo': tipoComentario,
+
+      'texto': texto,
+
+      'imagemBase64': imagemBase64,
+
+      'enviar': enviar,
+    });
+
+    debugPrint(
+      '[E-Desk] JSON enviado ao Python:',
+    );
+
+    debugPrint(
+      requestJson,
+    );
+
+    // =============================================================
+    // EXECUTA PYTHON
+    // =============================================================
+    try {
+      final resultado = await executarPythonEdesk(
+        requestJson: requestJson,
+        enviar: enviar,
+        script: 'edesk_comentario.py',
+      );
+      debugPrint(
+        '[E-Desk] Python finalizado.',
+      );
+
+      debugPrint(
+        '[E-Desk] Confirmado: ${resultado.confirmed}',
+      );
+
+      debugPrint(
+        '[E-Desk] Status: ${resultado.statusCode}',
+      );
+
+      debugPrint(
+        '[E-Desk] Mensagem: ${resultado.message}',
+      );
+
+      return EdeskSendResult(
+        confirmed: resultado.confirmed,
+        statusCode: resultado.statusCode,
+        message: resultado.message,
+        responseBody: resultado.responseBody,
+      );
+    } catch (e) {
+      debugPrint(
+        '[E-Desk] ERRO ao executar Python: $e',
+      );
+
+      return EdeskSendResult(
+        confirmed: false,
+        statusCode: 0,
+        message: 'Erro ao executar integração E-Desk: $e',
+        responseBody: '',
+      );
+    }
+  }
+
+  /// ==============================================================
+  /// DISPOSE
+  /// ==============================================================
 
   void dispose() {
     _client.close();
   }
 }
 
-// ================================================================
-<<<<<<< HEAD
-// ANÁLISE DA RESPOSTA AJAX
-// ================================================================
+/// ================================================================
+/// LINK HTML
+/// ================================================================
 
-class _AjaxResponseAnalysis {
-  final bool isError;
-  final String message;
+class _HtmlAnchor {
+  final String? href;
+  final String text;
 
-  const _AjaxResponseAnalysis({
-    required this.isError,
-    required this.message,
-  });
-}
-
-// ================================================================
-=======
->>>>>>> ebaf51457bb314e8e72fbbbf8d3d3ad90d7e33b5
-// EXCEÇÃO GERAL DO E-DESK
-// ================================================================
-
-class EdeskException implements Exception {
-  final String message;
-
-  const EdeskException(
-    this.message,
+  const _HtmlAnchor(
+    this.href,
+    this.text,
   );
-
-  @override
-  String toString() => message;
-}
-
-// ================================================================
-// EXCEÇÃO DE AUTENTICAÇÃO
-// ================================================================
-
-class EdeskAuthenticationException extends EdeskException {
-  const EdeskAuthenticationException(
-    String message,
-  ) : super(message);
 }

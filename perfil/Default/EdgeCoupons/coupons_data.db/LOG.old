@@ -1,0 +1,6 @@
+2026/09/18-09:26:57.212 1ea0 Reusing MANIFEST D:\APP\gerenciador_horas\perfil\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/18-09:26:57.212 1ea0 Recovering log #26
+2026/09/18-09:26:57.213 1ea0 Reusing old log D:\APP\gerenciador_horas\perfil\Default\EdgeCoupons/coupons_data.db/000026.log 
+2026/09/18-09:26:57.376 3b58 Level-0 table #30: started
+2026/09/18-09:26:57.386 3b58 Level-0 table #30: 683376 bytes OK
+2026/09/18-09:26:57.391 3b58 Delete type=0 #26

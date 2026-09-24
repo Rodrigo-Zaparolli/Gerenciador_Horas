@@ -8,13 +8,13 @@ class ControleProjetosWidget extends StatefulWidget {
   final bool somenteAtivos;
   final bool filtroAtivo;
 
-  // Tipo de serviço selecionado
+// Tipo de serviço selecionado
   final String tipoServicoSelecionado;
 
-  // Lista dinâmica vinda do cadastro de trabalho
+// Lista dinâmica vinda do cadastro de trabalho
   final List<String> tiposServicoOpcoes;
 
-  // Período
+// Período
   final DateTime? dataInicio;
   final DateTime? dataFim;
 
@@ -33,7 +33,7 @@ class ControleProjetosWidget extends StatefulWidget {
   final ValueChanged<bool?> onOrdenarPrioridadeChanged;
   final ValueChanged<bool?> onSomenteAtivosChanged;
 
-  // Callbacks dos filtros
+// Callbacks dos filtros
   final ValueChanged<String?> onTipoServicoChanged;
   final ValueChanged<DateTime?> onDataInicioChanged;
   final ValueChanged<DateTime?> onDataFimChanged;
@@ -64,7 +64,7 @@ class ControleProjetosWidget extends StatefulWidget {
     required this.onDataInicioChanged,
     required this.onDataFimChanged,
 
-    // Mantidos para compatibilidade com a chamada existente.
+// Mantidos para compatibilidade com a chamada existente.
     required String filtroProjetos,
     required Null Function(String? value) onFiltroProjetosChanged,
   });
@@ -77,8 +77,16 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
   late Timer _timer;
   late DateTime _now;
 
-  // Mantém a resposta visual imediata do dropdown.
+// Mantém a resposta visual imediata do dropdown.
   late String _tipoServicoLocal;
+
+  static const Color _background = Color(0xFF1B1B2A);
+  static const Color _fieldBackground = Color(0xFF101019);
+  static const Color _buttonBackground = Color(0xFF3B3B4D);
+  static const Color _green = Color(0xFF35D27F);
+  static const Color _yellow = Color(0xFFFFC400);
+  static const Color _textPrimary = Color(0xFFE5E5EA);
+  static const Color _textSecondary = Color(0xFFBDBDC7);
 
   @override
   void initState() {
@@ -114,6 +122,10 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
     super.dispose();
   }
 
+// ==============================================================
+// FORMATAÇÃO
+// ==============================================================
+
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/'
         '${date.month.toString().padLeft(2, '0')}/'
@@ -126,16 +138,14 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         '${date.second.toString().padLeft(2, '0')}';
   }
 
-  // ==============================================================
-  // SELEÇÃO DE DATA
-  // ==============================================================
-  //
-  // Usa o showDatePicker nativo do Flutter.
-  //
-  // Isso substitui o showDialog + StatefulBuilder que estava sendo
-  // usado anteriormente e evita conflitos entre dialogs/modais.
-  //
-  Future<void> _selecionarData(BuildContext context, bool isInicio) async {
+// ==============================================================
+// SELEÇÃO DE DATA
+// ==============================================================
+
+  Future<void> _selecionarData(
+    BuildContext context,
+    bool isInicio,
+  ) async {
     final DateTime initialDate =
         (isInicio ? widget.dataInicio : widget.dataFim) ?? DateTime.now();
 
@@ -149,21 +159,44 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF1B1B2A),
+              backgroundColor: _background,
+              elevation: 18,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.white.withOpacity(0.16)),
+                side: BorderSide(
+                  color: Colors.white.withOpacity(0.12),
+                ),
               ),
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
               title: Row(
                 children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      color: Color(0xFF35D27F), size: 20),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: _green.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(
+                      Icons.calendar_today_outlined,
+                      color: _green,
+                      size: 17,
+                    ),
+                  ),
                   const SizedBox(width: 10),
-                  Text(
-                    isInicio
-                        ? 'Selecionar Data Inicial'
-                        : 'Selecionar Data Final',
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  Expanded(
+                    child: Text(
+                      isInicio
+                          ? 'Selecionar Data Inicial'
+                          : 'Selecionar Data Final',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -175,89 +208,83 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                   children: [
                     // DIA
                     Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('Dia',
-                              style:
-                                  TextStyle(color: Colors.grey, fontSize: 12)),
-                          const SizedBox(height: 5),
-                          DropdownButton<int>(
-                            value: diaTemp,
-                            dropdownColor: const Color(0xFF1B1B2A),
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 16),
-                            items: List.generate(31, (index) => index + 1)
-                                .map((val) {
-                              return DropdownMenuItem(
-                                  value: val,
-                                  child: Text(val.toString().padLeft(2, '0')));
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null)
-                                setStateDialog(() => diaTemp = val);
-                            },
-                          ),
-                        ],
+                      child: _dateDropdown(
+                        label: 'Dia',
+                        value: diaTemp,
+                        items: List.generate(
+                          31,
+                          (index) => index + 1,
+                        ),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setStateDialog(() {
+                              diaTemp = value;
+                            });
+                          }
+                        },
                       ),
                     ),
-                    const Text('/',
-                        style: TextStyle(color: Colors.white, fontSize: 20)),
+
+                    const Padding(
+                      padding: EdgeInsets.only(top: 18),
+                      child: Text(
+                        '/',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
                     // MÊS
                     Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('Mês',
-                              style:
-                                  TextStyle(color: Colors.grey, fontSize: 12)),
-                          const SizedBox(height: 5),
-                          DropdownButton<int>(
-                            value: mesTemp,
-                            dropdownColor: const Color(0xFF1B1B2A),
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 16),
-                            items: List.generate(12, (index) => index + 1)
-                                .map((val) {
-                              return DropdownMenuItem(
-                                  value: val,
-                                  child: Text(val.toString().padLeft(2, '0')));
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null)
-                                setStateDialog(() => mesTemp = val);
-                            },
-                          ),
-                        ],
+                      child: _dateDropdown(
+                        label: 'Mês',
+                        value: mesTemp,
+                        items: List.generate(
+                          12,
+                          (index) => index + 1,
+                        ),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setStateDialog(() {
+                              mesTemp = value;
+                            });
+                          }
+                        },
                       ),
                     ),
-                    const Text('/',
-                        style: TextStyle(color: Colors.white, fontSize: 20)),
+
+                    const Padding(
+                      padding: EdgeInsets.only(top: 18),
+                      child: Text(
+                        '/',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
                     // ANO
                     Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('Ano',
-                              style:
-                                  TextStyle(color: Colors.grey, fontSize: 12)),
-                          const SizedBox(height: 5),
-                          DropdownButton<int>(
-                            value: anoTemp,
-                            dropdownColor: const Color(0xFF1B1B2A),
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 16),
-                            items: List.generate(16, (index) => 2020 + index)
-                                .map((val) {
-                              return DropdownMenuItem(
-                                  value: val, child: Text(val.toString()));
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null)
-                                setStateDialog(() => anoTemp = val);
-                            },
-                          ),
-                        ],
+                      child: _dateDropdown(
+                        label: 'Ano',
+                        value: anoTemp,
+                        items: List.generate(
+                          16,
+                          (index) => 2020 + index,
+                        ),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setStateDialog(() {
+                              anoTemp = value;
+                            });
+                          }
+                        },
+                        formatValue: (value) => value.toString(),
                       ),
                     ),
                   ],
@@ -265,25 +292,53 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(null),
-                  child: const Text('Cancelar',
-                      style: TextStyle(color: Color(0xFFBDBDC7))),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(null);
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: _textSecondary,
+                  ),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF35D27F),
+                    backgroundColor: _green,
                     foregroundColor: Colors.black,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   onPressed: () {
                     try {
-                      final novaData = DateTime(anoTemp, mesTemp, diaTemp);
+                      final novaData = DateTime(
+                        anoTemp,
+                        mesTemp,
+                        diaTemp,
+                      );
+
                       Navigator.of(dialogContext).pop(novaData);
                     } catch (_) {
                       Navigator.of(dialogContext).pop(null);
                     }
                   },
-                  child: const Text('Confirmar',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Confirmar',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ],
             );
@@ -298,12 +353,65 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
       } else {
         widget.onDataFimChanged(picked);
       }
+
       widget.onFilter();
     }
   }
-  // ==============================================================
-  // BUILD
-  // ==============================================================
+
+// ==============================================================
+// DROPDOWN DE DATA DO MODAL
+// ==============================================================
+
+  Widget _dateDropdown({
+    required String label,
+    required int value,
+    required List<int> items,
+    required ValueChanged<int?> onChanged,
+    String Function(int value)? formatValue,
+  }) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 3),
+        DropdownButton<int>(
+          value: value,
+          dropdownColor: _background,
+          underline: const SizedBox.shrink(),
+          icon: const Icon(
+            Icons.keyboard_arrow_down,
+            color: _textSecondary,
+            size: 16,
+          ),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+          items: items.map((item) {
+            return DropdownMenuItem<int>(
+              value: item,
+              child: Text(
+                formatValue?.call(item) ?? item.toString().padLeft(2, '0'),
+              ),
+            );
+          }).toList(),
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
+// ==============================================================
+// BUILD
+// ==============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -324,12 +432,19 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
       height: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1B1B2A),
+        color: _background,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: Colors.white.withOpacity(0.08),
           width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,51 +457,81 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
             height: 34,
             padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: BoxDecoration(
-              color: const Color(0xFF101019),
+              color: _fieldBackground,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: Colors.white.withOpacity(0.16),
+                color: Colors.white.withOpacity(0.12),
                 width: 1,
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.calendar_today_outlined,
-                      color: Color(0xFF35D27F),
-                      size: 15,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      _formatDate(_now),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 23,
+                        height: 23,
+                        decoration: BoxDecoration(
+                          color: _green.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.calendar_today_outlined,
+                          color: _green,
+                          size: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _formatDate(_now),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      color: Color(0xFFFFC400),
-                      size: 15,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      _formatClock(_now),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        width: 23,
+                        height: 23,
+                        decoration: BoxDecoration(
+                          color: _yellow.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.access_time,
+                          color: _yellow,
+                          size: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _formatClock(_now),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -399,19 +544,29 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           // ========================================================
 
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Filtrar Projetos',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  height: 1,
+              const Icon(
+                Icons.tune,
+                color: _textSecondary,
+                size: 13,
+              ),
+              const SizedBox(width: 5),
+              const Expanded(
+                child: Text(
+                  'Filtrar Projetos',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                  ),
                 ),
               ),
               if (widget.filtroAtivo)
                 InkWell(
+                  borderRadius: BorderRadius.circular(5),
                   onTap: () {
                     setState(() {
                       _tipoServicoLocal = 'Todos os Serviços';
@@ -426,12 +581,22 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
 
                     widget.onFilter();
                   },
-                  child: const Text(
-                    'Limpar',
-                    style: TextStyle(
-                      color: Color(0xFF35D27F),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _green.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Text(
+                      'Limpar',
+                      style: TextStyle(
+                        color: _green,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
@@ -451,6 +616,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                 value: tipo,
                 child: Text(
                   tipo,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               );
@@ -515,10 +681,12 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                   child: ElevatedButton.icon(
                     onPressed: widget.onNewProject,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3B3B4D),
+                      backgroundColor: _buttonBackground,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      padding: EdgeInsets.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -527,11 +695,15 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       Icons.add,
                       size: 15,
                     ),
-                    label: const Text(
-                      'Novo Trabalho',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
+                    label: const Flexible(
+                      child: Text(
+                        'Novo Trabalho',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
@@ -547,8 +719,8 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                     widget.onSynchronize();
                   },
                   style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B3B4D),
-                    foregroundColor: const Color(0xFFB8B8C4),
+                    backgroundColor: _buttonBackground,
+                    foregroundColor: _textSecondary,
                     padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -568,9 +740,9 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
     );
   }
 
-  // ==============================================================
-  // DROPDOWN
-  // ==============================================================
+// ==============================================================
+// DROPDOWN PRINCIPAL
+// ==============================================================
 
   Widget _dropdown<T>({
     required T value,
@@ -581,10 +753,10 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFF101019),
+        color: _fieldBackground,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.16),
+          color: Colors.white.withOpacity(0.12),
           width: 1,
         ),
       ),
@@ -593,14 +765,14 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           value: value,
           isExpanded: true,
           isDense: true,
-          dropdownColor: const Color(0xFF1B1B2A),
+          dropdownColor: _background,
           icon: const Icon(
             Icons.keyboard_arrow_down,
-            color: Color(0xFFBDBDC7),
+            color: _textSecondary,
             size: 17,
           ),
           style: const TextStyle(
-            color: Color(0xFFE5E5EA),
+            color: _textPrimary,
             fontSize: 10.5,
             fontWeight: FontWeight.w400,
           ),
@@ -611,9 +783,9 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
     );
   }
 
-  // ==============================================================
-  // CAMPO DE DATA
-  // ==============================================================
+// ==============================================================
+// CAMPO DE DATA
+// ==============================================================
 
   Widget _dataField({
     required String label,
@@ -626,30 +798,31 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFF101019),
+          color: _fieldBackground,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: Colors.white.withOpacity(0.16),
+            color: Colors.white.withOpacity(0.12),
             width: 1,
           ),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(
               child: Text(
                 label,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFFE5E5EA),
+                  color: _textPrimary,
                   fontSize: 10.5,
                   fontWeight: FontWeight.w400,
                 ),
               ),
             ),
+            const SizedBox(width: 4),
             const Icon(
               Icons.calendar_today_outlined,
-              color: Color(0xFFBDBDC7),
+              color: _textSecondary,
               size: 14,
             ),
           ],

@@ -48,7 +48,10 @@ class TimeLogStore extends ChangeNotifier {
       }
 
       if (parts.length == 1) {
-        final val = double.tryParse(parts[0].replaceAll(',', '.')) ?? 0.0;
+        final val = double.tryParse(
+              parts[0].replaceAll(',', '.'),
+            ) ??
+            0.0;
 
         return (val * 60).round();
       }
@@ -67,6 +70,88 @@ class TimeLogStore extends ChangeNotifier {
 
     return '${hours.toString().padLeft(2, '0')}:'
         '${minutes.toString().padLeft(2, '0')}';
+  }
+
+  // ============================================================
+  // AUXILIAR: CONVERTE DURAÇÃO "HH:MM" PARA HORAS DECIMAIS
+  //
+  // Exemplos:
+  // 01:00 -> 1.0
+  // 01:20 -> 1.333333
+  // 01:30 -> 1.5
+  // 02:30 -> 2.5
+  // ============================================================
+
+  double? _durationToHours(String duration) {
+    final value = duration.trim();
+
+    if (value.isEmpty) {
+      return null;
+    }
+
+    try {
+      final parts = value.split(':');
+
+      if (parts.length == 2) {
+        final hours = int.tryParse(parts[0].trim());
+        final minutes = int.tryParse(parts[1].trim());
+
+        if (hours != null && minutes != null) {
+          return hours + (minutes / 60.0);
+        }
+      }
+
+      final decimal = double.tryParse(
+        value.replaceAll(',', '.'),
+      );
+
+      return decimal;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ============================================================
+  // AUXILIAR: OBTÉM HORAS DE FORMA SEGURA
+  // ============================================================
+
+  double? _resolveHours({
+    required dynamic rawHours,
+    required String durationFormatted,
+  }) {
+    // ------------------------------------------------------------
+    // 1. Primeiro tenta o campo "hours"
+    // ------------------------------------------------------------
+
+    if (rawHours is num) {
+      return rawHours.toDouble();
+    }
+
+    final rawHoursString = rawHours?.toString().trim() ?? '';
+
+    if (rawHoursString.isNotEmpty) {
+      final parsed = double.tryParse(
+        rawHoursString.replaceAll(',', '.'),
+      );
+
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    // ------------------------------------------------------------
+    // 2. Se "hours" não existe, usa durationFormatted
+    // ------------------------------------------------------------
+
+    final calculatedHours = _durationToHours(
+      durationFormatted,
+    );
+
+    if (calculatedHours != null) {
+      return calculatedHours;
+    }
+
+    return null;
   }
 
   // ============================================================
@@ -274,50 +359,63 @@ class TimeLogStore extends ChangeNotifier {
       date = createdAt.toDate();
     }
 
-    double? hours;
+    final String targetId = data['targetId']?.toString().trim() ?? projectId;
 
-    final dynamic rawHours = data['hours'];
+    final String durationFormatted =
+        data['durationFormatted']?.toString().trim() ?? '';
 
-    if (rawHours is num) {
-      hours = rawHours.toDouble();
-    } else {
-      hours = double.tryParse(
-        rawHours?.toString() ?? '',
-      );
-    }
+    final String startTime = data['startTime']?.toString().trim() ?? '';
 
-    return TimeLog(
+    final String endTime = data['endTime']?.toString().trim() ?? '';
+
+    final String description = data['description']?.toString() ?? '';
+
+    final bool isRegistered = data['isRegistered'] == true;
+
+    // ==========================================================
+    // CORREÇÃO PRINCIPAL
+    //
+    // Se "hours" estiver null, calcula através de
+    // "durationFormatted".
+    // ==========================================================
+
+    final double? hours = _resolveHours(
+      rawHours: data['hours'],
+      durationFormatted: durationFormatted,
+    );
+
+    final log = TimeLog(
       id: doc.id,
-      targetId: data['targetId']?.toString() ?? projectId,
+      targetId: targetId.isNotEmpty ? targetId : projectId,
       hours: hours,
-      description: data['description']?.toString(),
-      isRegistered: data['isRegistered'] == true,
+      description: description,
+      isRegistered: isRegistered,
       date: date,
-      startTime: data['startTime']?.toString() ?? '',
-      endTime: data['endTime']?.toString() ?? '',
-      durationFormatted: data['durationFormatted']?.toString() ?? '',
+      startTime: startTime,
+      endTime: endTime,
+      durationFormatted: durationFormatted,
       projectName: data['projectName']?.toString(),
       taskName: data['taskName']?.toString(),
       typeHs: data['typeHs']?.toString(),
     );
+
+    debugPrint(
+      'TimeLogStore: TimeLog convertido | '
+      'id=${log.id} | '
+      'projectId=$projectId | '
+      'targetId=${log.targetId} | '
+      'hours=${log.hours} | '
+      'duration=${log.durationFormatted} | '
+      'start=${log.startTime} | '
+      'end=${log.endTime} | '
+      'registered=${log.isRegistered}',
+    );
+
+    return log;
   }
 
   // ============================================================
   // BUSCAR TAMBÉM OS PROJETOS FINALIZADOS
-  //
-  // IMPORTANTE:
-  //
-  // O projeto finalizado é movido para:
-  //
-  // users/{uid}/completed_projects/{id}
-  //
-  // Mas os time_logs continuam em:
-  //
-  // users/{uid}/projects/{id}/time_logs
-  //
-  // Portanto precisamos descobrir os IDs dos projetos
-  // finalizados e continuar lendo os time_logs no caminho
-  // original.
   // ============================================================
 
   Future<Set<String>> _getCompletedProjectIds() async {
@@ -359,14 +457,6 @@ class TimeLogStore extends ChangeNotifier {
 
   // ============================================================
   // INICIAR ESCUTA DOS LOGS DOS PROJETOS
-  //
-  // AGORA ESCUTA:
-  //
-  // 1. Projetos ativos
-  // 2. Projetos finalizados
-  //
-  // Isso faz com que os horários não desapareçam quando o
-  // projeto é movido para completed_projects.
   // ============================================================
 
   Future<void> startListeningToProjects(
@@ -386,10 +476,6 @@ class TimeLogStore extends ChangeNotifier {
     final Set<String> ids =
         projectIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
 
-    // ----------------------------------------------------------
-    // ADICIONA PROJETOS FINALIZADOS
-    // ----------------------------------------------------------
-
     final completedProjectIds = await _getCompletedProjectIds();
 
     ids.addAll(completedProjectIds);
@@ -399,10 +485,6 @@ class TimeLogStore extends ChangeNotifier {
       '${ids.length} projetos '
       '(${completedProjectIds.length} finalizados).',
     );
-
-    // ----------------------------------------------------------
-    // CRIA OS LISTENERS
-    // ----------------------------------------------------------
 
     for (final id in ids) {
       final subscription = _firestore
@@ -539,19 +621,41 @@ class TimeLogStore extends ChangeNotifier {
     String userId,
     String projectId,
   ) {
+    final uid = userId.trim();
+    final id = projectId.trim();
+
+    if (uid.isEmpty || id.isEmpty) {
+      debugPrint(
+        'TimeLogStore: streamProjectTimeLogs recebeu '
+        'userId ou projectId vazio.',
+      );
+
+      return Stream.value(<TimeLog>[]);
+    }
+
+    debugPrint(
+      'TimeLogStore: iniciando stream de horas do projeto '
+      '$id para usuário $uid.',
+    );
+
     return _firestore
         .collection('users')
-        .doc(userId)
+        .doc(uid)
         .collection('projects')
-        .doc(projectId)
+        .doc(id)
         .collection('time_logs')
         .snapshots()
         .map(
       (snapshot) {
+        debugPrint(
+          'TimeLogStore: projeto $id recebeu '
+          '${snapshot.docs.length} time_logs.',
+        );
+
         final logs = snapshot.docs
             .map(
               (doc) => _timeLogFromDocument(
-                projectId,
+                id,
                 doc,
               ),
             )
@@ -560,6 +664,22 @@ class TimeLogStore extends ChangeNotifier {
         logs.sort(
           (a, b) => b.date.compareTo(a.date),
         );
+
+        debugPrint(
+          'TimeLogStore: LISTA FINAL do projeto '
+          '$id = ${logs.length} logs.',
+        );
+
+        for (final log in logs) {
+          debugPrint(
+            'TimeLogStore: '
+            'lista -> '
+            'id=${log.id} | '
+            'hours=${log.hours} | '
+            'duration=${log.durationFormatted} | '
+            'registered=${log.isRegistered}',
+          );
+        }
 
         return logs;
       },
@@ -590,6 +710,11 @@ class TimeLogStore extends ChangeNotifier {
         ? log.id.trim()
         : DateTime.now().microsecondsSinceEpoch.toString();
 
+    final double? resolvedHours = log.hours ??
+        _durationToHours(
+          log.durationFormatted,
+        );
+
     final docRef = _firestore
         .collection('users')
         .doc(userId)
@@ -602,7 +727,7 @@ class TimeLogStore extends ChangeNotifier {
       {
         'targetId': log.targetId,
         'projectId': id,
-        'hours': log.hours,
+        'hours': resolvedHours,
         'description': log.description,
         'isRegistered': log.isRegistered,
         'date': Timestamp.fromDate(log.date),
@@ -723,20 +848,12 @@ class TimeLogStore extends ChangeNotifier {
         .doc(id)
         .collection('time_logs');
 
-    // ----------------------------------------------------------
-    // 1. BUSCA TODOS OS LOGS
-    // ----------------------------------------------------------
-
     final snapshot = await collection.get();
 
     debugPrint(
       'TimeLogStore: projeto $id possui '
       '${snapshot.docs.length} apontamentos.',
     );
-
-    // ----------------------------------------------------------
-    // 2. REGISTRA OS LOGS PENDENTES
-    // ----------------------------------------------------------
 
     final pending = snapshot.docs.where(
       (doc) {
@@ -768,15 +885,7 @@ class TimeLogStore extends ChangeNotifier {
       );
     }
 
-    // ----------------------------------------------------------
-    // 3. CARREGA NOVAMENTE PARA A MEMÓRIA
-    // ----------------------------------------------------------
-
     await _loadProjectLogsIntoMemory(id);
-
-    // ----------------------------------------------------------
-    // 4. GARANTE REGISTRO LOCAL
-    // ----------------------------------------------------------
 
     for (final log in _logs) {
       if (_getProjectIdFromLog(log) == id) {
@@ -821,6 +930,11 @@ class TimeLogStore extends ChangeNotifier {
       );
     }
 
+    final double? resolvedHours = log.hours ??
+        _durationToHours(
+          log.durationFormatted,
+        );
+
     await _firestore
         .collection('users')
         .doc(userId)
@@ -832,7 +946,7 @@ class TimeLogStore extends ChangeNotifier {
       {
         'targetId': log.targetId,
         'projectId': projectId,
-        'hours': log.hours,
+        'hours': resolvedHours,
         'description': log.description,
         'isRegistered': log.isRegistered,
         'date': Timestamp.fromDate(log.date),

@@ -68,7 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _dataInicioFiltro;
   DateTime? _dataFimFiltro;
   String? _statusFiltroDashboard;
-  bool _filtroApenasAtivos = false;
+  bool _filtroApenasAtivos = true;
   bool _filtroTodosProjetos = false;
 
   // ============================================================
@@ -500,6 +500,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // CRONÔMETRO
   // ============================================================
 
+  /// Inicia o ticker visual do cronômetro.
+  ///
+  /// A contagem continua baseada em DateTime, preservando o comportamento
+  /// original e evitando acumular o período em que o trabalho ficou pausado.
+  void _startTimerTicker() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+
+        if (_timerState != TimerState.running || _segmentStartTime == null) {
+          return;
+        }
+
+        final now = DateTime.now();
+        final currentSegmentSeconds =
+            now.difference(_segmentStartTime!).inSeconds;
+
+        setState(() {
+          _secondsElapsed = _accumulatedWorkedSeconds + currentSegmentSeconds;
+        });
+      },
+    );
+  }
+
   void _startTimer(String targetId) {
     // ----------------------------------------------------------
     // NOVO TRABALHO
@@ -520,30 +550,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _timerState = TimerState.running;
       _showPostStopButton = false;
 
-      _timer?.cancel();
-
-      _timer = Timer.periodic(
-        const Duration(seconds: 1),
-        (timer) {
-          if (!mounted) {
-            timer.cancel();
-            return;
-          }
-
-          if (_timerState != TimerState.running || _segmentStartTime == null) {
-            return;
-          }
-
-          final now = DateTime.now();
-
-          final currentSegmentSeconds =
-              now.difference(_segmentStartTime!).inSeconds;
-
-          setState(() {
-            _secondsElapsed = _accumulatedWorkedSeconds + currentSegmentSeconds;
-          });
-        },
-      );
+      _startTimerTicker();
 
       unawaited(
         _setTimerTargetStatus(
@@ -568,30 +575,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _timerState = TimerState.running;
       _showPostStopButton = false;
 
-      _timer?.cancel();
-
-      _timer = Timer.periodic(
-        const Duration(seconds: 1),
-        (timer) {
-          if (!mounted) {
-            timer.cancel();
-            return;
-          }
-
-          if (_timerState != TimerState.running || _segmentStartTime == null) {
-            return;
-          }
-
-          final now = DateTime.now();
-
-          final currentSegmentSeconds =
-              now.difference(_segmentStartTime!).inSeconds;
-
-          setState(() {
-            _secondsElapsed = _accumulatedWorkedSeconds + currentSegmentSeconds;
-          });
-        },
-      );
+      _startTimerTicker();
 
       unawaited(
         _setTimerTargetStatus(
@@ -627,30 +611,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _timerState = TimerState.running;
     _showPostStopButton = false;
 
-    _timer?.cancel();
-
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-
-        if (_timerState != TimerState.running || _segmentStartTime == null) {
-          return;
-        }
-
-        final now = DateTime.now();
-
-        final currentSegmentSeconds =
-            now.difference(_segmentStartTime!).inSeconds;
-
-        setState(() {
-          _secondsElapsed = _accumulatedWorkedSeconds + currentSegmentSeconds;
-        });
-      },
-    );
+    _startTimerTicker();
 
     unawaited(
       _setTimerTargetStatus(
@@ -3037,16 +2998,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // O filtro do card tem prioridade sobre "_onlyActive".
 // ============================================================
 
+      // ============================================================
+      // FILTRO DOS CARDS DO DASHBOARD
+      // ============================================================
+      //
+      // PROJETOS CADASTRADOS:
+      //   Todos os projetos.
+      //
+      // PROJETOS ATIVOS:
+      //   Somente projetos que não estão finalizados
+      //   e não estão pausados.
+      //
+      // PROJETOS PAUSADOS:
+      //   Somente TRAB_STOP.
+      //
+      // O filtro do card tem prioridade sobre "_onlyActive".
+      // ============================================================
+
       bool matchesStatus = true;
 
-      if (_filtroApenasAtivos) {
-        // ATIVOS = tudo que não está finalizado
-        // e não está pausado.
+      if (_filtroTodosProjetos) {
+        // ============================================================
+        // TODOS OS PROJETOS
+        // Ignora o filtro padrão de ativos.
+        // Mantém somente os demais filtros da tela.
+        // ============================================================
+        matchesStatus = true;
+      } else if (_filtroApenasAtivos) {
+        // ============================================================
+        // PROJETOS ATIVOS
+        // ============================================================
         matchesStatus = p.status != 'TRAB_FIM' && p.status != 'TRAB_STOP';
       } else if (_statusFiltroDashboard != null) {
-        // PAUSADOS ou qualquer outro status específico.
+        // ============================================================
+        // FILTRO POR STATUS ESPECÍFICO
+        // Ex.: PROJETOS PAUSADOS = TRAB_STOP
+        // ============================================================
         matchesStatus = p.status == _statusFiltroDashboard;
       } else {
+        // ============================================================
+        // COMPORTAMENTO ORIGINAL
+        // ============================================================
         matchesStatus = _onlyActive
             ? p.status != 'TRAB_FIM' && p.status != 'TRAB_STOP'
             : true;
@@ -3135,23 +3127,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: CoresDashboard.card.withOpacity(0.97),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CoresDashboard.card.withOpacity(0.98),
+            CoresDashboard.fundoSecundario.withOpacity(0.96),
+          ],
+        ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.8),
+          color: CoresApp.borda.withOpacity(0.9),
+          width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
+            color: Colors.black.withOpacity(0.20),
+            blurRadius: 28,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: CoresApp.primaria.withOpacity(0.035),
+            blurRadius: 30,
+            spreadRadius: 1,
           ),
         ],
       ),
       child: Column(
         children: [
           Container(
-            height: 3,
+            height: 4,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
@@ -3159,15 +3164,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 colors: [
                   CoresApp.primaria,
                   CoresApp.destaque,
+                  CoresApp.secundaria,
                 ],
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 9,
-            ),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
@@ -3187,6 +3190,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     value: '$totalProjects',
                     description: 'cadastrados',
                     color: CoresApp.primaria,
+                    filterTodosProjetos: true,
                   ),
                   _buildDashboardStat(
                     icon: Icons.pause_circle_outline_rounded,
@@ -3219,17 +3223,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         flex: 3,
                         child: _buildDashboardTitle(),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 16),
                       Expanded(
                         flex: 8,
                         child: Row(
                           children: [
                             for (int i = 0; i < stats.length; i++) ...[
-                              Expanded(
-                                child: stats[i],
-                              ),
+                              Expanded(child: stats[i]),
                               if (i < stats.length - 1)
-                                const SizedBox(width: 7),
+                                const SizedBox(width: 8),
                             ],
                           ],
                         ),
@@ -3243,14 +3245,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildDashboardTitle(),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 13),
                       Row(
                         children: [
                           for (int i = 0; i < stats.length; i++) ...[
-                            Expanded(
-                              child: stats[i],
-                            ),
-                            if (i < stats.length - 1) const SizedBox(width: 7),
+                            Expanded(child: stats[i]),
+                            if (i < stats.length - 1) const SizedBox(width: 8),
                           ],
                         ],
                       ),
@@ -3262,10 +3262,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildDashboardTitle(),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 13),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 9,
+                      runSpacing: 9,
                       children: [
                         for (final stat in stats)
                           SizedBox(
@@ -3289,38 +3289,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
-          width: 4,
-          height: 42,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
+          width: 6,
+          height: 64,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                CoresApp.primaria,
                 CoresApp.destaque,
+                CoresApp.primaria,
+                CoresApp.secundaria,
               ],
             ),
+            boxShadow: [
+              BoxShadow(
+                color: CoresApp.destaque.withOpacity(0.25),
+                blurRadius: 16,
+                spreadRadius: 1,
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 11),
+        const SizedBox(width: 15),
         Container(
-          width: 40,
-          height: 40,
+          width: 56,
+          height: 56,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.primaria.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: CoresApp.primaria.withOpacity(0.24),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                CoresApp.primaria.withOpacity(0.26),
+                CoresApp.destaque.withOpacity(0.08),
+              ],
             ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: CoresApp.primaria.withOpacity(0.34),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: CoresApp.primaria.withOpacity(0.13),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
           ),
           child: const Icon(
-            Icons.dashboard_rounded,
+            Icons.dashboard_customize_rounded,
             color: CoresApp.destaque,
-            size: 21,
+            size: 28,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 15),
         const Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3331,21 +3354,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
-                  fontSize: 18,
+                  fontSize: 22,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: -0.3,
+                  letterSpacing: -0.6,
                 ),
               ),
-              SizedBox(height: 3),
+              SizedBox(height: 6),
               Text(
                 'Acompanhe projetos, etapas, horas e produtividade em um único painel.',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
-                  fontSize: 10.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
-                  height: 1.25,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            color: CoresApp.sucesso.withOpacity(0.09),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: CoresApp.sucesso.withOpacity(0.24),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: CoresApp.sucesso,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: CoresApp.sucesso.withOpacity(0.45),
+                      blurRadius: 7,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 7),
+              const Text(
+                'PAINEL ATIVO',
+                style: TextStyle(
+                  color: CoresApp.sucesso,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.7,
                 ),
               ),
             ],
@@ -3363,12 +3426,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Color color,
     String? filterStatus,
     bool filterApenasAtivos = false,
+    bool filterTodosProjetos = false,
   }) {
-    final isSelected = (filterApenasAtivos && _filtroApenasAtivos) ||
-        (filterStatus != null &&
-            _statusFiltroDashboard == filterStatus &&
-            !_filtroApenasAtivos);
-    final isClickable = filterStatus != null || filterApenasAtivos;
+    final bool isSelected = (filterApenasAtivos && _filtroApenasAtivos) ||
+        (filterTodosProjetos && _filtroTodosProjetos) ||
+        (filterStatus != null && _statusFiltroDashboard == filterStatus);
+
+    final isClickable =
+        filterStatus != null || filterApenasAtivos || filterTodosProjetos;
+
     return InkWell(
       onTap: !isClickable
           ? null
@@ -3376,58 +3442,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _toggleDashboardStatusFilter(
                 status: filterStatus,
                 apenasAtivos: filterApenasAtivos,
+                todosProjetos: filterTodosProjetos,
               );
             },
-      borderRadius: BorderRadius.circular(11),
+      borderRadius: BorderRadius.circular(13),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        constraints: const BoxConstraints(
-          minHeight: 62,
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 9,
-          vertical: 7,
-        ),
+        constraints: const BoxConstraints(minHeight: 70),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          color: isSelected
-              ? color.withOpacity(0.18)
-              : CoresDashboard.fundoSecundario,
-          borderRadius: BorderRadius.circular(11),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isSelected
+                ? [
+                    color.withOpacity(0.19),
+                    color.withOpacity(0.08),
+                  ]
+                : [
+                    CoresDashboard.fundoSecundario.withOpacity(0.98),
+                    CoresDashboard.fundoSecundario.withOpacity(0.78),
+                  ],
+          ),
+          borderRadius: BorderRadius.circular(13),
           border: Border.all(
             color:
-                isSelected ? color.withOpacity(0.75) : color.withOpacity(0.22),
-            width: isSelected ? 1.3 : 1,
+                isSelected ? color.withOpacity(0.72) : color.withOpacity(0.20),
+            width: isSelected ? 1.25 : 0.9,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withOpacity(0.16),
-                    blurRadius: 10,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? color.withOpacity(0.11)
+                  : Colors.black.withOpacity(0.10),
+              blurRadius: isSelected ? 14 : 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: 34,
-              height: 34,
+              width: 38,
+              height: 38,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: color.withOpacity(
-                  isSelected ? 0.22 : 0.11,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    color.withOpacity(isSelected ? 0.24 : 0.14),
+                    color.withOpacity(isSelected ? 0.10 : 0.06),
+                  ],
                 ),
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: color.withOpacity(0.14),
+                ),
               ),
               child: Icon(
                 isSelected ? Icons.filter_alt_rounded : icon,
                 color: color,
-                size: 17,
+                size: 18,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 9),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -3444,7 +3524,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             color: CoresApp.textoSecundario,
                             fontSize: 8,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: 0.35,
+                            letterSpacing: 0.45,
                           ),
                         ),
                       ),
@@ -3452,29 +3532,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Icon(
                           Icons.check_circle_rounded,
                           color: color,
-                          size: 13,
+                          size: 14,
                         ),
                     ],
                   ),
-                  const SizedBox(height: 1),
+                  const SizedBox(height: 2),
                   Text(
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: CoresApp.textoPrincipal,
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
+                      letterSpacing: -0.2,
                     ),
                   ),
+                  const SizedBox(height: 1),
                   Text(
                     isSelected ? 'filtro aplicado' : description,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: color.withOpacity(0.9),
+                      color: color.withOpacity(0.92),
                       fontSize: 8.5,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -3778,23 +3860,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: CoresDashboard.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CoresDashboard.card.withOpacity(0.995),
+            CoresDashboard.fundoSecundario.withOpacity(0.94),
+          ],
+        ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.75),
-          width: 0.8,
+          color: CoresApp.borda.withOpacity(0.88),
+          width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.20),
+            blurRadius: 24,
+            offset: const Offset(0, 9),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: child,
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 4,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      CoresApp.primaria,
+                      CoresApp.destaque,
+                      CoresApp.secundaria,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 4,
+              left: 0,
+              child: Container(
+                width: 70,
+                height: 24,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      CoresApp.primaria.withOpacity(0.07),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            child,
+          ],
+        ),
       ),
     );
   }
@@ -3817,68 +3943,152 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: CoresDashboard.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CoresDashboard.card.withOpacity(0.995),
+            CoresDashboard.fundoSecundario.withOpacity(0.95),
+          ],
+        ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.75),
-          width: 0.8,
+          color: CoresApp.borda.withOpacity(0.90),
+          width: 0.95,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 28,
+            offset: const Offset(0, 11),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: TabelaProjetosWidget(
-          projects: filteredProjects,
-          statusList: _statusList,
-          expandedProjectIds: _expandedProjectIds,
-          selectedTargetId: _selectedTargetId,
-          timeLogs: _timeLogs,
-          activeTimerTargetId: _activeTimerTargetId,
-          activeStartTime: _activeStartTime,
-          timerState: _timerState,
-          secondsElapsed: _secondsElapsed,
-          showPostStopButton: _showPostStopButton,
-          horizontalController: _horizontalTableScroll,
-          verticalController: _verticalTableScroll,
-          onSelectTarget: (targetId) {
-            setState(() {
-              _selectedTargetId = targetId;
-            });
-          },
-          onToggleExpand: _toggleExpand,
-          onEditProject: (project) {
-            setState(() {
-              final index = _projects.indexWhere(
-                (p) => p.id == project.id,
-              );
-
-              if (index != -1) {
-                _projects[index] = project;
-              }
-            });
-          },
-          onDeleteProject: _confirmDeleteProject,
-          onAddSubTask: _addNewTaskDialog,
-          onProjectStatusChanged: _handleProjectStatusChanged,
-          onSubTaskStatusChanged: _handleSubTaskStatusChanged,
-          onEditSubTask: _editSubTaskDialog,
-          onDeleteSubTask: _confirmDeleteSubTask,
-          onStartTimer: _startTimer,
-          onPauseTimer: _pauseTimer,
-          onStopTimer: _stopTimer,
-          onManualTime: _showManualTimeDialog,
-          onEditLog: _editLogDialog,
-          onDeleteLog: _confirmDeleteLog,
-          onRegisterLog: _handleRegisterLog,
-          onMarkTaskCompleted: _handleMarkTaskCompleted,
-          formatDuration: _formatDuration,
-          firebaseService: _firebaseService,
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
+              decoration: BoxDecoration(
+                color: CoresDashboard.fundoSecundario.withOpacity(0.42),
+                border: Border(
+                  bottom: BorderSide(
+                    color: CoresApp.borda.withOpacity(0.55),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: CoresApp.primaria.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: CoresApp.primaria.withOpacity(0.22),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.table_rows_rounded,
+                      color: CoresApp.destaque,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Projetos e tarefas',
+                          style: TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Acompanhamento operacional e registro de horas',
+                          style: TextStyle(
+                            color: CoresApp.textoSecundario,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: CoresApp.primaria.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: CoresApp.primaria.withOpacity(0.18),
+                      ),
+                    ),
+                    child: Text(
+                      '${filteredProjects.length} ${filteredProjects.length == 1 ? 'projeto' : 'projetos'}',
+                      style: const TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TabelaProjetosWidget(
+              projects: filteredProjects,
+              statusList: _statusList,
+              expandedProjectIds: _expandedProjectIds,
+              selectedTargetId: _selectedTargetId,
+              timeLogs: _timeLogs,
+              activeTimerTargetId: _activeTimerTargetId,
+              activeStartTime: _activeStartTime,
+              timerState: _timerState,
+              secondsElapsed: _secondsElapsed,
+              showPostStopButton: _showPostStopButton,
+              horizontalController: _horizontalTableScroll,
+              verticalController: _verticalTableScroll,
+              onSelectTarget: (targetId) {
+                setState(() {
+                  _selectedTargetId = targetId;
+                });
+              },
+              onToggleExpand: _toggleExpand,
+              onEditProject: (project) {
+                setState(() {
+                  final index = _projects.indexWhere((p) => p.id == project.id);
+                  if (index != -1) {
+                    _projects[index] = project;
+                  }
+                });
+              },
+              onDeleteProject: _confirmDeleteProject,
+              onAddSubTask: _addNewTaskDialog,
+              onProjectStatusChanged: _handleProjectStatusChanged,
+              onSubTaskStatusChanged: _handleSubTaskStatusChanged,
+              onEditSubTask: _editSubTaskDialog,
+              onDeleteSubTask: _confirmDeleteSubTask,
+              onStartTimer: _startTimer,
+              onPauseTimer: _pauseTimer,
+              onStopTimer: _stopTimer,
+              onManualTime: _showManualTimeDialog,
+              onEditLog: _editLogDialog,
+              onDeleteLog: _confirmDeleteLog,
+              onRegisterLog: _handleRegisterLog,
+              onMarkTaskCompleted: _handleMarkTaskCompleted,
+              formatDuration: _formatDuration,
+              firebaseService: _firebaseService,
+            ),
+          ],
         ),
       ),
     );
@@ -4051,25 +4261,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: CoresDashboard.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CoresDashboard.card.withOpacity(0.995),
+            CoresDashboard.fundoSecundario.withOpacity(0.95),
+          ],
+        ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.75),
-          width: 0.8,
+          color: CoresApp.borda.withOpacity(0.88),
+          width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: CentralAlertasWidget(
-          projects: _projects,
-          formatDateShort: _formatDateShort,
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
+              decoration: BoxDecoration(
+                color: CoresDashboard.fundoSecundario.withOpacity(0.42),
+                border: Border(
+                  bottom: BorderSide(
+                    color: CoresApp.borda.withOpacity(0.55),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: CoresApp.aviso.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: CoresApp.aviso.withOpacity(0.22),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.notifications_active_rounded,
+                      color: CoresApp.aviso,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Central de alertas',
+                          style: TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Pendências e situações que precisam de atenção',
+                          style: TextStyle(
+                            color: CoresApp.textoSecundario,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: CoresApp.aviso,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: CoresApp.aviso.withOpacity(0.45),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            CentralAlertasWidget(
+              projects: _projects,
+              formatDateShort: _formatDateShort,
+            ),
+          ],
         ),
       ),
     );
@@ -4083,51 +4375,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(
-          horizontal: 28,
-          vertical: 24,
+          horizontal: 34,
+          vertical: 28,
         ),
         decoration: BoxDecoration(
-          color: CoresDashboard.card.withOpacity(
-            0.96,
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              CoresDashboard.card.withOpacity(0.99),
+              CoresDashboard.fundoSecundario.withOpacity(0.96),
+            ],
           ),
-          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: CoresApp.borda.withOpacity(0.7),
+            color: CoresApp.borda.withOpacity(0.82),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
+              color: Colors.black.withOpacity(0.20),
+              blurRadius: 26,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: 34,
-              height: 34,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: CoresApp.destaque,
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                color: CoresApp.destaque.withOpacity(0.10),
+                border: Border.all(
+                  color: CoresApp.destaque.withOpacity(0.18),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.8,
+                  color: CoresApp.destaque,
+                ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             const Text(
               'Carregando projetos...',
               style: TextStyle(
                 color: CoresApp.textoPrincipal,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 5),
             const Text(
               'Sincronizando dados com o Firebase',
               style: TextStyle(
                 color: CoresApp.textoSecundario,
                 fontSize: 10.5,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -4208,87 +4518,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
           userName: '',
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/fundo.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(
-                0.42,
+      body: _isLoadingProjects
+          ? _buildLoadingState()
+          : SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  24,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildDashboardHeader(
+                      activeProjects: activeProjects,
+                      totalProjects: totalProjects,
+                      pausedProjects: pausedProjects,
+                      totalTasks: totalTasks,
+                      totalHours: totalHours,
+                    ),
+                    const SizedBox(
+                      height: 14,
+                    ),
+                    _buildTopDashboardPanels(
+                      activeProject: activeProject,
+                      dailyHoursPoints: dailyHoursPoints,
+                    ),
+                    const SizedBox(
+                      height: 16,
+                    ),
+                    _buildProjectsTable(
+                      filteredProjects,
+                    ),
+                    const SizedBox(
+                      height: 16,
+                    ),
+                    _buildAlerts(),
+                  ],
+                ),
               ),
             ),
-          ),
-          _isLoadingProjects
-              ? _buildLoadingState()
-              : SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      24,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildDashboardHeader(
-                          activeProjects: activeProjects,
-                          totalProjects: totalProjects,
-                          pausedProjects: pausedProjects,
-                          totalTasks: totalTasks,
-                          totalHours: totalHours,
-                        ),
-                        const SizedBox(
-                          height: 14,
-                        ),
-                        _buildTopDashboardPanels(
-                          activeProject: activeProject,
-                          dailyHoursPoints: dailyHoursPoints,
-                        ),
-                        const SizedBox(
-                          height: 16,
-                        ),
-                        _buildProjectsTable(
-                          filteredProjects,
-                        ),
-                        const SizedBox(
-                          height: 16,
-                        ),
-                        _buildAlerts(),
-                      ],
-                    ),
-                  ),
-                ),
-        ],
-      ),
     );
   }
 
   void _toggleDashboardStatusFilter({
     String? status,
     bool apenasAtivos = false,
+    bool todosProjetos = false,
   }) {
     setState(() {
-      final alreadySelected = _statusFiltroDashboard == status &&
-          _filtroApenasAtivos == apenasAtivos;
+      // Se clicar novamente no card que já está selecionado,
+      // mantém a seleção.
+      final alreadySelected = (_filtroApenasAtivos && apenasAtivos) ||
+          (_filtroTodosProjetos && todosProjetos) ||
+          (status != null && _statusFiltroDashboard == status);
 
       if (alreadySelected) {
-        // Ao clicar novamente no card selecionado,
-        // remove o filtro do card.
-        _statusFiltroDashboard = null;
-        _filtroApenasAtivos = false;
-      } else {
-        // Aplica o filtro selecionado.
-        _statusFiltroDashboard = status;
-        _filtroApenasAtivos = apenasAtivos;
+        return;
       }
+
+      // Selecionou outro card:
+      // limpa completamente a seleção anterior.
+      _statusFiltroDashboard = status;
+      _filtroApenasAtivos = apenasAtivos;
+      _filtroTodosProjetos = todosProjetos;
     });
   }
 }

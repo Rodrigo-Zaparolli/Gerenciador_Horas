@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gerenciador_horas/data/services/edesk_service.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
@@ -70,6 +71,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   final TextEditingController _excelLinkController = TextEditingController();
   final TextEditingController _folderPathController = TextEditingController();
 
+  final EdeskService _edeskService = EdeskService();
+
   WorkFormat? _selectedWorkFormat;
 
   String _status = 'INI_PRI';
@@ -80,6 +83,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   List<Map<String, dynamic>> _internalWorks = [];
 
   bool _isSaving = false;
+
+  // ============================================================
+  // E-DESK
+  // ============================================================
+
+  bool _isUpdatingEdesk = false;
 
   // ============================================================
   // CHECKLIST
@@ -144,7 +153,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       debugPrint('DATA PROJETO: ${project.startDate}');
       debugPrint('SUBTASKS: ${project.subTasks?.length}');
       debugPrint(
-        'CHECKLIST EXISTENTE: ${project.checklist?.length ?? 0}',
+        'CHECKLIST EXISTENTE: ${project.checklist.length}',
       );
       debugPrint('====================================');
 
@@ -155,7 +164,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             'subId: ${task.subId} | '
             'startDate: ${task.startDate} | '
             'planStart: ${task.planStart} | '
-            'planEnd: ${task.planEnd}',
+            'planEnd: ${task.planEnd} | '
+            'E-Desk Solicitação: ${task.edeskSolicitacao} | '
+            'E-Desk Trabalho: ${task.edeskIdTrabalho} | '
+            'E-Desk URL: ${task.edeskUrl}',
           );
         }
       }
@@ -164,8 +176,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       // CHECKLIST EXISTENTE
       // --------------------------------------------------------
 
-      if (project.checklist != null && project.checklist!.isNotEmpty) {
-        _checklistItems = project.checklist!
+      if (project.checklist.isNotEmpty) {
+        _checklistItems = project.checklist
             .map(
               (item) => Map<String, dynamic>.from(item),
             )
@@ -1046,18 +1058,20 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           index,
         );
 
-        // ATENÇÃO: Agora utilizamos exatamente a mesma data base
-        // (ou a data específica salva na tarefa) sem adicionar
-        // somas automáticas arbitrárias de 15/30 dias.
         DateTime stepStart = baseDate;
         DateTime stepEnd = baseDate;
 
         String hoursText = '00:00';
 
-        // --------------------------------------------------------
-        // NÚMERO DA ATIVIDADE
-        // --------------------------------------------------------
         String subId = (index + 1).toString();
+
+        // ========================================================
+        // E-DESK
+        // ========================================================
+
+        String? edeskSolicitacao;
+        String? edeskUrl;
+        String? edeskIdTrabalho;
 
         TaskModel? existingTask;
 
@@ -1085,10 +1099,17 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             hoursText = '00:00';
           }
 
-          // Preserva o número já salvo no Firebase.
           if (existingTask.subId.trim().isNotEmpty) {
             subId = existingTask.subId.trim();
           }
+
+          // ======================================================
+          // PRESERVAR E-DESK
+          // ======================================================
+
+          edeskSolicitacao = existingTask.edeskSolicitacao;
+          edeskUrl = existingTask.edeskUrl;
+          edeskIdTrabalho = existingTask.edeskIdTrabalho;
         }
 
         stepStart = _onlyDate(stepStart);
@@ -1098,14 +1119,20 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           stepEnd = stepStart;
         }
 
-        return <String, dynamic>{
+        return {
           'subId': subId,
           'name': workName,
-          'controller': TextEditingController(
-            text: hoursText,
-          ),
+          'controller': TextEditingController(text: hoursText),
           'startDate': stepStart,
           'endDate': stepEnd,
+
+          // ============================================================
+          // E-DESK
+          // Preserva os vínculos já cadastrados no projeto.
+          // ============================================================
+          'edeskSolicitacao': existingTask?.edeskSolicitacao,
+          'edeskUrl': existingTask?.edeskUrl,
+          'edeskIdTrabalho': existingTask?.edeskIdTrabalho,
         };
       },
     );
@@ -1115,6 +1142,189 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
       if (firstStart is DateTime) {
         _startDate = _onlyDate(firstStart);
+      }
+    }
+  }
+
+// ============================================================
+// ATUALIZAR DATAS DAS FASES NO E-DESK
+// Usa ID + Cliente + Nome das etapas
+// Mantém o botão sincronizando até o Python concluir
+// ============================================================
+
+  Future<void> _atualizarDatasEdesk() async {
+    if (_isUpdatingEdesk) {
+      return;
+    }
+
+    final String id = _idController.text.trim();
+    final String cliente = _clientController.text.trim();
+
+    // ==========================================================
+    // VALIDAÇÕES
+    // ==========================================================
+
+    if (id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Informe o ID do trabalho antes de atualizar o E-Desk.',
+          ),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
+    if (cliente.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Informe o Cliente antes de atualizar o E-Desk.',
+          ),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
+    if (_internalWorks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Nenhuma etapa encontrada para atualizar no E-Desk.',
+          ),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
+    // ==========================================================
+    // MONTA AS FASES
+    // ==========================================================
+
+    final List<Map<String, String>> fases = [];
+
+    for (final dynamic rawWork in _internalWorks) {
+      if (rawWork is! Map) {
+        continue;
+      }
+
+      final String nome = rawWork['name']?.toString().trim() ?? '';
+
+      final dynamic rawStart = rawWork['startDate'];
+      final dynamic rawEnd = rawWork['endDate'];
+
+      if (nome.isEmpty) {
+        continue;
+      }
+
+      if (rawStart is! DateTime || rawEnd is! DateTime) {
+        continue;
+      }
+
+      final DateTime dataInicial = _onlyDate(rawStart);
+      final DateTime dataFinal = _onlyDate(rawEnd);
+
+      fases.add(
+        {
+          'nome': nome,
+          'dataInicial': _formatDate(dataInicial),
+          'dataFinal': _formatDate(dataFinal),
+        },
+      );
+    }
+
+    if (fases.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível encontrar datas válidas nas etapas.',
+          ),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
+    // ==========================================================
+    // INICIA SINCRONIZAÇÃO
+    // ==========================================================
+
+    setState(() {
+      _isUpdatingEdesk = true;
+    });
+
+    try {
+      final EdeskSendResult resultado =
+          await _edeskService.atualizarFasesViaPython(
+        id: id,
+        cliente: cliente,
+        fases: fases,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      // ==========================================================
+      // SUCESSO REAL
+      //
+      // O service só deve retornar depois que o Python emitir
+      // o sinal de conclusão.
+      // ==========================================================
+
+      if (resultado.confirmed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              resultado.message.isNotEmpty
+                  ? resultado.message
+                  : 'Datas das fases atualizadas no E-Desk com sucesso.',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(
+              seconds: 4,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              resultado.message.isNotEmpty
+                  ? resultado.message
+                  : 'Não foi possível atualizar as datas no E-Desk.',
+            ),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(
+              seconds: 5,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao atualizar datas no E-Desk: $e',
+          ),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(
+            seconds: 6,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingEdesk = false;
+        });
       }
     }
   }
@@ -1193,6 +1403,83 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           content: Text(
             'Erro ao selecionar arquivo: $e',
           ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // CRIAR PASTA DO PROJETO
+  // ============================================================
+
+  String _sanitizarNomePasta(String valor) {
+    return valor
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  Future<void> _criarPastaProjeto() async {
+    final id = _idController.text.trim();
+    final cliente = _clientController.text.trim();
+
+    if (id.isEmpty || cliente.isEmpty) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Preencha o ID e o Cliente antes de criar a pasta.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final diretorioBase = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Escolha onde a pasta do projeto será criada',
+      );
+
+      if (diretorioBase == null || diretorioBase.trim().isEmpty) {
+        return;
+      }
+
+      final nomePasta = _sanitizarNomePasta('$id - $cliente');
+      final separador = Platform.pathSeparator;
+      final caminhoCompleto =
+          '${diretorioBase.replaceAll(RegExp(r'[\\/]+$'), '')}$separador$nomePasta';
+
+      final pasta = Directory(caminhoCompleto);
+      final jaExistia = await pasta.exists();
+
+      if (!jaExistia) {
+        await pasta.create(recursive: true);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _folderPathController.text = pasta.path;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            jaExistia
+                ? 'A pasta já existia e foi vinculada ao projeto.'
+                : 'Pasta criada com sucesso: $nomePasta',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao criar a pasta do projeto: $e'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -1386,9 +1673,27 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           ? work['subId'].toString().trim()
           : (index + 1).toString();
 
+      // ==========================================================
+      // E-DESK
+      // ==========================================================
+
+      final String? edeskSolicitacao =
+          work['edeskSolicitacao']?.toString().trim().isNotEmpty == true
+              ? work['edeskSolicitacao'].toString().trim()
+              : null;
+
+      final String? edeskUrl =
+          work['edeskUrl']?.toString().trim().isNotEmpty == true
+              ? work['edeskUrl'].toString().trim()
+              : null;
+
+      final String? edeskIdTrabalho =
+          work['edeskIdTrabalho']?.toString().trim().isNotEmpty == true
+              ? work['edeskIdTrabalho'].toString().trim()
+              : null;
+
       customSubTasks.add(
         TaskModel(
-          // AGORA O NÚMERO É O INFORMADO NO MODAL.
           subId: subId,
           stage: work['name'] as String,
           status: _status,
@@ -1399,6 +1704,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               ? rawController.text.trim()
               : '00:00',
           hourType: _hourType,
+
+          // ========================================================
+          // PRESERVAR E-DESK
+          // ========================================================
+
+          edeskSolicitacao: edeskSolicitacao,
+          edeskUrl: edeskUrl,
+          edeskIdTrabalho: edeskIdTrabalho,
         ),
       );
     }
@@ -1490,6 +1803,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     _disposeInternalControllers();
 
+    _edeskService.dispose();
+
     super.dispose();
   }
 
@@ -1525,7 +1840,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               color: Colors.white70,
               size: 20,
             ),
-            onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+            onPressed: _isSaving || _isUpdatingEdesk
+                ? null
+                : () => Navigator.of(context).pop(),
           ),
         ],
       ),
@@ -1697,27 +2014,45 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                           color: Colors.cyanAccent,
                           size: 20,
                         ),
-                        suffixIcon: IconButton(
-                          icon: const Icon(
-                            Icons.folder_open,
-                            color: Colors.cyanAccent,
-                            size: 20,
-                          ),
-                          onPressed: () {
-                            if (_folderPathController.text.isNotEmpty) {
-                              _abrirCaminho(
-                                _folderPathController.text,
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Nenhuma pasta cadastrada.',
-                                  ),
+                        suffixIcon: SizedBox(
+                          width: 88,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Criar pasta do projeto',
+                                icon: const Icon(
+                                  Icons.create_new_folder_outlined,
+                                  color: Colors.cyanAccent,
+                                  size: 20,
                                 ),
-                              );
-                            }
-                          },
+                                onPressed: _criarPastaProjeto,
+                              ),
+                              IconButton(
+                                tooltip: 'Abrir pasta',
+                                icon: const Icon(
+                                  Icons.folder_open,
+                                  color: Colors.cyanAccent,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  if (_folderPathController.text.isNotEmpty) {
+                                    _abrirCaminho(
+                                      _folderPathController.text,
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Nenhuma pasta cadastrada.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -2505,7 +2840,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          onPressed: _isSaving || _isUpdatingEdesk
+              ? null
+              : () => Navigator.of(context).pop(),
           child: const Text(
             'Cancelar',
             style: TextStyle(
@@ -2513,12 +2850,50 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             ),
           ),
         ),
+
+        // ========================================================
+        // ATUALIZAR E-DESK
+        // ========================================================
+
+        OutlinedButton.icon(
+          onPressed:
+              _isSaving || _isUpdatingEdesk ? null : _atualizarDatasEdesk,
+          icon: _isUpdatingEdesk
+              ? const SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.orangeAccent,
+                  ),
+                )
+              : const Icon(
+                  Icons.sync,
+                  size: 18,
+                ),
+          label: Text(
+            _isUpdatingEdesk
+                ? 'Atualizando E-Desk...'
+                : 'Atualizar datas no E-Desk',
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.orangeAccent,
+            side: BorderSide(
+              color: Colors.orangeAccent.withOpacity(0.60),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 11,
+            ),
+          ),
+        ),
+
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF00FFCC),
             foregroundColor: Colors.black,
           ),
-          onPressed: _isSaving ? null : _saveProject,
+          onPressed: _isSaving || _isUpdatingEdesk ? null : _saveProject,
           child: _isSaving
               ? const SizedBox(
                   width: 18,

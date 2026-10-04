@@ -1393,7 +1393,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: CoresApp.fundo,
+        backgroundColor: Colors.transparent,
         body: const Center(
           child: CircularProgressIndicator(
             color: CoresApp.primaria,
@@ -1425,90 +1425,61 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           userName: '',
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              AppTheme.caminhoFundo,
-              fit: BoxFit.cover,
-              errorBuilder: (
-                context,
-                error,
-                stackTrace,
-              ) {
-                return Container(
-                  color: CoresApp.fundo,
-                );
-              },
-            ),
+          _buildCabecalhoPagina(
+            totalImagens,
           ),
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(
-                AppTheme.opacidadeFundo,
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildCabecalhoPagina(
-                totalImagens,
-              ),
-              if (_erroCarregamento != null) _buildErro(),
-              Expanded(
-                child: orientacoesFiltradas.isEmpty && _erroCarregamento == null
-                    ? _buildEstadoVazio()
-                    : LayoutBuilder(
-                        builder: (
+          if (_erroCarregamento != null) _buildErro(),
+          Expanded(
+            child: orientacoesFiltradas.isEmpty && _erroCarregamento == null
+                ? _buildEstadoVazio()
+                : LayoutBuilder(
+                    builder: (
+                      context,
+                      constraints,
+                    ) {
+                      final largura = constraints.maxWidth;
+
+                      final int colunas = largura >= 1200
+                          ? 3
+                          : largura >= 800
+                              ? 2
+                              : 1;
+
+                      final double espacamento = largura >= 1200 ? 10 : 9;
+
+                      return GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(
+                          20,
+                          4,
+                          20,
+                          25,
+                        ),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: colunas,
+                          crossAxisSpacing: espacamento,
+                          mainAxisSpacing: espacamento,
+                          mainAxisExtent: largura >= 1200 ? 76 : 78,
+                        ),
+                        itemCount: orientacoesFiltradas.length,
+                        itemBuilder: (
                           context,
-                          constraints,
+                          index,
                         ) {
-                          final largura = constraints.maxWidth;
-
-                          final int colunas = largura >= 1200
-                              ? 3
-                              : largura >= 800
-                                  ? 2
-                                  : 1;
-
-                          final double espacamento = largura >= 1200 ? 10 : 9;
-
-                          return GridView.builder(
-                            padding: const EdgeInsets.fromLTRB(
-                              20,
-                              4,
-                              20,
-                              25,
-                            ),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: colunas,
-                              crossAxisSpacing: espacamento,
-                              mainAxisSpacing: espacamento,
-                              mainAxisExtent: largura >= 1200 ? 76 : 78,
-                            ),
-                            itemCount: orientacoesFiltradas.length,
-                            itemBuilder: (
-                              context,
-                              index,
-                            ) {
-                              return _buildCardOrientacao(
-                                orientacoesFiltradas[index],
-                              );
-                            },
+                          return _buildCardOrientacao(
+                            orientacoesFiltradas[index],
                           );
                         },
-                      ),
-              ),
-            ],
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
-
   // ============================================================
   // CABEÇALHO UNIFICADO
   // ============================================================

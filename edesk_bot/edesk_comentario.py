@@ -1,53 +1,77 @@
 import sys
 import json
 import time
+import html
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 from playwright.sync_api import (
     sync_playwright,
     TimeoutError as PlaywrightTimeoutError,
 )
 
+from config import (
+    PROFILE_DIR,
+    SCREENSHOTS_DIR,
+    LOGS_DIR,
+    COMENTARIO_TIPOS,
+)
 
-# ============================================================
+
+# ================================================================
 # CAMINHOS
-# ============================================================
+# ================================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-PERFIL_DIR = BASE_DIR / "perfil"
+
+PROFILE_PATH = BASE_DIR / PROFILE_DIR
+SCREENSHOTS_PATH = BASE_DIR / SCREENSHOTS_DIR
+LOGS_PATH = BASE_DIR / LOGS_DIR
+
+PROFILE_PATH.mkdir(parents=True, exist_ok=True)
+SCREENSHOTS_PATH.mkdir(parents=True, exist_ok=True)
+LOGS_PATH.mkdir(parents=True, exist_ok=True)
 
 
-# ============================================================
+# ================================================================
 # LOG
-# ============================================================
+# ================================================================
 
 def log(mensagem):
+
     print(
-        f"[E-Desk][Comentario] {mensagem}",
+        f"[E-Desk][Python] {mensagem}",
         flush=True,
     )
 
 
-# ============================================================
+# ================================================================
 # REQUEST
-# ============================================================
+# ================================================================
 
 def carregar_request():
 
     if len(sys.argv) < 2:
-        raise Exception(
-            "Caminho do request.json não informado."
+
+        raise RuntimeError(
+            "Nenhum arquivo request.json foi informado."
         )
 
-    caminho = Path(sys.argv[1])
+    request_path = Path(
+        sys.argv[1]
+    )
 
-    if not caminho.exists():
-        raise Exception(
-            f"Request não encontrado: {caminho}"
+    log(
+        f"Request recebido: {request_path}"
+    )
+
+    if not request_path.exists():
+
+        raise RuntimeError(
+            f"Request não encontrado: {request_path}"
         )
 
-    with open(
-        caminho,
+    with request_path.open(
         "r",
         encoding="utf-8",
     ) as arquivo:
@@ -55,28 +79,258 @@ def carregar_request():
         return json.load(arquivo)
 
 
-# ============================================================
-# AUTENTICAÇÃO
-# ============================================================
+# ================================================================
+# DADOS
+# ================================================================
 
-def esta_autenticado(page):
+def obter_url(dados):
+
+    url = str(
+        dados.get(
+            "url",
+            "",
+        )
+    ).strip()
+
+    if not url:
+
+        raise RuntimeError(
+            "A URL do E-Desk não foi informada."
+        )
+
+    return url
+
+
+def obter_tipo_comentario(dados):
+
+    tipo = str(
+        dados.get(
+            "tipo",
+            "Interno",
+        )
+    ).strip()
+
+    if tipo in COMENTARIO_TIPOS:
+
+        return COMENTARIO_TIPOS[tipo]
+
+    if tipo in {
+        "0",
+        "1",
+        "3",
+        "4",
+    }:
+
+        return tipo
+
+    raise RuntimeError(
+        f"Tipo de comentário inválido: {tipo}"
+    )
+
+
+def obter_texto(dados):
+
+    return str(
+        dados.get(
+            "texto",
+            "",
+        )
+    )
+
+
+def obter_imagem_base64(dados):
+
+    imagem = dados.get(
+        "imagemBase64"
+    )
+
+    if not imagem:
+
+        return None
+
+    imagem = str(
+        imagem
+    ).strip()
+
+    if not imagem:
+
+        return None
+
+    return imagem
+
+
+def extrair_id_trabalho(dados):
+
+    return str(
+        dados.get(
+            "idTrabalho",
+            "",
+        )
+    ).strip()
+
+
+def extrair_solicitacao(dados):
+
+    return str(
+        dados.get(
+            "solicitacao",
+            "",
+        )
+    ).strip()
+
+
+# ================================================================
+# GUID
+# ================================================================
+
+def obter_guid_da_url(url):
 
     try:
 
-        url = page.url
+        parametros = parse_qs(
+            urlparse(url).query
+        )
 
-        if "/Portal/" in url:
+        return parametros.get(
+            "GUID",
+            [""],
+        )[0]
+
+    except Exception:
+
+        return ""
+
+
+# ================================================================
+# CREDENCIAIS E-DESK
+# ================================================================
+
+def obter_credenciais_edesk(dados):
+
+    credenciais = dados.get(
+        "edeskCredenciais"
+    )
+
+    if isinstance(credenciais, dict):
+
+        email = str(
+            credenciais.get(
+                "email",
+                "",
+            )
+            or ""
+        ).strip()
+
+        senha = str(
+            credenciais.get(
+                "senha",
+                "",
+            )
+            or ""
+        )
+
+        if email and senha:
+            return email, senha
+
+    email = str(
+        dados.get(
+            "edeskEmail",
+            "",
+        )
+        or ""
+    ).strip()
+
+    senha = str(
+        dados.get(
+            "edeskSenha",
+            "",
+        )
+        or ""
+    )
+
+    return email, senha
+
+
+# ================================================================
+# LOGIN
+# ================================================================
+
+SELETORES_EMAIL_LOGIN = [
+    "input[placeholder='nome@exemplo.com']",
+    "input[type='email']",
+    "input[autocomplete='username']",
+    "input[name*='email' i]",
+    "input[id*='email' i]",
+]
+
+SELETORES_SENHA_LOGIN = [
+    "input[placeholder='Senha']",
+    "input[type='password']",
+    "input[autocomplete='current-password']",
+    "input[name*='senha' i]",
+    "input[id*='senha' i]",
+    "input[name*='password' i]",
+    "input[id*='password' i]",
+]
+
+SELETORES_ENTRAR_LOGIN = [
+    "button:has-text('Entrar')",
+    "input[type='submit'][value*='Entrar']",
+    "input[value*='Entrar']",
+    "button[type='submit']",
+]
+
+
+def localizar_primeiro_visivel(
+    page,
+    seletores,
+):
+
+    raizes = [page]
+
+    try:
+        for frame in page.frames:
+            if frame not in raizes:
+                raizes.append(frame)
+    except Exception:
+        pass
+
+    for raiz in raizes:
+        for seletor in seletores:
+            try:
+                locator = raiz.locator(seletor)
+                quantidade = locator.count()
+                if quantidade == 0:
+                    continue
+                for i in range(quantidade):
+                    elemento = locator.nth(i)
+                    try:
+                        if elemento.is_visible():
+                            return elemento
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+    return None
+
+
+def login_confirmado(page):
+
+    try:
+        if "/Portal/PortalAtendente.aspx" in (page.url or ""):
             return True
 
-        if page.locator(
+        botao_comentarios = page.locator(
             "#cph1_BtCom"
-        ).count() > 0:
-            return True
+        )
 
-        if page.locator(
-            "#cph1_txtSol"
-        ).count() > 0:
-            return True
+        if botao_comentarios.count() > 0:
+            try:
+                if botao_comentarios.first.is_visible():
+                    return True
+            except Exception:
+                return True
 
     except Exception:
         pass
@@ -84,1293 +338,1640 @@ def esta_autenticado(page):
     return False
 
 
-def aguardar_login(page):
-
-    log(
-        "Aguardando autenticação..."
-    )
-
-    inicio = time.time()
-
-    while time.time() - inicio < 300:
-
-        try:
-
-            log(
-                f"URL: {page.url}"
-            )
-
-            if esta_autenticado(page):
-
-                log(
-                    "AUTENTICAÇÃO CONFIRMADA."
-                )
-
-                return
-
-        except Exception:
-            pass
-
-        time.sleep(1)
-
-    raise Exception(
-        "Tempo limite aguardando autenticação."
-    )
-
-
-# ============================================================
-# MINHA GRID
-# ============================================================
-
-def abrir_minha_grid(page):
-
-    log(
-        "============================================"
-    )
-
-    log(
-        "ETAPA 2 - ABRINDO MINHA GRID"
-    )
-
-    log(
-        "============================================"
-    )
-
-    seletores = [
-
-        "a[href*='ListaSolicitacao.aspx']",
-        "a[href*='listaSolicitacao.aspx']",
-        "#cph1_BtSol",
-        "#cph1_BtSol_input",
-        "#cph1_BtSol_text",
-        "#ctl00_cph1_BtSol",
-        "text=Minha Grid",
-
-    ]
-
-    botao = None
-
-    for seletor in seletores:
-
-        try:
-
-            quantidade = page.locator(
-                seletor
-            ).count()
-
-            log(
-                f"Seletor: {seletor} | encontrados: {quantidade}"
-            )
-
-            if quantidade > 0:
-
-                for i in range(quantidade):
-
-                    elemento = page.locator(
-                        seletor
-                    ).nth(i)
-
-                    try:
-
-                        if elemento.is_visible():
-
-                            botao = elemento
-                            break
-
-                    except Exception:
-                        pass
-
-            if botao is not None:
-                break
-
-        except Exception:
-            pass
-
-    if botao is None:
-
-        raise Exception(
-            "Botão Minha Grid não encontrado."
-        )
+def tela_login_detectada(page):
 
     try:
-
-        log(
-            f"Clicando em: "
-            f"{botao.get_attribute('id') or 'Minha Grid'}"
-        )
-
-    except Exception:
-
-        log(
-            "Clicando em Minha Grid."
-        )
-
-    botao.scroll_into_view_if_needed()
-
-    botao.click(
-        force=True
-    )
-
-    log(
-        "Clique executado."
-    )
-
-    log(
-        "Aguardando carregamento da Minha Grid..."
-    )
-
-    inicio = time.time()
-
-    while time.time() - inicio < 20:
-
-        try:
-
-            url_atual = page.url
-
-            if "ListaSolicitacao.aspx" in url_atual:
-
-                log(
-                    "MINHA GRID ABERTA."
-                )
-
-                log(
-                    f"URL: {url_atual}"
-                )
-
-                return page
-
-            campo_pesquisa = page.locator(
-                "#cph1_txtSol"
-            )
-
-            if campo_pesquisa.count() > 0:
-
-                visivel = False
-
-                for i in range(
-                    campo_pesquisa.count()
-                ):
-
-                    try:
-
-                        if campo_pesquisa.nth(i).is_visible():
-
-                            visivel = True
-                            break
-
-                    except Exception:
-                        pass
-
-                if visivel:
-
-                    log(
-                        "MINHA GRID ABERTA."
-                    )
-
-                    log(
-                        "Campo #cph1_txtSol encontrado."
-                    )
-
-                    log(
-                        f"URL: {url_atual}"
-                    )
-
-                    return page
-
-        except Exception:
-            pass
-
-        time.sleep(0.5)
-
-    try:
-
-        log(
-            f"URL após espera: {page.url}"
-        )
-
-        quantidade_campo = page.locator(
-            "#cph1_txtSol"
-        ).count()
-
-        log(
-            f"#cph1_txtSol após espera: "
-            f"{quantidade_campo}"
-        )
-
+        if localizar_primeiro_visivel(
+            page,
+            SELETORES_SENHA_LOGIN,
+        ) is not None:
+            return True
     except Exception:
         pass
 
-    raise Exception(
-        "Minha Grid não foi aberta."
-    )
+    try:
+        url = (page.url or "").lower()
+        marcadores = [
+            "promobid.promob.com",
+            "identity.promob.com",
+            "/authentications/signin",
+            "/signin",
+            "/login",
+        ]
+        return any(marcador in url for marcador in marcadores)
+    except Exception:
+        return False
 
 
-# ============================================================
-# PESQUISAR SOLICITAÇÃO
-# ============================================================
-
-def pesquisar_solicitacao(
+def tentar_login_automatico(
     page,
-    solicitacao,
+    email,
+    senha,
 ):
 
+    email = str(email or "").strip()
+    senha = str(senha or "")
+
+    if not email or not senha:
+        return False
+
+    log("")
+    log("========================================")
+    log("LOGIN AUTOMÁTICO E-DESK")
+    log("========================================")
     log(
-        "============================================"
+        f"E-mail disponível: {'SIM' if email else 'NÃO'}"
     )
-
-    log(
-        "ETAPA 3 - PESQUISANDO SOLICITAÇÃO"
-    )
-
-    log(
-        "============================================"
-    )
-
-    log(
-        f"Solicitação: {solicitacao}"
-    )
-
-    paginas_antes = list(
-        page.context.pages
-    )
-
-    url_antes = page.url
-
-    campo = page.locator(
-        "#cph1_txtSol"
-    )
-
-    if campo.count() == 0:
-
-        raise Exception(
-            "Campo #cph1_txtSol não encontrado."
-        )
-
-    campo.fill(
-        str(solicitacao)
-    )
-
-    log(
-        f"Valor preenchido: {campo.input_value()}"
-    )
-
-    botao = page.locator(
-        "#cph1_btnLocSol"
-    )
-
-    if botao.count() == 0:
-
-        raise Exception(
-            "Botão #cph1_btnLocSol não encontrado."
-        )
-
-    log(
-        f"Botão ID: {botao.get_attribute('id')}"
-    )
-
-    log(
-        f"Botão NAME: {botao.get_attribute('name')}"
-    )
-
-    log(
-        f"URL antes do Localizar: {url_antes}"
-    )
-
-    botao.click(
-        force=True
-    )
-
-    log(
-        "CLICK LOCALIZAR EXECUTADO."
-    )
-
-    log(
-        "Aguardando resposta do E-DESK..."
-    )
+    log("Senha disponível: SIM")
 
     inicio = time.time()
+    campo_email = None
 
     while time.time() - inicio < 30:
+        if login_confirmado(page):
+            log("Login já estava confirmado.")
+            return True
+
+        campo_email = localizar_primeiro_visivel(
+            page,
+            SELETORES_EMAIL_LOGIN,
+        )
+
+        if campo_email is not None:
+            break
 
         time.sleep(0.5)
 
-        paginas = page.context.pages
+    if campo_email is None:
+        log(
+            "Campo de e-mail não encontrado para login automático."
+        )
+        return False
 
-        for outra_page in paginas:
+    try:
+        campo_email.fill(email)
+        log("E-mail preenchido automaticamente.")
+    except Exception as erro:
+        log(
+            f"Erro preenchendo e-mail: {erro}"
+        )
+        return False
 
-            if outra_page in paginas_antes:
-                continue
+    campo_senha = None
+    inicio = time.time()
 
-            try:
-
-                url = outra_page.url
-
-                if "/Portal/Solicitacao.aspx" in url:
-
-                    log(
-                        "SOLICITAÇÃO ABERTA EM NOVA ABA."
-                    )
-
-                    log(
-                        f"URL: {url}"
-                    )
-
-                    return outra_page
-
-            except Exception:
-                pass
-
-        try:
-
-            url_atual = page.url
-
-            if "/Portal/Solicitacao.aspx" in url_atual:
-
-                log(
-                    "SOLICITAÇÃO ABERTA NA PRÓPRIA PÁGINA."
-                )
-
-                log(
-                    f"URL: {url_atual}"
-                )
-
-                return page
-
-        except Exception:
-            pass
-
-        for outra_page in paginas:
-
-            try:
-
-                url = outra_page.url
-
-                if "/Portal/Solicitacao.aspx" in url:
-
-                    log(
-                        "SOLICITAÇÃO ENCONTRADA EM UMA "
-                        "DAS PÁGINAS DO CONTEXTO."
-                    )
-
-                    log(
-                        f"URL: {url}"
-                    )
-
-                    return outra_page
-
-            except Exception:
-                pass
-
-        try:
-
-            linhas = page.locator(
-                "tr.rgRow"
-            )
-
-            quantidade = linhas.count()
-
-            if quantidade > 0:
-
-                for i in range(quantidade):
-
-                    linha = linhas.nth(i)
-
-                    try:
-
-                        texto_linha = (
-                            linha.inner_text()
-                        )
-
-                        if str(solicitacao) in texto_linha:
-
-                            log(
-                                "SOLICITAÇÃO ENCONTRADA "
-                                "NA GRID."
-                            )
-
-                            log(
-                                f"Linha: {i}"
-                            )
-
-                            linha.click(
-                                force=True
-                            )
-
-                            log(
-                                "Clique na linha executado."
-                            )
-
-                            time.sleep(2)
-
-                            for pagina in page.context.pages:
-
-                                try:
-
-                                    if (
-                                        "/Portal/Solicitacao.aspx"
-                                        in pagina.url
-                                    ):
-
-                                        log(
-                                            "SOLICITAÇÃO ABERTA "
-                                            "APÓS CLIQUE NA LINHA."
-                                        )
-
-                                        log(
-                                            f"URL: {pagina.url}"
-                                        )
-
-                                        return pagina
-
-                                except Exception:
-                                    pass
-
-                    except Exception:
-                        pass
-
-        except Exception:
-            pass
-
-    log(
-        "Nenhuma Solicitação.aspx foi encontrada "
-        "após Localizar."
-    )
-
-    log(
-        f"Páginas abertas: "
-        f"{len(page.context.pages)}"
-    )
-
-    for i, pagina in enumerate(
-        page.context.pages
-    ):
-
-        try:
-
-            log(
-                f"Página {i}: {pagina.url}"
-            )
-
-        except Exception:
-            pass
-
-    raise Exception(
-        f"A solicitação {solicitacao} "
-        "não abriu após a pesquisa."
-    )
-
-
-# ============================================================
-# ABRIR SOLICITAÇÃO
-# ============================================================
-
-def abrir_solicitacao(page):
-
-    log(
-        "============================================"
-    )
-
-    log(
-        "ETAPA 4 - CONFIRMANDO SOLICITAÇÃO"
-    )
-
-    log(
-        "============================================"
-    )
-
-    if "/Portal/Solicitacao.aspx" not in page.url:
-
-        raise Exception(
-            "A página atual não é Solicitação.aspx."
+    while time.time() - inicio < 30:
+        campo_senha = localizar_primeiro_visivel(
+            page,
+            SELETORES_SENHA_LOGIN,
         )
 
+        if campo_senha is not None:
+            break
+
+        time.sleep(0.5)
+
+    if campo_senha is None:
+        log(
+            "Campo de senha não encontrado para login automático."
+        )
+        return False
+
+    try:
+        campo_senha.fill(senha)
+        log("Senha preenchida automaticamente.")
+    except Exception as erro:
+        log(
+            f"Erro preenchendo senha: {erro}"
+        )
+        return False
+
+    botao_entrar = None
+    inicio = time.time()
+
+    while time.time() - inicio < 20:
+        botao_entrar = localizar_primeiro_visivel(
+            page,
+            SELETORES_ENTRAR_LOGIN,
+        )
+
+        if botao_entrar is not None:
+            break
+
+        time.sleep(0.5)
+
+    try:
+        if botao_entrar is not None:
+            botao_entrar.click()
+            log("Botão 'Entrar' clicado automaticamente.")
+        else:
+            campo_senha.press("Enter")
+            log("Login enviado pela tecla Enter.")
+
+    except Exception as erro:
+        log(
+            f"Erro acionando login automático: {erro}"
+        )
+        try:
+            campo_senha.press("Enter")
+            log(
+                "Tentativa alternativa de login pela tecla Enter."
+            )
+        except Exception:
+            return False
+
+    inicio = time.time()
+
+    while time.time() - inicio < 40:
+        if login_confirmado(page):
+            log("")
+            log("========================================")
+            log("LOGIN AUTOMÁTICO CONCLUÍDO")
+            log("========================================")
+            return True
+
+        time.sleep(0.5)
+
     log(
-        "ETAPA 4 CONCLUÍDA"
+        "Login automático não foi confirmado dentro do prazo. "
+        "Continuando em modo manual."
+    )
+
+    return False
+
+
+def aguardar_login(
+    page,
+    email="",
+    senha="",
+    timeout_segundos=300,
+):
+
+    log("")
+    log("========================================")
+    log("AGUARDANDO AUTENTICAÇÃO DO PROMOB")
+    log("========================================")
+    log("")
+
+    credenciais_disponiveis = bool(
+        str(email or "").strip()
+        and str(senha or "")
     )
 
     log(
-        "SOLICITAÇÃO ABERTA"
+        "Login automático: "
+        + (
+            "DISPONÍVEL"
+            if credenciais_disponiveis
+            else "NÃO DISPONÍVEL - LOGIN MANUAL"
+        )
     )
 
+    inicio = time.time()
+    ultimo_url = ""
+    tentativa_automatica_realizada = False
+
+    while True:
+        if time.time() - inicio > timeout_segundos:
+            raise RuntimeError(
+                "Tempo limite de autenticação excedido."
+            )
+
+        try:
+            url_atual = page.url
+        except Exception:
+            url_atual = ""
+
+        if url_atual != ultimo_url:
+            log(
+                f"URL atual: {url_atual}"
+            )
+            ultimo_url = url_atual
+
+        if login_confirmado(page):
+            log("")
+            log("========================================")
+            log("AUTENTICAÇÃO CONCLUÍDA")
+            log("========================================")
+            return
+
+        if (
+            credenciais_disponiveis
+            and not tentativa_automatica_realizada
+            and tela_login_detectada(page)
+        ):
+            tentativa_automatica_realizada = True
+
+            if tentar_login_automatico(
+                page,
+                email,
+                senha,
+            ):
+                return
+
+            log("")
+            log(
+                "Não foi possível concluir o login automático. "
+                "Aguardando login manual no navegador."
+            )
+
+        time.sleep(1)
+
+
+
+# ================================================================
+# ACESSAR MINHA GRID
+# ================================================================
+
+def acessar_minha_grid(
+    page,
+    guid=None,
+):
+
+    log("")
+    log("============================================")
+    log("ACESSANDO MINHA GRID")
+    log("============================================")
+
+    # ============================================================
+    # O E-DESK NÃO DEVE RECEBER A GRID SOMENTE POR GOTO().
+    #
+    # Pela exploração do PortalAtendente, "Minha Grid" é um
+    # atalho JavaScript/ASP.NET. O clique no atalho é o que
+    # prepara o estado da sessão e então navega para
+    # ListaSolicitacao.aspx.
+    #
+    # É exatamente esse fluxo que usamos aqui.
+    # ============================================================
+
+    url_atual = page.url or ""
+
+    # ------------------------------------------------------------
+    # Se já estamos na Grid, não precisamos clicar novamente.
+    # ------------------------------------------------------------
+
+    if "ListaSolicitacao.aspx" in url_atual:
+
+        log(
+            "Página atual já é a Minha Grid."
+        )
+
+    else:
+
+        # --------------------------------------------------------
+        # Procurar o atalho REAL "Minha Grid".
+        # --------------------------------------------------------
+
+        seletor_minha_grid = "#cph1_lblTitB2"
+
+        try:
+
+            atalho = page.locator(
+                seletor_minha_grid
+            ).first
+
+            quantidade = page.locator(
+                seletor_minha_grid
+            ).count()
+
+            log(
+                f"Atalho 'Minha Grid' encontrado: {quantidade}"
+            )
+
+        except Exception as erro:
+
+            raise RuntimeError(
+                "Não foi possível localizar o atalho 'Minha Grid': "
+                f"{erro}"
+            )
+
+        if quantidade == 0:
+
+            raise RuntimeError(
+                "O PortalAtendente foi aberto, mas o atalho "
+                "'Minha Grid' não foi encontrado."
+            )
+
+        try:
+
+            atalho.wait_for(
+                state="visible",
+                timeout=15000,
+            )
+
+        except Exception as erro:
+
+            raise RuntimeError(
+                "O atalho 'Minha Grid' não ficou visível: "
+                f"{erro}"
+            )
+
+        paginas_antes = set(
+            id(pagina)
+            for pagina in page.context.pages
+        )
+
+        log(
+            "Clicando no atalho real 'Minha Grid'..."
+        )
+
+        clicou = False
+
+        # --------------------------------------------------------
+        # TENTATIVA 1: clicar no próprio span.
+        # --------------------------------------------------------
+
+        try:
+
+            atalho.click(
+                timeout=10000,
+            )
+
+            clicou = True
+
+            log(
+                "Clique no span 'Minha Grid' executado."
+            )
+
+        except Exception as erro:
+
+            log(
+                f"Aviso no clique do span: {erro}"
+            )
+
+        # --------------------------------------------------------
+        # TENTATIVA 2: clicar no DIV pai.
+        # A exploração mostrou que o elemento visual é um
+        # div.TitAtalhoPortalSolicitante.
+        # --------------------------------------------------------
+
+        if not clicou:
+
+            try:
+
+                pai = atalho.locator(
+                    "xpath=.."
+                ).first
+
+                pai.wait_for(
+                    state="visible",
+                    timeout=5000,
+                )
+
+                pai.click(
+                    timeout=10000,
+                    force=True,
+                )
+
+                clicou = True
+
+                log(
+                    "Clique no DIV pai de 'Minha Grid' executado."
+                )
+
+            except Exception as erro:
+
+                log(
+                    f"Aviso no clique do DIV pai: {erro}"
+                )
+
+        if not clicou:
+
+            raise RuntimeError(
+                "Não foi possível clicar no atalho 'Minha Grid'."
+            )
+
+        # --------------------------------------------------------
+        # Aguardar a navegação provocada pelo clique.
+        # --------------------------------------------------------
+
+        inicio = time.time()
+        pagina_grid = None
+
+        while time.time() - inicio < 30:
+
+            try:
+
+                if not page.is_closed():
+
+                    if "ListaSolicitacao.aspx" in (page.url or ""):
+
+                        pagina_grid = page
+                        break
+
+            except Exception:
+
+                pass
+
+            # Caso o E-Desk abra a Grid em outra página.
+            for pagina in list(page.context.pages):
+
+                try:
+
+                    if pagina.is_closed():
+                        continue
+
+                    if (
+                        id(pagina) not in paginas_antes
+                        and "ListaSolicitacao.aspx" in (pagina.url or "")
+                    ):
+
+                        pagina_grid = pagina
+                        break
+
+                except Exception:
+
+                    continue
+
+            if pagina_grid is not None:
+                break
+
+            time.sleep(0.2)
+
+        if pagina_grid is None:
+
+            # ----------------------------------------------------
+            # Último fallback: verificar novamente a URL atual.
+            # Não construímos parâmetros de solicitação/cmd.
+            # ----------------------------------------------------
+
+            if "ListaSolicitacao.aspx" in (page.url or ""):
+
+                pagina_grid = page
+
+            else:
+
+                raise RuntimeError(
+                    "O clique em 'Minha Grid' foi executado, "
+                    "mas o E-Desk não navegou para ListaSolicitacao.aspx."
+                )
+
+        page = pagina_grid
+
+    # ============================================================
+    # GRID CARREGADA PELO FLUXO OFICIAL DO PORTAL
+    # ============================================================
+
+    try:
+
+        page.bring_to_front()
+
+    except Exception:
+
+        pass
+
     log(
-        f"URL: {page.url}"
+        f"URL após acesso à Minha Grid: {page.url}"
+    )
+
+    if "ListaSolicitacao.aspx" not in (page.url or ""):
+
+        raise RuntimeError(
+            "A página atual não é a Minha Grid após o acesso. "
+            f"URL: {page.url}"
+        )
+
+    # ------------------------------------------------------------
+    # Dar tempo aos controles Telerik/ASP.NET.
+    # ------------------------------------------------------------
+
+    page.wait_for_timeout(
+        3000
+    )
+
+    # ------------------------------------------------------------
+    # Garantir que o container do RadGrid existe.
+    # ------------------------------------------------------------
+
+    seletor_tabela = (
+        "#ctl00_cph1_hgrSol_ctl00"
+    )
+
+    try:
+
+        page.wait_for_selector(
+            seletor_tabela,
+            state="visible",
+            timeout=30000,
+        )
+
+    except Exception as erro:
+
+        raise RuntimeError(
+            "A Minha Grid abriu, mas a tabela principal "
+            "não ficou visível: "
+            f"{erro}"
+        )
+
+    # ------------------------------------------------------------
+    # Não forçar um número mínimo de linhas aqui.
+    # A função localizar_solicitacao fará a leitura do DOM
+    # e dos mecanismos do Telerik.
+    # ------------------------------------------------------------
+
+    try:
+
+        quantidade_rg = page.locator(
+            "#ctl00_cph1_hgrSol_ctl00 tr.rgRow, "
+            "#ctl00_cph1_hgrSol_ctl00 tr.rgAltRow"
+        ).count()
+
+    except Exception:
+
+        quantidade_rg = 0
+
+    log(
+        f"Linhas rgRow/rgAltRow após clique: {quantidade_rg}"
+    )
+
+    log("")
+    log("============================================")
+    log("MINHA GRID ABERTA COM SUCESSO")
+    log("============================================")
+    log(
+        f"URL FINAL DA GRID: {page.url}"
     )
 
     return page
 
 
-# ============================================================
-# ABRIR COMENTÁRIOS
-# ============================================================
+# ================================================================
+# MONITOR DE REQUESTS
+#
+# Deve ser instalado ANTES de acessar a Grid.
+# ================================================================
 
-def abrir_comentarios(page):
+def instalar_monitor_requests(page):
 
-    log(
-        "============================================"
-    )
-
-    log(
-        "ETAPA 5 - ABRINDO COMENTÁRIOS"
-    )
-
-    log(
-        "============================================"
-    )
-
-    log(
-        f"URL atual: {page.url}"
-    )
-
-    if "/Portal/Solicitacao.aspx" not in page.url:
-
-        raise Exception(
-            "A página atual não é Solicicitacao.aspx."
-        )
-
-    botao = page.locator(
-        "#cph1_BtCom"
-    )
-
-    quantidade = botao.count()
-
-    log(
-        f"#cph1_BtCom encontrados: {quantidade}"
-    )
-
-    if quantidade == 0:
-
-        raise Exception(
-            "Botão #cph1_BtCom não encontrado."
-        )
-
-    botao_visivel = None
-
-    for i in range(quantidade):
-
-        elemento = botao.nth(i)
+    def monitor_request(request):
 
         try:
+            url = request.url
 
-            if elemento.is_visible():
+            paginas_interesse = [
+                "ListaSolicitacao.aspx",
+                "Solicitacao.aspx",
+                "Trabalho.aspx",
+                "TrabalhoRetroativo.aspx",
+            ]
 
-                botao_visivel = elemento
+            if not any(
+                pagina in url
+                for pagina in paginas_interesse
+            ):
+                return
 
-                log(
-                    f"Botão Comentários visível "
-                    f"encontrado no índice {i}."
-                )
+            log("")
+            log(">>> REQUEST")
+            log(f"MÉTODO: {request.method}")
+            log(f"URL: {url}")
 
-                break
+            try:
+                post_data = request.post_data
+
+                if post_data:
+                    log("POST DATA:")
+                    log(post_data)
+            except Exception:
+                pass
 
         except Exception:
             pass
 
-    if botao_visivel is None:
+    page.on(
+        "request",
+        monitor_request,
+    )
 
-        raise Exception(
-            "O botão #cph1_BtCom existe, "
-            "mas não está visível."
-        )
+
+# ================================================================
+# CRIAR NOVA ABA DA GRID
+#
+# Usa o MESMO CONTEXTO, MESMA SESSÃO e MESMO GUID.
+# Não executa novo login.
+# ================================================================
+
+def criar_nova_pagina_grid(
+    context,
+    guid_sessao,
+):
+
+    log("")
+    log("============================================================")
+    log("CRIANDO NOVA ABA DA GRID")
+    log("============================================================")
+
+    pagina_grid = context.new_page()
 
     try:
-
-        log(
-            f"TAG: "
-            f"{botao_visivel.evaluate('(e) => e.tagName')}"
-        )
-
-        log(
-            f"TYPE: "
-            f"{botao_visivel.get_attribute('type')}"
-        )
-
-        log(
-            f"NAME: "
-            f"{botao_visivel.get_attribute('name')}"
-        )
-
-        log(
-            f"VALUE: "
-            f"{botao_visivel.get_attribute('value')}"
-        )
-
+        pagina_grid.bring_to_front()
     except Exception:
         pass
 
-    log(
-        "Executando CLICK no submit Comentário..."
+    instalar_monitor_requests(
+        pagina_grid
     )
 
-    botao_visivel.scroll_into_view_if_needed()
-
-    botao_visivel.click(
-        force=True
+    acessar_minha_grid(
+        pagina_grid,
+        guid_sessao,
     )
-
-    log(
-        "CLICK NO SUBMIT EXECUTADO."
-    )
-
-    log(
-        "Aguardando processamento..."
-    )
-
-    time.sleep(3)
-
-    log(
-        f"URL após clique: {page.url}"
-    )
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "LOCALIZANDO FORMULÁRIO DE COMENTÁRIO"
-    )
-
-    frame_comentario = None
 
     try:
+        pagina_grid.wait_for_selector(
+            "#ctl00_cph1_hgrSol_ctl00",
+            state="attached",
+            timeout=30000,
+        )
+    except Exception as erro:
+        raise RuntimeError(
+            "A tabela de solicitações não foi encontrada "
+            f"na nova Grid: {erro}"
+        )
 
-        if page.locator(
-            "#popC_ddlTipCom"
-        ).count() > 0:
+    log("NOVA GRID CRIADA COM SUCESSO.")
+    log(f"URL: {pagina_grid.url}")
 
-            frame_comentario = page
+    return pagina_grid
 
-            log(
-                "Formulário encontrado na página principal."
-            )
 
+def eh_grid_url(url):
+
+    return "ListaSolicitacao.aspx" in (url or "")
+
+
+def fechar_pagina_sessao_antiga(
+    pagina_antiga,
+    pagina_grid,
+):
+
+    if pagina_antiga is None:
+        return
+
+    try:
+        if pagina_antiga.is_closed():
+            return
+    except Exception:
+        return
+
+    if pagina_antiga == pagina_grid:
+        return
+
+    log("")
+    log("============================================")
+    log("FECHANDO PÁGINA ANTIGA DA SESSÃO")
+    log("============================================")
+    log(f"URL antiga: {pagina_antiga.url}")
+
+    try:
+        pagina_antiga.close()
+    except Exception as erro:
+        log(
+            f"Aviso ao fechar página antiga: {erro}"
+        )
+
+    try:
+        pagina_grid.bring_to_front()
     except Exception:
         pass
 
-    if frame_comentario is None:
 
-        log(
-            f"Frames encontrados: "
-            f"{len(page.frames)}"
+# ================================================================
+# LOCALIZAR SOLICITAÇÃO NA GRID
+# ================================================================
+
+def localizar_solicitacao(
+    page,
+    numero_solicitacao,
+):
+
+    numero_solicitacao = str(
+        numero_solicitacao
+    ).strip()
+
+    log("")
+    log("============================================")
+    log("LOCALIZANDO SOLICITAÇÃO NA GRID")
+    log("============================================")
+    log(
+        f"Solicitação procurada: {numero_solicitacao}"
+    )
+
+    seletor_tabela = (
+        "#ctl00_cph1_hgrSol_ctl00"
+    )
+
+    # ============================================================
+    # 1. GARANTIR QUE O RADGRID EXISTE
+    # ============================================================
+
+    tabela = page.locator(
+        seletor_tabela
+    )
+
+    try:
+
+        tabela.wait_for(
+            state="visible",
+            timeout=30000,
         )
 
-        for indice, frame in enumerate(
-            page.frames
-        ):
+    except Exception as erro:
 
-            try:
-
-                log(
-                    f"Frame {indice}: "
-                    f"name={frame.name!r} "
-                    f"url={frame.url!r}"
-                )
-
-                quantidade_tipo = frame.locator(
-                    "#popC_ddlTipCom"
-                ).count()
-
-                log(
-                    f"Frame {indice} -> "
-                    f"#popC_ddlTipCom: "
-                    f"{quantidade_tipo}"
-                )
-
-                if quantidade_tipo > 0:
-
-                    frame_comentario = frame
-
-                    log(
-                        "FORMULÁRIO DE COMENTÁRIO "
-                        "ENCONTRADO NO FRAME."
-                    )
-
-                    break
-
-            except Exception as e:
-
-                log(
-                    f"Erro verificando frame "
-                    f"{indice}: {e}"
-                )
-
-    if frame_comentario is None:
-
-        log(
-            "Nenhum formulário de comentário "
-            "foi encontrado."
+        raise RuntimeError(
+            "A tabela principal da Minha Grid não ficou visível: "
+            f"{erro}"
         )
 
-        raise Exception(
-            "Formulário de comentário não encontrado "
-            "em nenhum frame."
-        )
+    # ============================================================
+    # 2. PRIMEIRA TENTATIVA:
+    #    LINHAS DOM DO RADGRID
+    # ============================================================
 
-    seletores = [
+    linhas = page.locator(
+        seletor_tabela
+        + " tr.rgRow, "
+        + seletor_tabela
+        + " tr.rgAltRow"
+    )
 
-        "#popC_BtCom",
-        "#popC_ddlTipCom",
-        "#ctl00_popC_rdeCom",
-        "#ctl00_popC_rdeCom_contentIframe",
-        "#ctl00_popC_rdeComContentHiddenTextarea",
-        "#popC_BtAtu",
+    try:
 
-    ]
+        quantidade = linhas.count()
 
-    for seletor in seletores:
+    except Exception:
+
+        quantidade = 0
+
+    log(
+        "Linhas rgRow/rgAltRow no DOM: "
+        f"{quantidade}"
+    )
+
+    for i in range(
+        quantidade
+    ):
+
+        linha = linhas.nth(i)
 
         try:
 
-            quantidade = frame_comentario.locator(
-                seletor
-            ).count()
+            texto = linha.inner_text(
+                timeout=1000
+            ).strip()
 
-            log(
-                f"{seletor} -> {quantidade}"
+            if (
+                texto == numero_solicitacao
+                or numero_solicitacao in texto
+            ):
+
+                log(
+                    f"Solicitação {numero_solicitacao} "
+                    f"encontrada no DOM na linha {i}."
+                )
+
+                return [linha]
+
+            celulas = linha.locator(
+                "td"
             )
 
-        except Exception as e:
+            if celulas.count() >= 2:
+
+                numero = celulas.nth(
+                    1
+                ).inner_text(
+                    timeout=1000
+                ).strip()
+
+                if numero == numero_solicitacao:
+
+                    log(
+                        f"Solicitação {numero_solicitacao} "
+                        f"encontrada na coluna padrão da linha {i}."
+                    )
+
+                    return [linha]
+
+        except Exception:
+
+            continue
+
+    # ============================================================
+    # 3. AGUARDAR OS REGISTROS REAIS DO TELERIK
+    #
+    # O RadGrid pode existir no DOM antes de o Telerik terminar
+    # de preencher os dataItems. Não usamos somente um sleep fixo.
+    # Esperamos o próprio objeto do Telerik possuir registros.
+    # ============================================================
+
+    try:
+
+        page.wait_for_function(
+            """
+            () => {
+
+                if (!window.$find) {
+                    return false;
+                }
+
+                const grid = window.$find(
+                    \"ctl00_cph1_hgrSol\"
+                );
+
+                if (!grid || !grid.get_masterTableView) {
+                    return false;
+                }
+
+                const view = grid.get_masterTableView();
+
+                if (!view || !view.get_dataItems) {
+                    return false;
+                }
+
+                return view.get_dataItems().length > 0;
+            }
+            """,
+            timeout=30000,
+        )
+
+        log(
+            "Telerik RadGrid terminou de carregar os registros."
+        )
+
+    except Exception as erro:
+
+        log(
+            "Aviso aguardando dataItems do Telerik: "
+            f"{erro}"
+        )
+
+    # ============================================================
+    # 4. SEGUNDA TENTATIVA:
+    #    RADGRID CLIENT-SIDE DO TELERIK
+    #
+    # O log atual mostra exatamente o caso em que:
+    #   tabela existe
+    #   tr existe
+    #   rgRow/rgAltRow = 0
+    #
+    # Nesse cenário os registros podem estar somente no objeto
+    # JavaScript do RadGrid.
+    # ============================================================
+
+    log("")
+    log(
+        "Consultando os dataItems internos do Telerik RadGrid..."
+    )
+
+    try:
+
+        resultado = page.evaluate(
+            """
+            (solicitacao) => {
+
+                const retorno = {
+                    gridEncontrado: false,
+                    masterTableView: false,
+                    quantidade: 0,
+                    correspondencia: null,
+                    amostras: []
+                };
+
+                try {
+
+                    if (!window.$find) {
+                        return retorno;
+                    }
+
+                    const grid = window.$find(
+                        "ctl00_cph1_hgrSol"
+                    );
+
+                    if (!grid) {
+                        return retorno;
+                    }
+
+                    retorno.gridEncontrado = true;
+
+                    const view = grid.get_masterTableView
+                        ? grid.get_masterTableView()
+                        : null;
+
+                    if (!view) {
+                        return retorno;
+                    }
+
+                    retorno.masterTableView = true;
+
+                    const itens = view.get_dataItems
+                        ? view.get_dataItems()
+                        : [];
+
+                    retorno.quantidade = itens.length;
+
+                    const nomes = [
+                        "ID",
+                        "Id",
+                        "id",
+                        "Solicitacao",
+                        "solicitacao",
+                        "Numero",
+                        "numero",
+                        "IdSolicitacao",
+                        "IDSolicitacao",
+                        "CodSolicitacao",
+                        "CodigoSolicitacao"
+                    ];
+
+                    const alvo = String(
+                        solicitacao || ""
+                    ).trim();
+
+                    for (let i = 0; i < itens.length; i++) {
+
+                        const item = itens[i];
+
+                        let elemento = null;
+                        let texto = "";
+                        let rowId = "";
+                        let itemIndex = null;
+                        const valores = {};
+
+                        try {
+                            elemento = item.get_element();
+                        } catch (_) {}
+
+                        try {
+                            if (elemento) {
+                                texto = String(
+                                    elemento.innerText || ""
+                                ).trim();
+                                rowId = String(
+                                    elemento.id || ""
+                                );
+                            }
+                        } catch (_) {}
+
+                        try {
+                            if (item.get_itemIndex) {
+                                itemIndex = item.get_itemIndex();
+                            }
+                        } catch (_) {}
+
+                        for (const nome of nomes) {
+
+                            try {
+
+                                if (!item.getDataKeyValue) {
+                                    continue;
+                                }
+
+                                const valor =
+                                    item.getDataKeyValue(nome);
+
+                                if (
+                                    valor !== undefined &&
+                                    valor !== null &&
+                                    String(valor).trim() !== ""
+                                ) {
+                                    valores[nome] = String(valor);
+                                }
+
+                            } catch (_) {}
+                        }
+
+                        if (retorno.amostras.length < 10) {
+                            retorno.amostras.push({
+                                indice: i,
+                                itemIndex: itemIndex,
+                                rowId: rowId,
+                                texto: texto,
+                                valores: valores
+                            });
+                        }
+
+                        let encontrou = false;
+
+                        if (
+                            alvo &&
+                            texto &&
+                            (
+                                texto === alvo ||
+                                texto.includes(alvo)
+                            )
+                        ) {
+                            encontrou = true;
+                        }
+
+                        if (!encontrou && alvo) {
+
+                            for (const chave of Object.keys(valores)) {
+
+                                if (
+                                    String(valores[chave]).trim() === alvo
+                                ) {
+                                    encontrou = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (encontrou) {
+
+                            retorno.correspondencia = {
+                                indice: i,
+                                itemIndex: itemIndex,
+                                rowId: rowId,
+                                texto: texto,
+                                valores: valores
+                            };
+
+                            break;
+                        }
+                    }
+
+                } catch (erro) {
+
+                    retorno.erro = String(erro);
+                }
+
+                return retorno;
+            }
+            """,
+            numero_solicitacao,
+        )
+
+        log(
+            "RadGrid encontrado: "
+            f"{resultado.get('gridEncontrado')}"
+        )
+
+        log(
+            "MasterTableView encontrado: "
+            f"{resultado.get('masterTableView')}"
+        )
+
+        log(
+            "Quantidade de dataItems: "
+            f"{resultado.get('quantidade', 0)}"
+        )
+
+        correspondencia = resultado.get(
+            "correspondencia"
+        )
+
+        if correspondencia:
+
+            row_id = str(
+                correspondencia.get(
+                    "rowId",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            texto = str(
+                correspondencia.get(
+                    "texto",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            item_index = correspondencia.get(
+                "itemIndex"
+            )
+
+            log("")
+            log(
+                "SOLICITAÇÃO ENCONTRADA PELO TELERIK"
+            )
+            log(
+                f"Índice do item: {item_index}"
+            )
+            log(
+                f"ID da linha: {row_id}"
+            )
+            log(
+                f"Texto da linha: {texto}"
+            )
+
+            if row_id:
+
+                linha = page.locator(
+                    f'tr[id="{row_id}"]'
+                ).first
+
+                try:
+
+                    linha.wait_for(
+                        state="attached",
+                        timeout=5000,
+                    )
+
+                    return [linha]
+
+                except Exception:
+
+                    pass
+
+                elemento = page.locator(
+                    f'[id="{row_id}"]'
+                ).first
+
+                try:
+
+                    elemento.wait_for(
+                        state="attached",
+                        timeout=5000,
+                    )
+
+                    return [elemento]
+
+                except Exception:
+
+                    pass
+
+        # ========================================================
+        # LOG DE AMOSTRAS SOMENTE QUANDO NÃO ENCONTROU
+        # ========================================================
+
+        for amostra in (
+            resultado.get("amostras", [])
+        ):
 
             log(
-                f"Erro verificando "
-                f"{seletor}: {e}"
+                "ITEM "
+                f"{amostra.get('indice')} | "
+                f"itemIndex={amostra.get('itemIndex')} | "
+                f"rowId={amostra.get('rowId')} | "
+                f"texto={str(amostra.get('texto', ''))[:300]}"
             )
+
+            valores = amostra.get(
+                "valores",
+                {}
+            )
+
+            if valores:
+
+                log(
+                    f"VALORES: {valores}"
+                )
+
+    except Exception as erro:
+
+        log(
+            f"Erro consultando os dataItems do Telerik: {erro}"
+        )
+
+    # ============================================================
+    # 5. ÚLTIMO FALLBACK:
+    #    QUALQUER TR COM O NÚMERO
+    # ============================================================
+
+    log("")
+    log(
+        "Tentando localizar a solicitação em qualquer linha da tabela..."
+    )
+
+    try:
+
+        todas_linhas = page.locator(
+            seletor_tabela
+            + " tr"
+        )
+
+        quantidade_total = todas_linhas.count()
+
+        log(
+            f"Total de linhas no fallback: {quantidade_total}"
+        )
+
+        for i in range(
+            quantidade_total
+        ):
+
+            linha = todas_linhas.nth(i)
+
+            try:
+
+                texto = linha.inner_text(
+                    timeout=1000
+                ).strip()
+
+                if numero_solicitacao in texto:
+
+                    log(
+                        f"Solicitação {numero_solicitacao} "
+                        f"encontrada por texto na linha {i}."
+                    )
+
+                    return [linha]
+
+            except Exception:
+
+                continue
+
+    except Exception as erro:
+
+        log(
+            f"Erro no fallback final: {erro}"
+        )
 
     log(
-        "FORMULÁRIO DE COMENTÁRIO LOCALIZADO."
+        f"Solicitação {numero_solicitacao} não encontrada na Grid."
     )
 
-    return frame_comentario
+    return []
 
 
-# ============================================================
-# NORMALIZAR IMAGEM BASE64
-# ============================================================
+# ================================================================
+# LOCALIZAR PÁGINA DE TRABALHO
+# ================================================================
 
-def normalizar_imagem_base64(
-    imagem_base64,
+def localizar_pagina_trabalho(context):
+
+    for pagina in list(context.pages):
+        try:
+            if pagina.is_closed():
+                continue
+
+            botao = pagina.locator("#cph1_BtCom")
+
+            if botao.count() > 0 and botao.first.is_visible(
+                timeout=500
+            ):
+                return pagina
+
+        except Exception:
+            continue
+
+    return None
+
+
+# ================================================================
+# ABRIR TRABALHO
+# ================================================================
+
+def abrir_trabalho(
+    page,
+    context,
+    candidatos,
+    id_trabalho,
 ):
 
-    if not imagem_base64:
-        return None
-
-    imagem = str(
-        imagem_base64
+    id_trabalho = str(
+        id_trabalho
     ).strip()
 
-    if not imagem:
-        return None
+    if not candidatos:
+        raise RuntimeError(
+            "Nenhuma linha candidata foi encontrada."
+        )
 
-    if imagem.startswith(
-        "data:image/"
-    ):
+    log("")
+    log("============================================")
+    log("LOCALIZANDO TRABALHO")
+    log("============================================")
+    log(f"ID Trabalho recebido: {id_trabalho}")
 
-        return imagem
+    linha = candidatos[0]
 
-    return (
-        "data:image/png;base64,"
-        + imagem
-    )
+    paginas_antes = set(context.pages)
+
+    try:
+        linha.scroll_into_view_if_needed()
+        linha.dblclick(delay=100)
+        log("Duplo clique executado.")
+    except Exception as erro:
+        raise RuntimeError(
+            f"Não foi possível abrir o trabalho: {erro}"
+        )
+
+    pagina_trabalho = None
+    inicio = time.time()
+
+    while time.time() - inicio < 20:
+
+        pagina_trabalho = localizar_pagina_trabalho(
+            context
+        )
+
+        if pagina_trabalho is not None:
+            break
+
+        # Procurar também apenas páginas novas.
+        for pagina in list(context.pages):
+            try:
+                if pagina.is_closed():
+                    continue
+
+                if id(pagina) in {id(p) for p in paginas_antes}:
+                    continue
+
+                if "Solicitacao.aspx" in pagina.url:
+                    pagina.bring_to_front()
+                    page.wait_for_timeout(1000)
+                    candidato = localizar_pagina_trabalho(context)
+                    if candidato is not None:
+                        pagina_trabalho = candidato
+                        break
+            except Exception:
+                continue
+
+        if pagina_trabalho is not None:
+            break
+
+        time.sleep(0.5)
+
+    if pagina_trabalho is None:
+        raise RuntimeError(
+            "O trabalho foi aberto, mas a tela de trabalho "
+            "não foi localizada."
+        )
+
+    try:
+        pagina_trabalho.bring_to_front()
+    except Exception:
+        pass
+
+    log("")
+    log("============================================================")
+    log("TRABALHO LOCALIZADO COM SUCESSO")
+    log("============================================================")
+    log(f"URL: {pagina_trabalho.url}")
+
+    return pagina_trabalho
 
 
-# ============================================================
-# CADASTRAR COMENTÁRIO
-#
-# IMPORTANTE:
-# NÃO SALVA.
-# ============================================================
+# ================================================================
+# PREENCHER COMENTÁRIO
+# ================================================================
 
-def cadastrar_comentario(
-    page,
+def preencher_comentario(
+    frame,
     tipo,
     texto,
-    enviar,
     imagem_base64=None,
 ):
 
-    log(
-        "============================================"
-    )
+    log("")
+    log("============================================")
+    log("PREENCHENDO COMENTÁRIO")
+    log("============================================")
 
     log(
-        "ETAPA 6 - PREENCHENDO COMENTÁRIO"
+        f"Tipo recebido: {tipo}"
     )
 
     log(
-        "============================================"
+        f"Texto recebido: {len(texto)} caracteres"
     )
 
-    tipo_comentario = (
-        "Interno"
-        if tipo is None
-        else str(tipo).strip()
-    )
-
-    texto_comentario = (
-        ""
-        if texto is None
-        else str(texto)
-    )
-
-    imagem_data_url = (
-        normalizar_imagem_base64(
-            imagem_base64
+    log(
+        "Imagem recebida: "
+        + (
+            "SIM"
+            if imagem_base64
+            else "NÃO"
         )
     )
 
-    log(
-        f"TIPO RECEBIDO DO JSON: "
-        f"{tipo_comentario!r}"
-    )
+    if imagem_base64:
 
-    log(
-        f"DESCRITIVO RECEBIDO DO JSON: "
-        f"{texto_comentario!r}"
-    )
+        log(
+            f"Tamanho Base64 recebido: "
+            f"{len(imagem_base64)} caracteres"
+        )
 
-    log(
-        f"IMAGEM RECEBIDA: "
-        f"{'SIM' if imagem_data_url else 'NÃO'}"
-    )
+    # ============================================================
+    # 1. SELECIONAR TIPO
+    # ============================================================
 
-    log(
-        f"ENVIAR RECEBIDO DO JSON: "
-        f"{enviar}"
-    )
-
-    # ========================================================
-    # 1. TIPO
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "1. LOCALIZANDO TIPO DO COMENTÁRIO"
-    )
-
-    seletor_tipo = page.locator(
+    select = frame.locator(
         "#popC_ddlTipCom"
     )
 
-    quantidade_tipo = (
-        seletor_tipo.count()
-    )
-
-    log(
-        f"#popC_ddlTipCom encontrados: "
-        f"{quantidade_tipo}"
-    )
-
-    if quantidade_tipo == 0:
-
-        raise Exception(
-            "Campo #popC_ddlTipCom não encontrado."
-        )
-
-    tipo_elemento = seletor_tipo.first
-
-    tipo_elemento.wait_for(
+    select.wait_for(
         state="visible",
-        timeout=15000,
+        timeout=10000,
     )
 
-    opcoes = tipo_elemento.locator(
-        "option"
-    )
-
-    quantidade_opcoes = (
-        opcoes.count()
-    )
-
-    tipo_normalizado = (
-        tipo_comentario.lower()
-    )
-
-    valor_tipo = None
-    texto_tipo = None
-
-    for i in range(
-        quantidade_opcoes
-    ):
-
-        opcao = opcoes.nth(i)
-
-        texto_opcao = (
-            opcao.inner_text()
-            .strip()
-        )
-
-        valor_opcao = (
-            opcao.get_attribute(
-                "value"
-            )
-        )
-
-        log(
-            f"Opção {i}: "
-            f"text={texto_opcao!r} "
-            f"value={valor_opcao!r}"
-        )
-
-        if (
-            texto_opcao.lower()
-            == tipo_normalizado
-        ):
-
-            valor_tipo = valor_opcao
-            texto_tipo = texto_opcao
-            break
-
-    if valor_tipo is None:
-
-        raise Exception(
-            f"Tipo de comentário "
-            f"'{tipo_comentario}' não encontrado."
-        )
-
-    log(
-        f"Selecionando tipo: "
-        f"{texto_tipo!r}"
-    )
-
-    tipo_elemento.select_option(
-        value=valor_tipo
-    )
-
-    tipo_elemento.dispatch_event(
-        "change"
-    )
-
-    time.sleep(0.5)
-
-    tipo_atual = (
-        tipo_elemento
-        .locator("option:checked")
-        .inner_text()
-        .strip()
-    )
-
-    valor_atual = (
-        tipo_elemento.input_value()
+    select.select_option(
+        tipo
     )
 
     log(
-        f"TIPO SELECIONADO: "
-        f"{tipo_atual!r}"
+        "Tipo de comentário selecionado."
     )
+
+    # ============================================================
+    # POSTBACK AJAX
+    # ============================================================
 
     log(
-        f"VALOR DO TIPO: "
-        f"{valor_atual!r}"
+        "Aguardando atualização do E-Desk..."
     )
 
-    if (
-        tipo_atual.lower()
-        != tipo_normalizado
-    ):
+    time.sleep(2)
 
-        raise Exception(
-            "O tipo selecionado no E-Desk "
-            "não corresponde ao tipo recebido."
-        )
+    # ============================================================
+    # 2. AGUARDAR EDITOR
+    # ============================================================
 
-    log(
-        "TIPO CONFIRMADO."
-    )
-
-    # ========================================================
-    # 2. LOCALIZAR RAD EDITOR
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "2. LOCALIZANDO RAD EDITOR TELERIK"
-    )
-
-    editor_id = (
-        "ctl00_popC_rdeCom"
-    )
-
-    iframe_seletor = (
+    editor_iframe = frame.locator(
         "#ctl00_popC_rdeCom_contentIframe"
     )
 
-    iframe = page.locator(
-        iframe_seletor
-    )
-
-    quantidade_iframe = (
-        iframe.count()
-    )
-
-    log(
-        f"{iframe_seletor} encontrados: "
-        f"{quantidade_iframe}"
-    )
-
-    if quantidade_iframe == 0:
-
-        raise Exception(
-            "Iframe do editor de comentário "
-            "não encontrado."
-        )
-
-    iframe.first.wait_for(
-        state="attached",
-        timeout=15000,
-    )
-
-    frame = page.frame_locator(
-        iframe_seletor
-    )
-
-    body = frame.locator(
-        "body"
-    )
-
-    body.wait_for(
+    editor_iframe.wait_for(
         state="visible",
         timeout=15000,
     )
 
     log(
-        "EDITOR TELERIK ENCONTRADO."
+        "Iframe do Telerik encontrado."
     )
 
-    # ========================================================
-    # 3. VERIFICAR OBJETO JAVASCRIPT DO RAD EDITOR
-    # ========================================================
+    # ============================================================
+    # 3. PREPARAR TEXTO
+    # ============================================================
+
+    texto_html = html.escape(
+        texto or ""
+    )
+
+    texto_html = (
+        texto_html
+        .replace(
+            "\r\n",
+            "<br>",
+        )
+        .replace(
+            "\n",
+            "<br>",
+        )
+        .replace(
+            "\r",
+            "<br>",
+        )
+    )
+
+    # ============================================================
+    # 4. PREPARAR IMAGEM
+    # ============================================================
+
+    imagem_html = ""
+
+    if imagem_base64:
+
+        try:
+
+            imagem = (
+                imagem_base64
+                .strip()
+            )
+
+            if imagem.startswith(
+                "data:"
+            ):
+
+                if "," not in imagem:
+
+                    raise RuntimeError(
+                        "Imagem Base64 possui prefixo data: "
+                        "mas está sem os dados."
+                    )
+
+                prefixo, dados = (
+                    imagem.split(
+                        ",",
+                        1,
+                    )
+                )
+
+                mime = (
+                    prefixo
+                    .split(";")[0]
+                    .replace(
+                        "data:",
+                        "",
+                    )
+                    .strip()
+                )
+
+                if not mime:
+
+                    mime = "image/png"
+
+            else:
+
+                dados = imagem
+
+                mime = "image/png"
+
+            dados = (
+                dados
+                .replace(
+                    "\r",
+                    "",
+                )
+                .replace(
+                    "\n",
+                    "",
+                )
+                .replace(
+                    " ",
+                    "",
+                )
+            )
+
+            imagem_html = (
+                "<br>"
+                f'<img '
+                f'src="data:{mime};base64,{dados}" '
+                f'alt="" '
+                f'style="max-width:100%;height:auto;" '
+                f'>'
+            )
+
+            log(
+                "Imagem preparada para o RadEditor."
+            )
+
+            log(
+                f"Tipo MIME: {mime}"
+            )
+
+            log(
+                f"Tamanho dos dados da imagem: "
+                f"{len(dados)} caracteres"
+            )
+
+        except Exception as erro:
+
+            log(
+                f"ERRO preparando imagem: {erro}"
+            )
+
+            raise
+
+    # ============================================================
+    # 5. HTML FINAL
+    #
+    # PRIMEIRO A IMAGEM
+    # DEPOIS O TEXTO
+    # ============================================================
+
+    html_final = (
+        imagem_html
+        + "<br>"
+        + texto_html
+    )
 
     log(
-        "--------------------------------------------"
+        f"HTML final preparado: "
+        f"{len(html_final)} caracteres"
     )
 
     log(
-        "3. VERIFICANDO OBJETO JAVASCRIPT DO RAD EDITOR"
+        f"HTML possui imagem: "
+        f"{'<img' in html_final.lower()}"
     )
 
-    editor_info = page.evaluate(
-        """(editorId) => {
+    # ============================================================
+    # 6. RADEDITOR
+    # ============================================================
 
-            const resultado = {
-                encontrado: false,
-                possuiSetHtml: false,
-                possuiGetHtml: false
-            };
+    resultado = frame.evaluate(
+        """
+        (html) => {
 
             try {
 
-                if (typeof $find !== "function") {
-                    return resultado;
-                }
-
-                const editor = $find(editorId);
-
-                if (!editor) {
-                    return resultado;
-                }
-
-                resultado.encontrado = true;
-
-                resultado.possuiSetHtml =
-                    typeof editor.set_html === "function";
-
-                resultado.possuiGetHtml =
-                    typeof editor.get_html === "function";
-
-                return resultado;
-
-            } catch (e) {
-
-                return {
-                    encontrado: false,
-                    possuiSetHtml: false,
-                    possuiGetHtml: false,
-                    erro: String(e)
-                };
-
-            }
-
-        }""",
-        editor_id,
-    )
-
-    log(
-        f"RadEditor encontrado: "
-        f"{editor_info.get('encontrado')}"
-    )
-
-    log(
-        f"RadEditor possui set_html: "
-        f"{editor_info.get('possuiSetHtml')}"
-    )
-
-    log(
-        f"RadEditor possui get_html: "
-        f"{editor_info.get('possuiGetHtml')}"
-    )
-
-    if not editor_info.get(
-        "encontrado"
-    ):
-
-        raise Exception(
-            "O objeto JavaScript do RadEditor "
-            "não foi encontrado."
-        )
-
-    if not editor_info.get(
-        "possuiSetHtml"
-    ):
-
-        raise Exception(
-            "O RadEditor foi encontrado, "
-            "mas não possui o método set_html."
-        )
-
-    # ========================================================
-    # 4. MONTAR HTML
-    #
-    # ORDEM:
-    #
-    # IMAGEM
-    # ↓
-    # DESCRIÇÃO
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "4. MONTANDO CONTEÚDO DO COMENTÁRIO"
-    )
-
-    html_conteudo = ""
-
-    if imagem_data_url:
-
-        html_conteudo += (
-            '<img '
-            'src="'
-            + imagem_data_url
-            + '" '
-            'alt="Imagem do comentário" '
-            'style="'
-            'width:500px;'
-            'max-width:500px;'
-            'height:auto;'
-            'display:block;'
-            'margin:0 0 10px 0;'
-            '"'
-            '>'
-        )
-
-        log(
-            "IMAGEM SERÁ INSERIDA PRIMEIRO."
-        )
-
-        log(
-            "TAMANHO MÁXIMO DA IMAGEM: 500px."
-        )
-
-    if texto_comentario:
-
-        texto_html = (
-            texto_comentario
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-        )
-
-        texto_html = (
-            texto_html
-            .replace("\r\n", "<br>")
-            .replace("\r", "<br>")
-            .replace("\n", "<br>")
-        )
-
-        if imagem_data_url:
-
-            html_conteudo += (
-                "<div>"
-            )
-
-        else:
-
-            html_conteudo += (
-                "<div>"
-            )
-
-        html_conteudo += (
-            texto_html
-        )
-
-        html_conteudo += (
-            "</div>"
-        )
-
-        log(
-            "DESCRIÇÃO SERÁ INSERIDA "
-            "DEPOIS DA IMAGEM."
-        )
-
-    log(
-        f"Tamanho do HTML final: "
-        f"{len(html_conteudo)}"
-    )
-
-    # ========================================================
-    # 5. PREENCHER PELO RAD EDITOR
-    #
-    # NÃO SALVAR.
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "5. PREENCHENDO PELO RAD EDITOR"
-    )
-
-    resultado_set_html = page.evaluate(
-        """({editorId, html}) => {
-
-            try {
-
-                if (typeof $find !== "function") {
-                    return {
-                        sucesso: false,
-                        erro: "$find não existe"
-                    };
-                }
-
-                const editor = $find(editorId);
+                const editor =
+                    window.$find(
+                        "ctl00_popC_rdeCom"
+                    );
 
                 if (!editor) {
-                    return {
-                        sucesso: false,
-                        erro: "RadEditor não encontrado"
-                    };
-                }
 
-                if (typeof editor.set_html !== "function") {
                     return {
                         sucesso: false,
-                        erro: "set_html não existe"
+                        erro:
+                            "Objeto Telerik RadEditor não encontrado."
                     };
                 }
 
                 editor.set_html(html);
 
                 return {
-                    sucesso: true
+                    sucesso: true,
+                    metodo:
+                        "RadEditor.set_html",
+                    html:
+                        editor.get_html()
                 };
 
             } catch (e) {
@@ -1379,380 +1980,496 @@ def cadastrar_comentario(
                     sucesso: false,
                     erro: String(e)
                 };
-
             }
+        }
+        """,
+        html_final,
+    )
 
-        }""",
-        {
-            "editorId": editor_id,
-            "html": html_conteudo,
-        },
+    # IMPORTANTE:
+    # Não imprimir resultado inteiro.
+    # Ele contém a imagem Base64.
+
+    log(
+        "Resultado RadEditor: "
+        f"sucesso={resultado.get('sucesso')} "
+        f"metodo={resultado.get('metodo')}"
+    )
+
+    html_resultado = (
+        resultado.get(
+            "html",
+            "",
+        )
+        or ""
     )
 
     log(
-        f"Resultado set_html: "
-        f"{resultado_set_html}"
+        f"HTML retornado pelo RadEditor: "
+        f"{len(html_resultado)} caracteres"
     )
 
-    if not resultado_set_html.get(
-        "sucesso"
+    log(
+        "Imagem presente no HTML retornado: "
+        + (
+            "SIM"
+            if "<img" in html_resultado.lower()
+            else "NÃO"
+        )
+    )
+
+    if not resultado.get(
+        "sucesso",
+        False,
     ):
 
-        raise Exception(
-            "Falha ao executar "
-            "RadEditor.set_html(): "
+        raise RuntimeError(
+            "Não foi possível preencher o RadEditor: "
             + str(
-                resultado_set_html.get(
-                    "erro"
+                resultado.get(
+                    "erro",
+                    "",
                 )
             )
         )
 
-    log(
-        "RAD EDITOR RECEBEU O HTML."
-    )
-
-    # ========================================================
-    # 6. MONITORAR O EDITOR
-    #
-    # NÃO ALTERA O CONTEÚDO.
-    #
-    # SOMENTE OBSERVA SE O E-DESK/TELERIK
-    # ESTÁ ALTERANDO O HTML.
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "6. MONITORANDO O CONTEÚDO DO RAD EDITOR"
-    )
-
-    log(
-        "Nenhum salvamento será executado."
-    )
-
-    tempos = [
-        0.2,
-        0.5,
-        1.0,
-        1.5,
-        2.0,
-        3.0,
-        4.0,
-        5.0,
-    ]
-
-    inicio_monitoramento = time.time()
-
-    ultimo_html = None
-
-    for tempo_alvo in tempos:
-
-        while (
-            time.time()
-            - inicio_monitoramento
-            < tempo_alvo
-        ):
-
-            time.sleep(0.05)
-
-        try:
-
-            resultado_monitoramento = page.evaluate(
-                """(editorId) => {
-
-                    try {
-
-                        const editor = $find(editorId);
-
-                        if (!editor) {
-                            return {
-                                encontrado: false,
-                                html: ""
-                            };
-                        }
-
-                        const html =
-                            typeof editor.get_html === "function"
-                            ? editor.get_html()
-                            : "";
-
-                        return {
-                            encontrado: true,
-                            html: html
-                        };
-
-                    } catch (e) {
-
-                        return {
-                            encontrado: false,
-                            html: "",
-                            erro: String(e)
-                        };
-
-                    }
-
-                }""",
-                editor_id,
-            )
-
-            html_atual = (
-                resultado_monitoramento.get(
-                    "html",
-                    ""
-                )
-            )
-
-            quantidade_img = html_atual.lower().count(
-                "<img"
-            )
-
-            tamanho_html = len(
-                html_atual
-            )
-
-            alterou = (
-                ultimo_html is not None
-                and html_atual != ultimo_html
-            )
-
-            log(
-                f"Após {tempo_alvo:.1f}s -> "
-                f"HTML={tamanho_html} "
-                f"IMG={quantidade_img} "
-                f"ALTEROU={alterou}"
-            )
-
-            if tamanho_html == 0:
-
-                log(
-                    "ATENÇÃO: O RAD EDITOR FICOU VAZIO."
-                )
-
-            elif quantidade_img > 0:
-
-                log(
-                    "Imagem continua presente."
-                )
-
-            else:
-
-                log(
-                    "HTML existe, mas sem imagem."
-                )
-
-            ultimo_html = html_atual
-
-        except Exception as e:
-
-            log(
-                f"Erro durante monitoramento: {e}"
-            )
-
-    # ========================================================
-    # 7. CONFIRMAR IFRAME VISUAL
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
-    )
-
-    log(
-        "7. CONFIRMANDO CONTEÚDO VISUAL"
-    )
+    # ============================================================
+    # 7. ATUALIZAR TEXTAREA OCULTO
+    # ============================================================
 
     try:
 
-        html_visual = (
-            body.inner_html()
+        hidden = frame.locator(
+            "#ctl00_popC_rdeComContentHiddenTextarea"
+        )
+
+        hidden.wait_for(
+            state="attached",
+            timeout=5000,
+        )
+
+        hidden.evaluate(
+            """
+            (element, html) => {
+
+                element.value = html;
+
+                element.dispatchEvent(
+                    new Event(
+                        "input",
+                        {
+                            bubbles: true
+                        }
+                    )
+                );
+
+                element.dispatchEvent(
+                    new Event(
+                        "change",
+                        {
+                            bubbles: true
+                        }
+                    )
+                );
+            }
+            """,
+            html_final,
+        )
+
+        log(
+            "Textarea oculto atualizado."
+        )
+
+    except Exception as erro:
+
+        log(
+            f"Aviso no textarea oculto: {erro}"
+        )
+
+    # ============================================================
+    # 8. VALIDAR RADEDITOR
+    # ============================================================
+
+    time.sleep(1)
+
+    try:
+
+        validacao = frame.evaluate(
+            """
+            () => {
+
+                const editor =
+                    window.$find(
+                        "ctl00_popC_rdeCom"
+                    );
+
+                if (!editor) {
+
+                    return {
+                        html: "",
+                        texto: ""
+                    };
+                }
+
+                return {
+                    html:
+                        editor.get_html(),
+                    texto:
+                        editor.get_text()
+                };
+            }
+            """
+        )
+
+        conteudo_editor = (
+            validacao.get(
+                "html",
+                "",
+            )
+            or ""
         )
 
         texto_editor = (
-            body.inner_text()
-        )
-
-        quantidade_imagens = body.locator(
-            "img"
-        ).count()
-
-        log(
-            f"Tamanho HTML visual: "
-            f"{len(html_visual)}"
+            validacao.get(
+                "texto",
+                "",
+            )
+            or ""
         )
 
         log(
-            f"Quantidade de imagens no editor: "
+            "============================================"
+        )
+
+        log(
+            "VALIDAÇÃO DO RADEDITOR"
+        )
+
+        log(
+            f"HTML: "
+            f"{len(conteudo_editor)} caracteres"
+        )
+
+        log(
+            f"Texto: "
+            f"{texto_editor[:500]!r}"
+        )
+
+        log(
+            "Imagem presente no HTML: "
+            + (
+                "SIM"
+                if "<img" in conteudo_editor.lower()
+                else "NÃO"
+            )
+        )
+
+        log(
+            "============================================"
+        )
+
+        if not conteudo_editor.strip():
+
+            raise RuntimeError(
+                "O RadEditor ficou vazio após o preenchimento."
+            )
+
+        if imagem_base64:
+
+            if "<img" not in (
+                conteudo_editor.lower()
+            ):
+
+                raise RuntimeError(
+                    "A imagem foi recebida pelo Python, "
+                    "mas não apareceu no HTML do RadEditor."
+                )
+
+    except Exception as erro:
+
+        log(
+            f"Erro validando RadEditor: {erro}"
+        )
+
+        raise
+
+    # ============================================================
+    # 9. VALIDAR VISUALMENTE O IFRAME
+    # ============================================================
+
+    try:
+
+        editor_frame = frame.frame_locator(
+            "#ctl00_popC_rdeCom_contentIframe"
+        )
+
+        body = editor_frame.locator(
+            "body"
+        )
+
+        texto_visual = body.inner_text(
+            timeout=5000
+        )
+
+        log(
+            f"Texto visível no editor: "
+            f"{texto_visual[:500]!r}"
+        )
+
+        quantidade_imagens = (
+            editor_frame
+            .locator("img")
+            .count()
+        )
+
+        log(
+            f"Imagens visíveis no editor: "
             f"{quantidade_imagens}"
         )
 
+        if imagem_base64:
+
+            if quantidade_imagens == 0:
+
+                raise RuntimeError(
+                    "A imagem não está visível dentro "
+                    "do editor do E-Desk."
+                )
+
+    except Exception as erro:
+
         log(
-            f"Texto atual do editor: "
-            f"{texto_editor!r}"
+            f"Aviso/erro validando conteúdo visual: {erro}"
         )
 
-    except Exception as e:
+        raise
 
-        raise Exception(
-            "Não foi possível ler o conteúdo "
-            f"visual do editor: {e}"
+    log("")
+    log(
+        "============================================"
+    )
+
+    log(
+        "COMENTÁRIO PREENCHIDO E VALIDADO"
+    )
+
+    log(
+        "Texto + imagem estão dentro do RadEditor."
+    )
+
+    log(
+        "============================================"
+    )
+
+
+# ================================================================
+# SALVAR COMENTÁRIO
+# ================================================================
+
+def salvar_comentario(frame):
+
+    log("")
+    log("============================================")
+    log("SALVANDO COMENTÁRIO")
+    log("============================================")
+
+    botao_salvar = frame.locator(
+        "#popC_BtAtu"
+    )
+
+    if botao_salvar.count() == 0:
+
+        raise RuntimeError(
+            "Botão Salvar do comentário não encontrado."
         )
 
-    # ========================================================
-    # 8. NÃO SALVAR
-    # ========================================================
-
-    log(
-        "--------------------------------------------"
+    botao_salvar.wait_for(
+        state="visible",
+        timeout=10000,
     )
 
     log(
-        "8. SALVAMENTO"
+        "Botão Salvar encontrado."
+    )
+
+    botao_salvar.click()
+
+    log(
+        "Botão Salvar clicado."
+    )
+
+    time.sleep(3)
+
+    log(
+        "Comentário enviado ao E-Desk."
+    )
+
+
+# ================================================================
+# MODO TESTE
+# ================================================================
+
+def modo_teste(
+    page,
+    context,
+):
+
+    log("")
+    log("============================================")
+    log("MODO TESTE")
+    log("============================================")
+
+    log(
+        "O navegador permanecerá aberto."
     )
 
     log(
-        "NÃO CLICAR NO BOTÃO DE SALVAR."
+        "O comentário foi apenas preenchido."
     )
 
     log(
-        f"#popC_BtAtu encontrado: "
-        f"{page.locator('#popC_BtAtu').count()}"
+        "Nenhum comentário será salvo."
     )
 
     log(
-        f"Valor enviar recebido: {enviar}"
-    )
-
-    log(
-        "O parâmetro 'enviar' NÃO será utilizado "
-        "nesta etapa."
-    )
-
-    log(
-        "============================================"
-    )
-
-    log(
-        "ETAPA 6 CONCLUÍDA."
-    )
-
-    log(
-        "TIPO: OK"
-    )
-
-    log(
-        f"IMAGEM: "
-        f"{'INSERIDA' if imagem_data_url else 'NÃO INFORMADA'}"
-    )
-
-    log(
-        "DESCRITIVO: INSERIDO"
-    )
-
-    log(
-        "RAD EDITOR: MONITORADO"
-    )
-
-    log(
-        "SALVAMENTO: NÃO EXECUTADO"
+        "Para encerrar, feche o navegador."
     )
 
     log(
         "============================================"
-    )
-
-    return page
-
-
-# ============================================================
-# MANTER NAVEGADOR ABERTO
-# ============================================================
-
-def manter_navegador_aberto():
-
-    log(
-        "============================================"
-    )
-
-    log(
-        "NAVEGADOR MANTIDO ABERTO"
-    )
-
-    log(
-        "============================================"
-    )
-
-    log(
-        "O Python permanecerá aguardando."
     )
 
     while True:
 
-        time.sleep(1)
+        try:
+
+            # ----------------------------------------------------
+            # PÁGINA PRINCIPAL FECHADA
+            # ----------------------------------------------------
+
+            if page.is_closed():
+
+                log(
+                    "Página principal fechada."
+                )
+
+                break
+
+            # ----------------------------------------------------
+            # VERIFICAR PÁGINAS ABERTAS
+            # ----------------------------------------------------
+
+            paginas_abertas = [
+                pagina
+                for pagina in context.pages
+                if not pagina.is_closed()
+            ]
+
+            if not paginas_abertas:
+
+                log(
+                    "Nenhuma página do navegador está aberta."
+                )
+
+                break
+
+            time.sleep(0.5)
+
+        except Exception as erro:
+
+            log(
+                f"Navegador encerrado: {erro}"
+            )
+
+            break
+
+    # ============================================================
+    # IMPORTANTE
+    #
+    # NÃO chamamos context.close() aqui.
+    #
+    # O with sync_playwright() do main()
+    # será responsável pelo encerramento.
+    # ============================================================
+
+    log(
+        "Modo teste encerrado."
+    )
+
+    log(
+        "Retornando normalmente para o main."
+    )
+
+    return
 
 
-# ============================================================
+# ================================================================
 # MAIN
-# ============================================================
+# ================================================================
 
 def main():
 
-    request = carregar_request()
+    log("")
+    log("============================================")
+    log("E-DESK BOT")
+    log("============================================")
+    log("")
 
-    solicitacao = str(
-        request.get(
-            "solicitacao",
-            ""
+    # ============================================================
+    # REQUEST
+    # ============================================================
+
+    dados = carregar_request()
+
+    edesk_email, edesk_senha = obter_credenciais_edesk(
+        dados
+    )
+
+    log(
+        "Credenciais E-Desk: "
+        f"{'DISPONÍVEIS' if edesk_email and edesk_senha else 'NÃO DISPONÍVEIS'}"
+    )
+
+    solicitacao = extrair_solicitacao(
+        dados
+    )
+
+    id_trabalho = extrair_id_trabalho(
+        dados
+    )
+
+    # ============================================================
+    # DADOS DO COMENTÁRIO
+    # ============================================================
+
+    url = obter_url(
+        dados
+    )
+
+    tipo = obter_tipo_comentario(
+        dados
+    )
+
+    texto = obter_texto(
+        dados
+    )
+
+    imagem_base64 = (
+        obter_imagem_base64(
+            dados
         )
-    )
-
-    id_trabalho = str(
-        request.get(
-            "idTrabalho",
-            ""
-        )
-    )
-
-    tipo = str(
-        request.get(
-            "tipo",
-            "Interno"
-        )
-    )
-
-    texto = request.get(
-        "texto",
-        ""
-    )
-
-    imagem_base64 = request.get(
-        "imagemBase64"
     )
 
     enviar = bool(
-        request.get(
+        dados.get(
             "enviar",
-            False
+            False,
         )
     )
 
-    url_edesk = request.get(
-        "url",
-        "https://promob.e-desk.com.br"
-    )
-
-    log(
-        "============================================"
-    )
-
-    log(
-        "INÍCIO EXECUÇÃO E-DESK"
-    )
-
-    log(
-        "============================================"
-    )
+    # ============================================================
+    # LOG DOS DADOS
+    # ============================================================
 
     log(
         f"Solicitação recebida: {solicitacao}"
@@ -1763,7 +2480,11 @@ def main():
     )
 
     log(
-        f"Tipo recebido: {tipo}"
+        f"URL recebida: {url}"
+    )
+
+    log(
+        f"Tipo: {tipo}"
     )
 
     log(
@@ -1771,177 +2492,380 @@ def main():
     )
 
     log(
-        f"Imagem: "
-        f"{'SIM' if imagem_base64 else 'NÃO'}"
+        f"Tamanho do texto: "
+        f"{len(texto)} caracteres"
     )
 
     log(
-        f"Perfil: {PERFIL_DIR}"
+        "Imagem recebida: "
+        + (
+            "SIM"
+            if imagem_base64
+            else "NÃO"
+        )
     )
+
+    if imagem_base64:
+
+        log(
+            f"Tamanho Base64 da imagem: "
+            f"{len(imagem_base64)} caracteres"
+        )
+
+    # ============================================================
+    # PLAYWRIGHT
+    # ============================================================
 
     with sync_playwright() as playwright:
 
-        contexto = playwright.chromium.launch_persistent_context(
+        log("")
+        log(
+            "Iniciando Chromium..."
+        )
 
-            user_data_dir=str(
-                PERFIL_DIR
-            ),
+        context = (
+            playwright.chromium
+            .launch_persistent_context(
+                user_data_dir=str(
+                    PROFILE_PATH
+                ),
+                headless=False,
+                args=[
+                    "--start-maximized",
+                ],
+                viewport=None,
+            )
+        )
 
-            headless=False,
+        log(
+            "Chromium iniciado."
+        )
 
-            viewport={
-                "width": 1400,
-                "height": 900,
-            },
+        # ========================================================
+        # PÁGINA PRINCIPAL
+        # ========================================================
 
+        if context.pages:
+            page = context.pages[0]
+        else:
+            page = context.new_page()
+
+        # O monitor precisa existir antes de qualquer navegação.
+        instalar_monitor_requests(page)
+
+        # ========================================================
+        # REUTILIZAR SESSÃO E-DESK
+        # ========================================================
+
+        guid_existente = obter_guid_da_url(
+            page.url
+        )
+
+        autenticado = (
+            "/Portal/PortalAtendente.aspx" in (page.url or "")
+            or bool(guid_existente)
+        )
+
+        if not autenticado:
+
+            log("")
+            log("============================================================")
+            log("ABRINDO E-DESK - PRIMEIRA VEZ NESTA SESSÃO")
+            log("============================================================")
+            log(f"URL inicial: {url}")
+
+            page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=60000,
+            )
+
+            log(
+                f"URL após abertura: {page.url}"
+            )
+
+            aguardar_login(
+                page,
+                email=edesk_email,
+                senha=edesk_senha,
+            )
+
+        else:
+
+            log("")
+            log("============================================================")
+            log("SESSÃO E-DESK JÁ AUTENTICADA - REUTILIZANDO")
+            log("============================================================")
+            log(f"URL reutilizada: {page.url}")
+
+        # ========================================================
+        # GUID DA SESSÃO
+        # ========================================================
+
+        guid_sessao = obter_guid_da_url(
+            page.url
+        )
+
+        if not guid_sessao:
+            raise RuntimeError(
+                "Não foi possível obter o GUID da sessão após o login."
+            )
+
+        log(
+            f"GUID da sessão: {guid_sessao}"
+        )
+
+        # ========================================================
+        # ACESSAR A GRID NA MESMA PÁGINA AUTENTICADA
+        #
+        # Este é o mesmo fluxo utilizado pelo edesk_horas.py.
+        # Não criamos uma nova aba aqui, pois a Grid do E-Desk
+        # precisa ser carregada no mesmo ciclo da página
+        # autenticada para que os registros sejam populados.
+        # ========================================================
+
+        page.bring_to_front()
+
+        page = acessar_minha_grid(
+            page,
+            guid_sessao,
+        )
+
+        # ========================================================
+        # AGUARDAR A TABELA PRINCIPAL DA GRID
+        # ========================================================
+
+        page.locator(
+            "#ctl00_cph1_hgrSol_ctl00"
+        ).wait_for(
+            state="visible",
+            timeout=30000,
+        )
+
+        page.wait_for_timeout(1000)
+
+        log("")
+        log("============================================")
+        log("GRID PRONTA")
+        log("============================================")
+        log(f"URL DA GRID: {page.url}")
+
+        # ========================================================
+        # VALIDAR SOLICITAÇÃO
+        # ========================================================
+
+        if not solicitacao:
+
+            raise RuntimeError(
+                "A solicitação não foi informada."
+            )
+
+        # ========================================================
+        # LOCALIZAR SOLICITAÇÃO
+        # ========================================================
+
+        candidatos = localizar_solicitacao(
+            page,
+            solicitacao,
+        )
+
+        # ========================================================
+        # ABRIR TRABALHO
+        # ========================================================
+
+        pagina_trabalho = abrir_trabalho(
+            page,
+            context,
+            candidatos,
+            id_trabalho,
+        )
+
+        # ========================================================
+        # TELA DE TRABALHO
+        # ========================================================
+
+        if pagina_trabalho is None:
+
+            raise RuntimeError(
+                "Tela de trabalho não encontrada."
+            )
+
+        page = pagina_trabalho
+
+        log("")
+        log("============================================")
+        log("TELA DE TRABALHO ATIVA")
+        log("============================================")
+
+        log(
+            f"URL: {page.url}"
+        )
+
+        # ========================================================
+        # ABRIR COMENTÁRIO
+        # ========================================================
+
+        pagina_comentario, frame = (
+            abrir_comentario(
+                page,
+                context,
+            )
+        )
+
+        # ========================================================
+        # PREENCHER COMENTÁRIO
+        # ========================================================
+
+        preencher_comentario(
+            frame,
+            tipo,
+            texto,
+            imagem_base64,
+        )
+
+        # ========================================================
+        # SE ENVIAR = TRUE
+        # ========================================================
+
+        if enviar:
+
+            salvar_comentario(
+                frame
+            )
+
+            log("")
+            log("============================================")
+            log("OPERAÇÃO CONCLUÍDA")
+            log("============================================")
+
+            log(
+                "Comentário preenchido e salvo no E-Desk."
+            )
+
+            log(
+                "Texto + imagem enviados."
+            )
+
+            log(
+                "============================================"
+            )
+
+            time.sleep(3)
+
+            log("")
+            log("============================================")
+            log("PROCESSO PYTHON FINALIZADO")
+            log("============================================")
+
+            return
+
+        # ========================================================
+        # TESTE
+        # ========================================================
+
+        log("")
+        log("============================================")
+        log("TESTE CONCLUÍDO")
+        log("============================================")
+
+        log(
+            "Solicitação encontrada."
+        )
+
+        log(
+            "Uma única tela de trabalho foi utilizada."
+        )
+
+        log(
+            "Comentário aberto."
+        )
+
+        log(
+            "Tipo recebido do aplicativo."
+        )
+
+        log(
+            "Texto recebido do aplicativo."
+        )
+
+        log(
+            "Imagem recebida do aplicativo."
+            if imagem_base64
+            else "Nenhuma imagem recebida."
+        )
+
+        log(
+            "Texto + imagem foram preenchidos "
+            "no RadEditor."
+        )
+
+        log(
+            "Comentário NÃO foi salvo porque enviar=false."
+        )
+
+        log(
+            "============================================"
+        )
+
+        # ========================================================
+        # CORREÇÃO IMPORTANTE:
+        #
+        # Passamos PAGE + CONTEXT.
+        # ========================================================
+
+        modo_teste(
+            pagina_comentario,
+            context,
+        )
+
+        log("")
+        log("============================================")
+        log("MODO TESTE FINALIZADO")
+        log("============================================")
+
+
+# ================================================================
+# EXECUÇÃO
+# ================================================================
+
+if __name__ == "__main__":
+
+    try:
+
+        main()
+
+        # --------------------------------------------------------
+        # Se chegou aqui, o Python terminou normalmente.
+        # --------------------------------------------------------
+
+        log(
+            "Processo Python finalizado normalmente."
+        )
+
+        sys.exit(0)
+
+    except KeyboardInterrupt:
+
+        log(
+            "Processo interrompido pelo usuário."
+        )
+
+        sys.exit(1)
+
+    except Exception as erro:
+
+        log(
+            f"ERRO: {erro}"
         )
 
         try:
 
-            paginas = contexto.pages
+            import traceback
 
-            if len(paginas) > 0:
+            traceback.print_exc()
 
-                page = paginas[0]
+        except Exception:
 
-            else:
+            pass
 
-                page = contexto.new_page()
-
-            log(
-                f"Página atual: {page.url}"
-            )
-
-            if page.url == "about:blank":
-
-                log(
-                    "Abrindo E-Desk..."
-                )
-
-                page.goto(
-                    url_edesk,
-                    wait_until="domcontentloaded",
-                    timeout=60000,
-                )
-
-            elif not esta_autenticado(page):
-
-                log(
-                    "Página atual não autenticada."
-                )
-
-                log(
-                    "Abrindo E-Desk..."
-                )
-
-                page.goto(
-                    url_edesk,
-                    wait_until="domcontentloaded",
-                    timeout=60000,
-                )
-
-            aguardar_login(
-                page
-            )
-
-            page = abrir_minha_grid(
-                page
-            )
-
-            page = pesquisar_solicitacao(
-                page,
-                solicitacao,
-            )
-
-            page = abrir_solicitacao(
-                page
-            )
-
-            contexto_comentario = abrir_comentarios(
-                page
-            )
-
-            page = cadastrar_comentario(
-                contexto_comentario,
-                tipo,
-                texto,
-                enviar,
-                imagem_base64,
-            )
-
-            log(
-                "============================================"
-            )
-
-            log(
-                "FLUXO CONCLUÍDO."
-            )
-
-            log(
-                "============================================"
-            )
-
-            log(
-                f"URL FINAL: {page.url}"
-            )
-
-            manter_navegador_aberto()
-
-        except Exception as e:
-
-            log(
-                "============================================"
-            )
-
-            log(
-                "ERRO DURANTE A EXECUÇÃO"
-            )
-
-            log(
-                "============================================"
-            )
-
-            log(
-                f"Exception: {e}"
-            )
-
-            log(
-                "============================================"
-            )
-
-            log(
-                "NAVEGADOR SERÁ MANTIDO ABERTO"
-            )
-
-            log(
-                "============================================"
-            )
-
-            log(
-                f"Páginas abertas: "
-                f"{len(contexto.pages)}"
-            )
-
-            for i, pagina in enumerate(
-                contexto.pages
-            ):
-
-                try:
-
-                    log(
-                        f"Página {i}: {pagina.url}"
-                    )
-
-                except Exception:
-                    pass
-
-            manter_navegador_aberto()
-
-
-# ============================================================
-# EXECUÇÃO
-# ============================================================
-
-if __name__ == "__main__":
-
-    main()
+        sys.exit(1)

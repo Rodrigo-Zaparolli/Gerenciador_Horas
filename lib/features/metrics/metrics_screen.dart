@@ -3536,7 +3536,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     }
 
     return Scaffold(
-      backgroundColor: CoresDashboard.fundo,
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(60),
         child: Cabecalho(
@@ -3550,18 +3550,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: Image.asset(
-              AppTheme.caminhoFundo,
-              fit: BoxFit.cover,
-              errorBuilder: (
-                context,
-                error,
-                stackTrace,
-              ) {
-                return Container(
-                  color: CoresDashboard.fundo,
-                );
-              },
+            child: Container(
+              color: Colors.transparent,
             ),
           ),
           Positioned.fill(

@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_cast
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -35,6 +35,9 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
 
   bool _isLoading = true;
 
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _projetosSubscription;
+
   // ============================================================
   // USUÁRIO ATUAL
   // ============================================================
@@ -52,21 +55,11 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   }
 
   // ============================================================
-  // REFERÊNCIAS DO FIRESTORE
+  // REFERÊNCIA DOS PROJETOS REAIS
   // ============================================================
 
-  CollectionReference<Map<String, dynamic>> get _projetosCollection {
-    return _db
-        .collection('users')
-        .doc(_userId)
-        .collection('acompanhamento_projetos');
-  }
-
-  CollectionReference<Map<String, dynamic>> get _pluginsCollection {
-    return _db
-        .collection('users')
-        .doc(_userId)
-        .collection('acompanhamento_plugins');
+  CollectionReference<Map<String, dynamic>> get _projectsCollection {
+    return _db.collection('users').doc(_userId).collection('projects');
   }
 
   // ============================================================
@@ -77,60 +70,315 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   void initState() {
     super.initState();
 
-    _carregarDados();
+    _escutarProjetos();
   }
 
   // ============================================================
-  // CARREGAR DADOS DO USUÁRIO
+  // DISPOSE
   // ============================================================
 
-  Future<void> _carregarDados() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _projetosSubscription?.cancel();
+    super.dispose();
+  }
 
+  // ============================================================
+  // ESCUTAR PROJETOS REAIS
+  // ============================================================
+
+  void _escutarProjetos() {
     try {
-      final user = _auth.currentUser;
+      _projetosSubscription?.cancel();
 
-      debugPrint('========================================');
-      debugPrint('USUÁRIO LOGADO');
-      debugPrint('UID: ${user?.uid}');
-      debugPrint('EMAIL: ${user?.email}');
-      debugPrint('========================================');
+      _projetosSubscription = _projectsCollection.snapshots().listen(
+        (snapshot) async {
+          await _sincronizarProjetos(snapshot);
+        },
+        onError: (error) {
+          debugPrint(
+            'Erro no stream de projetos: $error',
+          );
 
-      final projSnapshot = await _db
-          .collection('users')
-          .doc(_userId)
-          .collection('acompanhamento_projetos')
-          .get();
-
-      final plugSnapshot = await _db
-          .collection('users')
-          .doc(_userId)
-          .collection('acompanhamento_plugins')
-          .get();
-
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        },
+      );
+    } catch (e, st) {
       debugPrint(
-        'Projetos encontrados: ${projSnapshot.docs.length}',
+        'Erro ao iniciar stream de projetos: $e',
       );
 
-      debugPrint(
-        'Plugins encontrados: ${plugSnapshot.docs.length}',
-      );
+      debugPrint('$st');
 
-      setState(() {
-        _projetosRows = projSnapshot.docs
-            .map((doc) => {'id': doc.id, ...doc.data()})
-            .toList();
-
-        _pluginsRows = plugSnapshot.docs
-            .map((doc) => {'id': doc.id, ...doc.data()})
-            .toList();
-      });
-    } catch (e) {
-      debugPrint('Erro ao carregar do Firebase: $e');
-    } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
+
+  // ============================================================
+  // SINCRONIZAR PROJETOS
+  //
+  // A mesma coleção projects alimenta as duas tabelas.
+  //
+  // Desenvolvimento Plugin
+  //     -> tabela Plugins
+  //
+  // Demais serviços
+  //     -> tabela Projetos
+  // ============================================================
+
+  Future<void> _sincronizarProjetos(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) async {
+    try {
+      debugPrint('========================================');
+      debugPrint('SINCRONIZAÇÃO DE SOLICITAÇÕES');
+      debugPrint(
+        'Projetos encontrados: ${snapshot.docs.length}',
+      );
+
+      final List<Map<String, dynamic>> projetosRows = [];
+      final List<Map<String, dynamic>> pluginsRows = [];
+
+      for (final doc in snapshot.docs) {
+        final project = doc.data();
+
+        final status = project['status']?.toString().trim() ?? '';
+
+        final serviceType = project['serviceType']?.toString().trim() ?? '';
+
+        debugPrint(
+          'Projeto: ${doc.id} | '
+          'cliente=${project['client']} | '
+          'serviceType=$serviceType | '
+          'status=$status',
+        );
+
+        // ========================================================
+        // PROJETO FINALIZADO
+        // ========================================================
+
+        if (status == 'TRAB_FIM') {
+          debugPrint(
+            'Projeto ${doc.id} ignorado: TRAB_FIM',
+          );
+
+          continue;
+        }
+
+        // ========================================================
+        // IDENTIFICAÇÃO
+        // ========================================================
+
+        final projectId = project['id']?.toString().trim().isNotEmpty == true
+            ? project['id'].toString().trim()
+            : doc.id;
+
+        final cliente = project['client']?.toString().trim() ?? '';
+
+        final lider = project['leader']?.toString().trim() ?? '';
+
+        final stage = project['stage']?.toString().trim() ?? '';
+
+        final task = project['task']?.toString().trim() ?? '';
+
+        final id2 = project['id2']?.toString().trim() ?? '';
+
+        final acoes = project['acoes']?.toString().trim() ?? '';
+
+        // ========================================================
+        // VERIFICAR SE É DESENVOLVIMENTO DE PLUGIN
+        // ========================================================
+
+        final ehPlugin = _ehDesenvolvimentoPlugin(
+          serviceType,
+        );
+
+        // ========================================================
+        // MAIOR PLAN END
+        // ========================================================
+
+        final maiorPlanEnd = _getMaiorPlanEnd(
+          project['subTasks'],
+        );
+
+        // ========================================================
+        // SOLICITAÇÃO
+        // ========================================================
+
+        final solicitacao = _getSolicitacaoProjeto(
+          project,
+        );
+
+        // ========================================================
+        // ÚLTIMO COMENTÁRIO
+        // ========================================================
+
+        final ultimoComentario = await _getUltimoComentario(
+          projectId,
+        );
+
+        DateTime? dataUltimaAtualizacao;
+
+        if (ultimoComentario != null) {
+          dataUltimaAtualizacao = _parseDataFirestore(
+            ultimoComentario['criadoEm'],
+          );
+
+          dataUltimaAtualizacao ??= _parseDataFirestore(
+            ultimoComentario['updatedAt'],
+          );
+
+          dataUltimaAtualizacao ??= _parseDataFirestore(
+            ultimoComentario['data'],
+          );
+        }
+
+        final ultimoComentarioTexto =
+            ultimoComentario?['comentario']?.toString() ?? '';
+
+        // ========================================================
+        // DADOS BASE DA LINHA
+        // ========================================================
+
+        final row = {
+          // ID REAL DO DOCUMENTO FIRESTORE
+          'docId': doc.id,
+
+          // ID DO PROJETO
+          'id': projectId,
+
+          'cliente': cliente,
+          'solicitacao': solicitacao,
+          'lider': lider,
+          'status': status,
+          'stage': stage,
+          'task': task,
+          'serviceType': serviceType,
+          'id2': id2,
+
+          // NOVO CAMPO EDITÁVEL
+          'acoes': acoes,
+
+          'planEnd': maiorPlanEnd,
+
+          'ultimoComentario': ultimoComentarioTexto,
+          'ultimaAtualizacao': dataUltimaAtualizacao,
+          'comentarioId': ultimoComentario?['id'],
+
+          // DADOS ORIGINAIS
+          'projectData': project,
+        };
+
+        // ========================================================
+        // SEPARAÇÃO AUTOMÁTICA
+        // ========================================================
+
+        if (ehPlugin) {
+          debugPrint(
+            '  -> PLUGIN',
+          );
+
+          pluginsRows.add(row);
+        } else {
+          debugPrint(
+            '  -> PROJETO',
+          );
+
+          projetosRows.add(row);
+        }
+      }
+
+      // ==========================================================
+      // ORDENAR PROJETOS
+      // ==========================================================
+
+      projetosRows.sort(
+        (a, b) {
+          final clienteA = a['cliente']?.toString().toLowerCase() ?? '';
+
+          final clienteB = b['cliente']?.toString().toLowerCase() ?? '';
+
+          return clienteA.compareTo(clienteB);
+        },
+      );
+
+      // ==========================================================
+      // ORDENAR PLUGINS
+      // ==========================================================
+
+      pluginsRows.sort(
+        (a, b) {
+          final clienteA = a['cliente']?.toString().toLowerCase() ?? '';
+
+          final clienteB = b['cliente']?.toString().toLowerCase() ?? '';
+
+          return clienteA.compareTo(clienteB);
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _projetosRows = projetosRows;
+        _pluginsRows = pluginsRows;
+
+        if (_selectedProjetoIndex != null &&
+            _selectedProjetoIndex! >= projetosRows.length) {
+          _selectedProjetoIndex = null;
+        }
+
+        if (_selectedPluginIndex != null &&
+            _selectedPluginIndex! >= pluginsRows.length) {
+          _selectedPluginIndex = null;
+        }
+
+        _isLoading = false;
+      });
+
+      debugPrint(
+        'Projetos exibidos: ${projetosRows.length}',
+      );
+
+      debugPrint(
+        'Plugins exibidos: ${pluginsRows.length}',
+      );
+
+      debugPrint('========================================');
+    } catch (e, st) {
+      debugPrint(
+        'Erro ao sincronizar projetos: $e',
+      );
+
+      debugPrint('$st');
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // IDENTIFICAR DESENVOLVIMENTO DE PLUGIN
+  // ============================================================
+
+  bool _ehDesenvolvimentoPlugin(
+    String serviceType,
+  ) {
+    return serviceType.toLowerCase().trim() == 'desenvolvimento plugin';
+  }
+
   // ============================================================
   // FORMATAÇÃO DE DATA
   // ============================================================
@@ -142,7 +390,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   }
 
   // ============================================================
-  // CONVERTER DATA
+  // CONVERTER DATA DD/MM/YYYY
   // ============================================================
 
   DateTime? _parseData(String dataStr) {
@@ -164,13 +412,41 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   }
 
   // ============================================================
+  // CONVERTER DATA DO FIRESTORE
+  // ============================================================
+
+  DateTime? _parseDataFirestore(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.tryParse(
+        value.trim(),
+      );
+    }
+
+    return null;
+  }
+
+  // ============================================================
   // DIAS SEM ATUALIZAÇÃO
   // ============================================================
 
   String _calcularDiasSemAtualizacao(
     String dataAtualizacaoStr,
   ) {
-    final dataAtualizacao = _parseData(dataAtualizacaoStr);
+    final dataAtualizacao = _parseData(
+      dataAtualizacaoStr,
+    );
 
     if (dataAtualizacao == null) {
       return '0';
@@ -190,7 +466,11 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
       dataAtualizacao.day,
     );
 
-    final diferenca = dataHojeLimpa.difference(dataAtualizacaoLimpa).inDays;
+    final diferenca = dataHojeLimpa
+        .difference(
+          dataAtualizacaoLimpa,
+        )
+        .inDays;
 
     return diferenca < 0 ? '0' : diferenca.toString();
   }
@@ -202,552 +482,298 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   String _calcularAtualizacaoObrigatoria(
     DateTime dataBase,
   ) {
-    DateTime novaData = dataBase.add(const Duration(days: 12));
+    DateTime novaData = dataBase.add(
+      const Duration(days: 12),
+    );
 
     if (novaData.weekday == DateTime.saturday) {
-      novaData = novaData.subtract(const Duration(days: 1));
+      novaData = novaData.subtract(
+        const Duration(days: 1),
+      );
     } else if (novaData.weekday == DateTime.sunday) {
-      novaData = novaData.add(const Duration(days: 1));
+      novaData = novaData.add(
+        const Duration(days: 1),
+      );
     }
 
-    return _formatarData(novaData);
+    return _formatarData(
+      novaData,
+    );
   }
 
   // ============================================================
-  // ATUALIZAR DATA DO PROJETO
+  // STATUS DO PROJETO
   // ============================================================
 
-  Future<void> _atualizarDataProjeto(
-    DateTime selectedDate,
-  ) async {
-    if (_selectedProjetoIndex == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Selecione uma linha na tabela Acompanhamento de Projetos!',
-          ),
-          backgroundColor: CoresDashboard.atrasado,
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      return;
-    }
-
-    try {
-      final dataFormatada = _formatarData(selectedDate);
-
-      final dataObrigatoria = _calcularAtualizacaoObrigatoria(
-        selectedDate,
-      );
-
-      final item = _projetosRows[_selectedProjetoIndex!];
-
-      item['campo4'] = dataFormatada;
-      item['campo5'] = dataObrigatoria;
-      item['usuarioUid'] = _userId;
-
-      await _projetosCollection.doc(item['id']).update({
-        'campo4': dataFormatada,
-        'campo5': dataObrigatoria,
-        'usuarioUid': _userId,
-      });
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      debugPrint(
-        'Erro ao atualizar projeto: $e',
-      );
-    }
-  }
-
-  // ============================================================
-  // ATUALIZAR DATA DO PLUGIN
-  // ============================================================
-
-  Future<void> _atualizarDataPlugin(
-    DateTime selectedDate,
-  ) async {
-    if (_selectedPluginIndex == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Selecione uma linha na tabela Acompanhamento Plugins em Desenvolvimento!',
-          ),
-          backgroundColor: CoresDashboard.atrasado,
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      return;
-    }
-
-    try {
-      final dataFormatada = _formatarData(selectedDate);
-
-      final dataObrigatoria = _calcularAtualizacaoObrigatoria(
-        selectedDate,
-      );
-
-      final item = _pluginsRows[_selectedPluginIndex!];
-
-      item['campo4'] = dataFormatada;
-      item['campo5'] = dataObrigatoria;
-      item['usuarioUid'] = _userId;
-
-      await _pluginsCollection.doc(item['id']).update({
-        'campo4': dataFormatada,
-        'campo5': dataObrigatoria,
-        'usuarioUid': _userId,
-      });
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      debugPrint(
-        'Erro ao atualizar plugin: $e',
-      );
-    }
-  }
-
-  // ============================================================
-  // EXCLUIR LINHA
-  // ============================================================
-
-  void _excluirLinha(
-    int index,
-    bool isProjeto,
+  String _formatarStatusProjeto(
+    String status,
   ) {
-    showDialog(
+    switch (status) {
+      case 'INI_PRO':
+        return 'Inicial';
+
+      case 'TRAB':
+        return 'Andamento';
+
+      case 'EA':
+        return 'Em espera';
+
+      case 'TRAB_STOP':
+        return 'Parado';
+
+      case 'TRAB_FIM':
+        return 'Finalizado';
+
+      default:
+        return status.isEmpty ? '—' : status;
+    }
+  }
+
+  // ============================================================
+  // MAIOR PLAN END DAS TAREFAS
+  // ============================================================
+
+  DateTime? _getMaiorPlanEnd(
+    dynamic subTasks,
+  ) {
+    if (subTasks is! List) {
+      return null;
+    }
+
+    DateTime? maior;
+
+    for (final item in subTasks) {
+      if (item is! Map) {
+        continue;
+      }
+
+      final data = _parseDataFirestore(
+        item['planEnd'],
+      );
+
+      if (data == null) {
+        continue;
+      }
+
+      if (maior == null || data.isAfter(maior)) {
+        maior = data;
+      }
+    }
+
+    return maior;
+  }
+
+  // ============================================================
+  // SOLICITAÇÃO DO PROJETO
+  // ============================================================
+
+  String _getSolicitacaoProjeto(
+    Map<String, dynamic> project,
+  ) {
+    final subTasks = project['subTasks'];
+
+    if (subTasks is List) {
+      for (final item in subTasks) {
+        if (item is! Map) {
+          continue;
+        }
+
+        final solicitacao = item['edeskSolicitacao']?.toString().trim() ?? '';
+
+        if (solicitacao.isNotEmpty) {
+          return solicitacao;
+        }
+      }
+    }
+
+    final solicitacaoProjeto =
+        project['edeskSolicitacao']?.toString().trim() ?? '';
+
+    if (solicitacaoProjeto.isNotEmpty) {
+      return solicitacaoProjeto;
+    }
+
+    return project['id']?.toString() ?? '';
+  }
+
+  // ============================================================
+  // ÚLTIMO COMENTÁRIO E-DESK
+  // ============================================================
+
+  Future<Map<String, dynamic>?> _getUltimoComentario(
+    String projectId,
+  ) async {
+    try {
+      final snapshot = await _db
+          .collection('projetos')
+          .doc(projectId)
+          .collection('comentarios_edesk')
+          .orderBy(
+            'criadoEm',
+            descending: true,
+          )
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        return null;
+      }
+
+      return {
+        'id': snapshot.docs.first.id,
+        ...snapshot.docs.first.data(),
+      };
+    } catch (e) {
+      debugPrint(
+        'Erro ao buscar último comentário '
+        'do projeto $projectId: $e',
+      );
+
+      return null;
+    }
+  }
+
+  // ============================================================
+  // EDITAR CAMPO DO PROJETO
+  // ============================================================
+
+  Future<void> _editarCampoProjeto({
+    required Map<String, dynamic> row,
+    required String campo,
+    required String titulo,
+    required String valorAtual,
+  }) async {
+    final controller = TextEditingController(
+      text: valorAtual,
+    );
+
+    final novoValor = await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: CoresTelas.fundoModal,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
-              TamanhosApp.raioTabela,
-            ),
-          ),
-          title: const Text(
-            'Excluir Linha',
-            style: TextStyle(
+          backgroundColor: CoresDashboard.card,
+          title: Text(
+            titulo,
+            style: const TextStyle(
               color: CoresApp.textoPrincipal,
-              fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
-          content: const Text(
-            'Deseja realmente excluir este registro?',
-            style: TextStyle(
-              color: CoresApp.textoSecundario,
-              fontSize: 13,
+          content: SizedBox(
+            width: 400,
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(
+                color: CoresApp.textoPrincipal,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Digite o valor',
+                hintStyle: TextStyle(
+                  color: CoresApp.textoSecundario.withOpacity(0.7),
+                ),
+                filled: true,
+                fillColor: CoresDashboard.tabelaFundo,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: CoresDashboard.tabelaBorda,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: CoresApp.primaria,
+                  ),
+                ),
+              ),
+              onSubmitted: (value) {
+                Navigator.of(dialogContext).pop(
+                  value.trim(),
+                );
+              },
             ),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.of(dialogContext).pop();
               },
               child: const Text(
                 'Cancelar',
                 style: TextStyle(
-                  color: CoresApp.textoFraco,
+                  color: CoresApp.textoSecundario,
                 ),
               ),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CoresDashboard.atrasado,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    TamanhosApp.raioBotao,
-                  ),
-                ),
-              ),
-              onPressed: () async {
-                try {
-                  final lista = isProjeto ? _projetosRows : _pluginsRows;
-
-                  final item = lista[index];
-
-                  if (item['usuarioUid'] != null &&
-                      item['usuarioUid'] != _userId) {
-                    throw Exception(
-                      'Este registro não pertence ao usuário atual.',
-                    );
-                  }
-
-                  if (isProjeto) {
-                    await _projetosCollection.doc(item['id']).delete();
-                  } else {
-                    await _pluginsCollection.doc(item['id']).delete();
-                  }
-
-                  if (!mounted) return;
-
-                  setState(() {
-                    lista.removeAt(index);
-
-                    if (isProjeto) {
-                      _selectedProjetoIndex = null;
-                    } else {
-                      _selectedPluginIndex = null;
-                    }
-                  });
-
-                  Navigator.pop(context);
-                } catch (e) {
-                  debugPrint(
-                    'Erro ao excluir do Firebase: $e',
-                  );
-
-                  if (mounted) {
-                    Navigator.pop(context);
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Erro ao excluir: $e',
-                        ),
-                        backgroundColor: CoresDashboard.atrasado,
-                      ),
-                    );
-                  }
-                }
+              onPressed: () {
+                Navigator.of(dialogContext).pop(
+                  controller.text.trim(),
+                );
               },
               child: const Text(
-                'Excluir',
+                'Salvar',
               ),
             ),
           ],
         );
       },
     );
-  }
 
-  // ============================================================
-  // EDITAR LINHA
-  // ============================================================
+    controller.dispose();
 
-  void _editarLinha(
-    int index,
-    bool isProjeto,
-  ) {
-    final lista = isProjeto ? _projetosRows : _pluginsRows;
+    if (novoValor == null) {
+      return;
+    }
 
-    final item = lista[index];
+    final docId = row['docId']?.toString() ?? '';
 
-    if (item['usuarioUid'] != null && item['usuarioUid'] != _userId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Este registro não pertence ao usuário atual.',
-          ),
-          backgroundColor: CoresDashboard.atrasado,
-        ),
+    if (docId.isEmpty) {
+      debugPrint(
+        'Não foi possível salvar $campo: docId vazio.',
       );
 
       return;
     }
 
-    final totalCampos = isProjeto ? 6 : 8;
-
-    final controllers = List<TextEditingController>.generate(
-      totalCampos,
-      (i) => TextEditingController(
-        text: item['campo$i']?.toString() ?? '',
-      ),
-    );
-
-    String statusSelecionado =
-        item['campo2'] == 'Parado' ? 'Parado' : 'Andamento';
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              backgroundColor: CoresTelas.fundoModal,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  TamanhosApp.raioTabela,
-                ),
-              ),
-              title: const Text(
-                'Editar Registro',
-                style: TextStyle(
-                  color: CoresApp.textoPrincipal,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              content: SizedBox(
-                width: 400,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(
-                      totalCampos,
-                      (i) {
-                        if (isProjeto && i == 2) {
-                          return Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: 12,
-                            ),
-                            child: DropdownButtonFormField<String>(
-                              value: statusSelecionado,
-                              dropdownColor: CoresTelas.fundoModal,
-                              style: const TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontSize: 13,
-                              ),
-                              decoration: const InputDecoration(
-                                labelText: 'Status (Campo 3)',
-                                labelStyle: TextStyle(
-                                  color: CoresApp.textoSecundario,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: CoresApp.borda,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: CoresApp.primaria,
-                                  ),
-                                ),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'Andamento',
-                                  child: Text(
-                                    'Andamento',
-                                    style: TextStyle(
-                                      color: CoresApp.textoPrincipal,
-                                    ),
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Parado',
-                                  child: Text(
-                                    'Parado',
-                                    style: TextStyle(
-                                      color: CoresDashboard.atrasado,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setStateDialog(
-                                    () {
-                                      statusSelecionado = value;
-
-                                      controllers[i].text = value;
-                                    },
-                                  );
-                                }
-                              },
-                            ),
-                          );
-                        }
-
-                        return Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: 12,
-                          ),
-                          child: TextField(
-                            controller: controllers[i],
-                            style: const TextStyle(
-                              color: CoresApp.textoPrincipal,
-                              fontSize: 13,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: 'Campo ${i + 1}',
-                              labelStyle: const TextStyle(
-                                color: CoresApp.textoSecundario,
-                              ),
-                              enabledBorder: const OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: CoresApp.borda,
-                                ),
-                              ),
-                              focusedBorder: const OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: CoresApp.primaria,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(
-                      context,
-                    );
-                  },
-                  child: const Text(
-                    'Cancelar',
-                    style: TextStyle(
-                      color: CoresApp.textoFraco,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CoresApp.sucesso,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        TamanhosApp.raioBotao,
-                      ),
-                    ),
-                  ),
-                  onPressed: () async {
-                    try {
-                      final Map<String, dynamic> dadosAtualizados = {
-                        'id': item['id'],
-                        'usuarioUid': _userId,
-                      };
-
-                      for (int i = 0; i < controllers.length; i++) {
-                        dadosAtualizados['campo$i'] = controllers[i].text;
-                      }
-
-                      if (isProjeto) {
-                        await _projetosCollection.doc(item['id']).update(
-                              dadosAtualizados,
-                            );
-                      } else {
-                        await _pluginsCollection.doc(item['id']).update(
-                              dadosAtualizados,
-                            );
-                      }
-
-                      if (!mounted) return;
-
-                      setState(() {
-                        lista[index] = dadosAtualizados;
-                      });
-
-                      Navigator.pop(
-                        context,
-                      );
-                    } catch (e) {
-                      debugPrint(
-                        'Erro ao editar: $e',
-                      );
-                    }
-                  },
-                  child: const Text(
-                    'Salvar',
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // ============================================================
-  // ADICIONAR PROJETO
-  // ============================================================
-
-  Future<void> _adicionarProjeto() async {
     try {
-      final hoje = DateTime.now();
-
-      final docRef = _projetosCollection.doc();
-
-      final novoProjeto = {
-        'id': docRef.id,
-
-        // ======================================================
-        // IDENTIFICAÇÃO DO DONO
-        // ======================================================
-
-        'usuarioUid': _userId,
-        'usuarioEmail': _currentUser?.email ?? '',
-
-        'campo0': 'Novo Projeto - Solicitação',
-        'campo1': '30/12/2026',
-        'campo2': 'Andamento',
-        'campo3': 'Rodrigo',
-        'campo4': _formatarData(hoje),
-        'campo5': _calcularAtualizacaoObrigatoria(
-          hoje,
-        ),
-      };
-
-      await docRef.set(novoProjeto);
-
-      if (!mounted) return;
-
-      setState(() {
-        _projetosRows.add(novoProjeto);
+      await _projectsCollection.doc(docId).update({
+        campo: novoValor,
       });
-    } catch (e) {
-      debugPrint(
-        'Erro ao adicionar projeto: $e',
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$titulo atualizado com sucesso.',
+          ),
+          duration: const Duration(
+            seconds: 2,
+          ),
+        ),
       );
-    }
-  }
-
-  // ============================================================
-  // ADICIONAR PLUGIN
-  // ============================================================
-
-  Future<void> _adicionarPlugin() async {
-    try {
-      final hoje = DateTime.now();
-
-      final docRef = _pluginsCollection.doc();
-
-      final novoPlugin = {
-        'id': docRef.id,
-
-        // ======================================================
-        // IDENTIFICAÇÃO DO DONO
-        // ======================================================
-
-        'usuarioUid': _userId,
-        'usuarioEmail': _currentUser?.email ?? '',
-
-        'campo0': 'Nova Solicitação + Cliente',
-        'campo1': '30/12/2026',
-        'campo2': 'Desenv.',
-        'campo3': 'Rodrigo',
-        'campo4': _formatarData(hoje),
-        'campo5': _calcularAtualizacaoObrigatoria(
-          hoje,
-        ),
-        'campo6': '-',
-        'campo7': 'Plugin Exemplo',
-      };
-
-      await docRef.set(novoPlugin);
-
-      if (!mounted) return;
-
-      setState(() {
-        _pluginsRows.add(novoPlugin);
-      });
     } catch (e) {
       debugPrint(
-        'Erro ao adicionar plugin: $e',
+        'Erro ao atualizar campo $campo: $e',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao salvar $titulo: $e',
+          ),
+        ),
       );
     }
   }
@@ -757,7 +783,9 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       backgroundColor: Colors.transparent,
 
@@ -777,384 +805,164 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
       // CORPO
       // ========================================================
 
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // ======================================================
-          // FUNDO
-          // ======================================================
-
-          Positioned.fill(
-            child: Image.asset(
-              AppTheme.caminhoFundo,
-              fit: BoxFit.cover,
-              errorBuilder: (
-                context,
-                error,
-                stackTrace,
-              ) {
-                return Container(
-                  color: CoresApp.fundo,
-                );
-              },
-            ),
-          ),
-
-          // ======================================================
-          // ESCURECIMENTO
-          // ======================================================
-
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(
-                AppTheme.opacidadeFundo,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: CoresApp.sucesso,
               ),
-            ),
-          ),
-
-          // ======================================================
-          // CONTEÚDO
-          // ======================================================
-
-          _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(
-                    color: CoresApp.sucesso,
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: CoresApp.primaria,
-                              borderRadius: BorderRadius.circular(
-                                2,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(
-                            width: 8,
-                          ),
-                          const Text(
-                            'Pasta de Solicitações',
-                            style: TextStyle(
-                              color: CoresApp.textoPrincipal,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(
+                      Container(
+                        width: 4,
                         height: 16,
-                      ),
-
-                      // ==================================================
-                      // PROJETOS
-                      // ==================================================
-
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(
-                          12,
-                        ),
                         decoration: BoxDecoration(
-                          color: CoresDashboard.card,
-                          borderRadius: BorderRadius.circular(
-                            TamanhosApp.raioTabela,
-                          ),
-                          border: Border.all(
-                            color: CoresDashboard.tabelaBorda,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(
-                                0.2,
-                              ),
-                              blurRadius: 8,
-                              offset: const Offset(
-                                0,
-                                4,
-                              ),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.folder_shared_rounded,
-                                      size: 16,
-                                      color: CoresApp.primaria,
-                                    ),
-                                    const SizedBox(
-                                      width: 6,
-                                    ),
-                                    const Text(
-                                      'Acompanhamento de Projetos',
-                                      style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: _adicionarProjeto,
-                                  icon: const Icon(
-                                    Icons.add,
-                                    size: 14,
-                                  ),
-                                  label: const Text(
-                                    'Adicionar Linha',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: CoresApp.sucesso,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    minimumSize: const Size(
-                                      0,
-                                      32,
-                                    ),
-                                    elevation: 2,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        TamanhosApp.raioBotao,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(
-                              height: 10,
-                            ),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _buildTabelaProjetos(),
-                                ),
-                                const SizedBox(
-                                  width: 12,
-                                ),
-                                SizedBox(
-                                  width: 250,
-                                  child: _buildCalendarioLateral(
-                                    _atualizarDataProjeto,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                          color: CoresApp.primaria,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-
                       const SizedBox(
-                        height: 20,
+                        width: 8,
                       ),
-
-                      // ==================================================
-                      // PLUGINS
-                      // ==================================================
-
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(
-                          12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: CoresDashboard.card,
-                          borderRadius: BorderRadius.circular(
-                            TamanhosApp.raioTabela,
-                          ),
-                          border: Border.all(
-                            color: CoresDashboard.tabelaBorda,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(
-                                0.2,
-                              ),
-                              blurRadius: 8,
-                              offset: const Offset(
-                                0,
-                                4,
-                              ),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.extension_rounded,
-                                      size: 16,
-                                      color: CoresApp.primaria,
-                                    ),
-                                    const SizedBox(
-                                      width: 6,
-                                    ),
-                                    const Text(
-                                      'Acompanhamento Plugins em Desenvolvimento',
-                                      style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: _adicionarPlugin,
-                                  icon: const Icon(
-                                    Icons.add,
-                                    size: 14,
-                                  ),
-                                  label: const Text(
-                                    'Adicionar Linha',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: CoresApp.sucesso,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    minimumSize: const Size(
-                                      0,
-                                      32,
-                                    ),
-                                    elevation: 2,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        TamanhosApp.raioBotao,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(
-                              height: 10,
-                            ),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _buildTabelaPlugins(),
-                                ),
-                                const SizedBox(
-                                  width: 12,
-                                ),
-                                SizedBox(
-                                  width: 250,
-                                  child: _buildCalendarioLateral(
-                                    _atualizarDataPlugin,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                      const Text(
+                        'Pasta de Solicitações',
+                        style: TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
                   ),
-                ),
-        ],
-      ),
-    );
-  }
 
-  // ============================================================
-  // CALENDÁRIO
-  // ============================================================
+                  const SizedBox(
+                    height: 16,
+                  ),
 
-  Widget _buildCalendarioLateral(
-    ValueSetter<DateTime> onDateSelected,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: CoresDashboard.tabelaFundo,
-        borderRadius: BorderRadius.circular(
-          TamanhosApp.raioTabela,
-        ),
-        border: Border.all(
-          color: CoresDashboard.tabelaBorda,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(
-              0.15,
-            ),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(
-          TamanhosApp.raioTabela,
-        ),
-        child: Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: CoresApp.primaria,
-              onPrimary: Colors.white,
-              surface: CoresDashboard.tabelaFundo,
-              onSurface: CoresApp.textoPrincipal,
-            ),
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: 210,
-              height: 210,
-              child: CalendarDatePicker(
-                initialDate: DateTime.now(),
-                firstDate: DateTime(2020),
-                lastDate: DateTime(2030),
-                onDateChanged: onDateSelected,
+                  // ==================================================
+                  // PROJETOS
+                  // ==================================================
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: CoresDashboard.card,
+                      borderRadius: BorderRadius.circular(
+                        TamanhosApp.raioTabela,
+                      ),
+                      border: Border.all(
+                        color: CoresDashboard.tabelaBorda,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.folder_shared_rounded,
+                              size: 16,
+                              color: CoresApp.primaria,
+                            ),
+                            const SizedBox(
+                              width: 6,
+                            ),
+                            const Text(
+                              'Acompanhamento de Projetos',
+                              style: TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(
+                          height: 10,
+                        ),
+                        _buildTabelaProjetos(),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
+                  // ==================================================
+                  // PLUGINS
+                  // ==================================================
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: CoresDashboard.card,
+                      borderRadius: BorderRadius.circular(
+                        TamanhosApp.raioTabela,
+                      ),
+                      border: Border.all(
+                        color: CoresDashboard.tabelaBorda,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.extension_rounded,
+                              size: 16,
+                              color: CoresApp.primaria,
+                            ),
+                            const SizedBox(
+                              width: 6,
+                            ),
+                            const Text(
+                              'Acompanhamento Plugins em Desenvolvimento',
+                              style: TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(
+                          height: 10,
+                        ),
+                        _buildTabelaPlugins(),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
-
   // ============================================================
   // TABELA PROJETOS
   // ============================================================
@@ -1270,143 +1078,51 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
             (index) {
               final row = _projetosRows[index];
 
-              final isHighlight = row['campo2'] == 'Parado' ||
-                  row['campo0'].toString().contains(
-                        'CANCELADO',
-                      );
+              final cliente = row['cliente']?.toString() ?? '';
+
+              final solicitacao = row['solicitacao']?.toString() ?? '';
+
+              final status = row['status']?.toString() ?? '';
+
+              final statusFormatado = _formatarStatusProjeto(status);
+
+              final lider = row['lider']?.toString() ?? '';
+
+              final planEnd = row['planEnd'] as DateTime?;
+
+              final ultimaAtualizacao = row['ultimaAtualizacao'] as DateTime?;
+
+              final ultimaAtualizacaoStr = ultimaAtualizacao != null
+                  ? _formatarData(
+                      ultimaAtualizacao,
+                    )
+                  : '';
+
+              final diasSemAtualizacao = ultimaAtualizacao != null
+                  ? _calcularDiasSemAtualizacao(
+                      ultimaAtualizacaoStr,
+                    )
+                  : '0';
+
+              final atualizacaoObrigatoria = ultimaAtualizacao != null
+                  ? _calcularAtualizacaoObrigatoria(
+                      ultimaAtualizacao,
+                    )
+                  : '—';
+
+              final isParado = status == 'TRAB_STOP';
+
+              final isCancelado = cliente.toUpperCase().contains('CANCELADO');
+
+              final isHighlight = isParado || isCancelado;
 
               final isSelected = _selectedProjetoIndex == index;
-
-              final ultimoComentarioData = row['campo4']?.toString() ?? '';
-
-              final diasSemAtualizacao = _calcularDiasSemAtualizacao(
-                ultimoComentarioData,
-              );
 
               final textColor = isHighlight
                   ? CoresDashboard.atrasado
                   : CoresApp.textoSecundario;
 
-              final cells = <DataCell>[
-                DataCell(
-                  Text(
-                    row['campo0']?.toString() ?? '',
-                    style: TextStyle(
-                      fontSize: TamanhosApp.tabelaFonte,
-                      color: textColor,
-                      fontWeight:
-                          isHighlight ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    row['campo1']?.toString() ?? '',
-                    style: TextStyle(
-                      fontSize: TamanhosApp.tabelaFonte,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isHighlight
-                          ? CoresDashboard.atrasado.withOpacity(
-                              0.15,
-                            )
-                          : CoresDashboard.statusAndamento.withOpacity(
-                              0.15,
-                            ),
-                      borderRadius: BorderRadius.circular(
-                        TamanhosApp.raioBadge,
-                      ),
-                    ),
-                    child: Text(
-                      row['campo2']?.toString() ?? '',
-                      style: TextStyle(
-                        fontSize: TamanhosApp.tabelaFonteStatus,
-                        color: isHighlight
-                            ? CoresDashboard.atrasado
-                            : CoresDashboard.statusAndamento,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    row['campo3']?.toString() ?? '',
-                    style: TextStyle(
-                      fontSize: TamanhosApp.tabelaFonte,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    ultimoComentarioData,
-                    style: TextStyle(
-                      fontSize: TamanhosApp.tabelaFonte,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    diasSemAtualizacao,
-                    style: TextStyle(
-                      fontSize: TamanhosApp.tabelaFonte,
-                      color: textColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    row['campo5']?.toString() ?? '',
-                    style: TextStyle(
-                      fontSize: TamanhosApp.tabelaFonte,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.edit,
-                          size: TamanhosApp.iconeAcao,
-                          color: CoresApp.primaria,
-                        ),
-                        onPressed: () => _editarLinha(
-                          index,
-                          true,
-                        ),
-                        tooltip: 'Editar',
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          size: TamanhosApp.iconeAcao,
-                          color: CoresDashboard.atrasado,
-                        ),
-                        onPressed: () => _excluirLinha(
-                          index,
-                          true,
-                        ),
-                        tooltip: 'Excluir',
-                      ),
-                    ],
-                  ),
-                ),
-              ];
+              final acoes = row['acoes']?.toString() ?? '';
 
               return DataRow(
                 selected: isSelected,
@@ -1430,7 +1146,196 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                     _selectedProjetoIndex = selected == true ? index : null;
                   });
                 },
-                cells: cells,
+                cells: [
+                  // ==================================================
+                  // CLIENTE + SOLICITAÇÃO
+                  // ==================================================
+
+                  DataCell(
+                    Text(
+                      solicitacao.isEmpty ? cliente : '$cliente • $solicitacao',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: TamanhosApp.tabelaFonte,
+                        color: textColor,
+                        fontWeight:
+                            isHighlight ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // VENCIMENTO
+                  // ==================================================
+
+                  DataCell(
+                    Text(
+                      planEnd != null
+                          ? _formatarData(
+                              planEnd,
+                            )
+                          : '—',
+                      style: TextStyle(
+                        fontSize: TamanhosApp.tabelaFonte,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // STATUS
+                  // ==================================================
+
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isHighlight
+                            ? CoresDashboard.atrasado.withOpacity(0.15)
+                            : CoresDashboard.statusAndamento.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(
+                          TamanhosApp.raioBadge,
+                        ),
+                      ),
+                      child: Text(
+                        statusFormatado,
+                        style: TextStyle(
+                          fontSize: TamanhosApp.tabelaFonteStatus,
+                          color: isHighlight
+                              ? CoresDashboard.atrasado
+                              : CoresDashboard.statusAndamento,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // LÍDER
+                  // ==================================================
+
+                  DataCell(
+                    Text(
+                      lider.isEmpty ? '—' : lider,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: TamanhosApp.tabelaFonte,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // ÚLTIMO COMENTÁRIO
+                  // ==================================================
+
+                  DataCell(
+                    SizedBox(
+                      width: 180,
+                      child: Tooltip(
+                        message: row['ultimoComentario']?.toString() ?? '',
+                        child: Text(
+                          ultimaAtualizacaoStr.isEmpty
+                              ? '—'
+                              : ultimaAtualizacaoStr,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TamanhosApp.tabelaFonte,
+                            color: textColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // DIAS SEM ATUALIZAÇÃO
+                  // ==================================================
+
+                  DataCell(
+                    Text(
+                      diasSemAtualizacao,
+                      style: TextStyle(
+                        fontSize: TamanhosApp.tabelaFonte,
+                        color: textColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // ATUALIZAÇÃO OBRIGATÓRIA
+                  // ==================================================
+
+                  DataCell(
+                    Text(
+                      atualizacaoObrigatoria,
+                      style: TextStyle(
+                        fontSize: TamanhosApp.tabelaFonte,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // AÇÕES EDITÁVEL
+                  // ==================================================
+
+                  DataCell(
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        _editarCampoProjeto(
+                          row: row,
+                          campo: 'acoes',
+                          titulo: 'Ações',
+                          valorAtual: acoes,
+                        );
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 100,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                acoes.isEmpty ? 'Editar' : acoes,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: TamanhosApp.tabelaFonte,
+                                  color: acoes.isEmpty
+                                      ? CoresApp.primaria
+                                      : textColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 4,
+                            ),
+                            const Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: CoresApp.primaria,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -1490,7 +1395,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
             ),
             DataColumn(
               label: Text(
-                'Fase',
+                'Status',
                 style: TextStyle(
                   fontSize: TamanhosApp.tabelaFonteCabecalho,
                   fontWeight: FontWeight.bold,
@@ -1574,18 +1479,81 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
             (index) {
               final row = _pluginsRows[index];
 
-              final isHighlight = row['campo2'] == 'Parado' ||
-                  row['campo0'].toString().contains(
-                        'CANCELADO',
-                      );
+              final cliente = row['cliente']?.toString() ?? '';
+
+              final solicitacao = row['solicitacao']?.toString() ?? '';
+
+              final entrega = row['planEnd'] as DateTime?;
+
+              // ==================================================
+              // STATUS
+              // ==================================================
+
+              final status = row['status']?.toString() ?? '';
+
+              final statusFormatado = _formatarStatusProjeto(
+                status,
+              );
+
+              // ==================================================
+              // CONSULTOR
+              // ==================================================
+
+              final consultor = row['lider']?.toString() ?? '';
+
+              // ==================================================
+              // ATUALIZAÇÃO
+              // ==================================================
+
+              final ultimaAtualizacao = row['ultimaAtualizacao'] as DateTime?;
+
+              final ultimaAtualizacaoStr = ultimaAtualizacao != null
+                  ? _formatarData(
+                      ultimaAtualizacao,
+                    )
+                  : '';
+
+              final diasSemAtualizacao = ultimaAtualizacao != null
+                  ? _calcularDiasSemAtualizacao(
+                      ultimaAtualizacaoStr,
+                    )
+                  : '0';
+
+              final atualizacaoObrigatoria = ultimaAtualizacao != null
+                  ? _calcularAtualizacaoObrigatoria(
+                      ultimaAtualizacao,
+                    )
+                  : '—';
+
+              // ==================================================
+              // NS
+              // ==================================================
+
+              final ns = row['id2']?.toString() ?? '';
+
+              // ==================================================
+              // PLUGIN
+              // ==================================================
+
+              final plugin = row['task']?.toString() ?? '';
+
+              // ==================================================
+              // AÇÕES
+              // ==================================================
+
+              final acoes = row['acoes']?.toString() ?? '';
+
+              // ==================================================
+              // DESTAQUES
+              // ==================================================
+
+              final isParado = status == 'TRAB_STOP';
+
+              final isCancelado = cliente.toUpperCase().contains('CANCELADO');
+
+              final isHighlight = isParado || isCancelado;
 
               final isSelected = _selectedPluginIndex == index;
-
-              final atualizacaoData = row['campo4']?.toString() ?? '';
-
-              final diasSemAtualizacao = _calcularDiasSemAtualizacao(
-                atualizacaoData,
-              );
 
               final textColor = isHighlight
                   ? CoresDashboard.atrasado
@@ -1614,51 +1582,117 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                   });
                 },
                 cells: [
+                  // ==================================================
+                  // SOLICITAÇÃO + CLIENTE
+                  // ==================================================
+
                   DataCell(
                     Text(
-                      row['campo0']?.toString() ?? '',
+                      solicitacao.isEmpty ? cliente : '$solicitacao • $cliente',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: TamanhosApp.tabelaFonte,
+                        color: textColor,
+                        fontWeight:
+                            isHighlight ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // ENTREGA
+                  // ==================================================
+
+                  DataCell(
+                    Text(
+                      entrega != null
+                          ? _formatarData(
+                              entrega,
+                            )
+                          : '—',
                       style: TextStyle(
                         fontSize: TamanhosApp.tabelaFonte,
                         color: textColor,
                       ),
                     ),
                   ),
+
+                  // ==================================================
+                  // STATUS
+                  // ==================================================
+
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isHighlight
+                            ? CoresDashboard.atrasado.withOpacity(0.15)
+                            : CoresDashboard.statusAndamento.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(
+                          TamanhosApp.raioBadge,
+                        ),
+                      ),
+                      child: Text(
+                        statusFormatado,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: TamanhosApp.tabelaFonteStatus,
+                          color: isHighlight
+                              ? CoresDashboard.atrasado
+                              : CoresDashboard.statusAndamento,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // CONSULTOR
+                  // ==================================================
+
                   DataCell(
                     Text(
-                      row['campo1']?.toString() ?? '',
+                      consultor.isEmpty ? '—' : consultor,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: TamanhosApp.tabelaFonte,
                         color: textColor,
                       ),
                     ),
                   ),
+
+                  // ==================================================
+                  // ATUALIZAÇÃO
+                  // ==================================================
+
                   DataCell(
-                    Text(
-                      row['campo2']?.toString() ?? '',
-                      style: TextStyle(
-                        fontSize: TamanhosApp.tabelaFonte,
-                        color: textColor,
+                    SizedBox(
+                      width: 110,
+                      child: Tooltip(
+                        message: row['ultimoComentario']?.toString() ?? '',
+                        child: Text(
+                          ultimaAtualizacaoStr.isEmpty
+                              ? '—'
+                              : ultimaAtualizacaoStr,
+                          style: TextStyle(
+                            fontSize: TamanhosApp.tabelaFonte,
+                            color: textColor,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  DataCell(
-                    Text(
-                      row['campo3']?.toString() ?? '',
-                      style: TextStyle(
-                        fontSize: TamanhosApp.tabelaFonte,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      atualizacaoData,
-                      style: TextStyle(
-                        fontSize: TamanhosApp.tabelaFonte,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
+
+                  // ==================================================
+                  // DIAS SEM ATUALIZAÇÃO
+                  // ==================================================
+
                   DataCell(
                     Text(
                       diasSemAtualizacao,
@@ -1669,62 +1703,178 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                       ),
                     ),
                   ),
+
+                  // ==================================================
+                  // ATUALIZAÇÃO OBRIGATÓRIA
+                  // ==================================================
+
                   DataCell(
                     Text(
-                      row['campo5']?.toString() ?? '',
+                      atualizacaoObrigatoria,
                       style: TextStyle(
                         fontSize: TamanhosApp.tabelaFonte,
                         color: textColor,
                       ),
                     ),
                   ),
+
+                  // ==================================================
+                  // NS EDITÁVEL
+                  // ==================================================
+
                   DataCell(
-                    Text(
-                      row['campo6']?.toString() ?? '',
-                      style: TextStyle(
-                        fontSize: TamanhosApp.tabelaFonte,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      row['campo7']?.toString() ?? '',
-                      style: TextStyle(
-                        fontSize: TamanhosApp.tabelaFonte,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.edit,
-                            size: TamanhosApp.iconeAcao,
-                            color: CoresApp.primaria,
-                          ),
-                          onPressed: () => _editarLinha(
-                            index,
-                            false,
-                          ),
-                          tooltip: 'Editar',
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        _editarCampoProjeto(
+                          row: row,
+                          campo: 'id2',
+                          titulo: 'NS',
+                          valorAtual: ns,
+                        );
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 70,
                         ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete,
-                            size: TamanhosApp.iconeAcao,
-                            color: CoresDashboard.atrasado,
-                          ),
-                          onPressed: () => _excluirLinha(
-                            index,
-                            false,
-                          ),
-                          tooltip: 'Excluir',
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                ns.isEmpty ? 'Editar' : ns,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: TamanhosApp.tabelaFonte,
+                                  color: ns.isEmpty
+                                      ? CoresApp.primaria
+                                      : textColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 4,
+                            ),
+                            const Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: CoresApp.primaria,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // PLUGIN EDITÁVEL
+                  // ==================================================
+
+                  DataCell(
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        _editarCampoProjeto(
+                          row: row,
+                          campo: 'task',
+                          titulo: 'Plugin',
+                          valorAtual: plugin,
+                        );
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 100,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                plugin.isEmpty ? 'Editar' : plugin,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: TamanhosApp.tabelaFonte,
+                                  color: plugin.isEmpty
+                                      ? CoresApp.primaria
+                                      : textColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 4,
+                            ),
+                            const Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: CoresApp.primaria,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ==================================================
+                  // AÇÕES EDITÁVEL
+                  // ==================================================
+
+                  DataCell(
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        _editarCampoProjeto(
+                          row: row,
+                          campo: 'acoes',
+                          titulo: 'Ações',
+                          valorAtual: acoes,
+                        );
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 100,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                acoes.isEmpty ? 'Editar' : acoes,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: TamanhosApp.tabelaFonte,
+                                  color: acoes.isEmpty
+                                      ? CoresApp.primaria
+                                      : textColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 4,
+                            ),
+                            const Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: CoresApp.primaria,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],

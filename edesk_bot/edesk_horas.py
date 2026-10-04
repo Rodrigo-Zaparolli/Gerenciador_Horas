@@ -21,1823 +21,980 @@ from config import (
     LOGS_DIR,
 )
 
-
-# ================================================================
-# CAMINHOS
-# ================================================================
-
 BASE_DIR = Path(__file__).resolve().parent
 
 PROFILE_PATH = BASE_DIR / PROFILE_DIR
 SCREENSHOTS_PATH = BASE_DIR / SCREENSHOTS_DIR
 LOGS_PATH = BASE_DIR / LOGS_DIR
 
-PROFILE_PATH.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+PROFILE_PATH.mkdir(parents=True, exist_ok=True)
+SCREENSHOTS_PATH.mkdir(parents=True, exist_ok=True)
+LOGS_PATH.mkdir(parents=True, exist_ok=True)
 
-SCREENSHOTS_PATH.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+SELETORES_EMAIL_LOGIN = [
+    "input[placeholder='nome@exemplo.com']",
+    "input[type='email']",
+    "input[autocomplete='username']",
+    "input[name*='email' i]",
+    "input[id*='email' i]",
+]
 
-LOGS_PATH.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+SELETORES_SENHA_LOGIN = [
+    "input[placeholder='Senha']",
+    "input[type='password']",
+    "input[autocomplete='current-password']",
+    "input[name*='senha' i]",
+    "input[id*='senha' i]",
+    "input[name*='password' i]",
+    "input[id*='password' i]",
+]
 
-
-# ================================================================
-# LOG
-# ================================================================
+SELETORES_ENTRAR_LOGIN = [
+    "button:has-text('Entrar')",
+    "input[type='submit'][value*='Entrar']",
+    "input[value*='Entrar']",
+    "button[type='submit']",
+]
 
 def log(mensagem):
-
-    print(
-        f"[E-Desk][Horas] {mensagem}",
-        flush=True,
-    )
-
-
-# ================================================================
-# REQUEST
-# ================================================================
+    print(f"[E-Desk][Horas] {mensagem}", flush=True)
 
 def carregar_request():
-
     if len(sys.argv) < 2:
+        raise RuntimeError("Nenhum arquivo request.json foi informado.")
 
-        raise RuntimeError(
-            "Nenhum arquivo request.json foi informado."
-        )
-
-    request_path = Path(
-        sys.argv[1]
-    )
-
-    log(
-        f"Request recebido: {request_path}"
-    )
+    request_path = Path(sys.argv[1])
+    log(f"Request recebido: {request_path}")
 
     if not request_path.exists():
+        raise RuntimeError(f"Request não encontrado: {request_path}")
 
-        raise RuntimeError(
-            f"Request não encontrado: {request_path}"
-        )
+    with request_path.open("r", encoding="utf-8") as arquivo:
+        dados = json.load(arquivo)
 
-    with request_path.open(
-        "r",
-        encoding="utf-8",
-    ) as arquivo:
+    dados_log = dict(dados)
+    credenciais_log = dados_log.get("edeskCredenciais")
 
-        dados = json.load(
-            arquivo
-        )
-
-    # ============================================================
-    # DIAGNÓSTICO DO REQUEST
-    # ============================================================
+    if isinstance(credenciais_log, dict):
+        credenciais_log = dict(credenciais_log)
+        if "senha" in credenciais_log:
+            credenciais_log["senha"] = "*** OCULTA ***"
+        dados_log["edeskCredenciais"] = credenciais_log
 
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "CONTEÚDO COMPLETO DO REQUEST.JSON"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log("CONTEÚDO DO REQUEST.JSON")
+    log("============================================================")
 
     try:
-
-        log(
-            json.dumps(
-                dados,
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-
+        log(json.dumps(dados_log, ensure_ascii=False, indent=2))
     except Exception as erro:
+        log(f"Não foi possível exibir o JSON formatado: {erro}")
 
-        log(
-            f"Não foi possível exibir o JSON formatado: {erro}"
-        )
+    log("============================================================")
 
-        log(
-            str(dados)
-        )
+    trabalhos = dados.get("trabalhos", [])
 
-    log(
-        "============================================================"
-    )
-
-    # ============================================================
-    # DIAGNÓSTICO DAS HORAS
-    #
-    # Novo formato:
-    #
-    # trabalhos:
-    #   - solicitacao
-    #   - idTrabalho
-    #   - horas
-    #
-    # Também mantém compatibilidade com:
-    #
-    # horas:
-    #   [...]
-    # ============================================================
-
-    trabalhos = dados.get(
-        "trabalhos",
-        [],
-    )
-
-    if isinstance(
-        trabalhos,
-        list,
-    ) and trabalhos:
-
+    if isinstance(trabalhos, list) and trabalhos:
         log("")
-        log(
-            "============================================================"
-        )
-        log(
-            "DADOS DE TRABALHOS RECEBIDOS"
-        )
-        log(
-            "============================================================"
-        )
+        log("============================================================")
+        log("TRABALHOS RECEBIDOS")
+        log("============================================================")
+        log(f"Quantidade de trabalhos: {len(trabalhos)}")
 
-        log(
-            f"Quantidade de trabalhos: {len(trabalhos)}"
-        )
-
-        for indice_trabalho, trabalho in enumerate(
-            trabalhos,
-            start=1,
-        ):
-
-            log("")
-            log(
-                f"================ TRABALHO {indice_trabalho} ================"
-            )
-
-            if not isinstance(
-                trabalho,
-                dict,
-            ):
-
-                log(
-                    f"Registro inválido: {trabalho}"
-                )
-
+        for indice_trabalho, trabalho in enumerate(trabalhos, start=1):
+            if not isinstance(trabalho, dict):
                 continue
 
-            solicitacao = str(
-                trabalho.get(
-                    "solicitacao",
-                    "",
-                )
-                or ""
-            ).strip()
+            solicitacao = str(trabalho.get("solicitacao", "") or "").strip()
+            id_trabalho = str(trabalho.get("idTrabalho", trabalho.get("id_trabalho", ""),) or "").strip()
+            horas = trabalho.get("horas", [])
 
-            id_trabalho = str(
-                trabalho.get(
-                    "idTrabalho",
-                    trabalho.get(
-                        "id_trabalho",
-                        "",
-                    ),
-                )
-                or ""
-            ).strip()
+            if not isinstance(horas, list):
+                horas = []
 
-            horas_trabalho = trabalho.get(
-                "horas",
-                [],
-            )
+            log("")
+            log(f"---------------- TRABALHO {indice_trabalho} ----------------")
+            log(f"SOLICITAÇÃO: {solicitacao}")
+            log(f"ID TRABALHO RELATIVO: {id_trabalho}")
+            log(f"QUANTIDADE DE HORAS: {len(horas)}")
 
-            if not isinstance(
-                horas_trabalho,
-                list,
-            ):
-
-                horas_trabalho = []
-
-            log(
-                f"SOLICITAÇÃO: {solicitacao or '[NÃO INFORMADA]'}"
-            )
-
-            log(
-                f"ID TRABALHO: {id_trabalho or '[NÃO INFORMADO]'}"
-            )
-
-            log(
-                f"Quantidade de horas: {len(horas_trabalho)}"
-            )
-
-            for indice_hora, hora in enumerate(
-                horas_trabalho,
-                start=1,
-            ):
-
+            for indice_hora, hora in enumerate(horas, start=1):
                 log("")
-                log(
-                    f"---------------- HORA {indice_hora} ----------------"
-                )
-
-                if not isinstance(
-                    hora,
-                    dict,
-                ):
-
-                    log(
-                        f"Registro inválido: {hora}"
-                    )
-
-                    continue
-
+                log(f"HORA {indice_hora}:")
                 try:
-
-                    log(
-                        json.dumps(
-                            hora,
-                            ensure_ascii=False,
-                            indent=2,
-                        )
-                    )
-
+                    log(json.dumps(hora, ensure_ascii=False, indent=2))
                 except Exception:
+                    log(str(hora))
 
-                    log(
-                        str(hora)
-                    )
+                if isinstance(hora, dict):
+                    descritivo = obter_descritivo_hora(hora)
+                    log(f"DESCRITIVO: {descritivo or '[NÃO INFORMADO]'}")
 
-                descritivo = obter_descritivo_hora(
-                    hora
-                )
-
-                if descritivo:
-
-                    log(
-                        f"DESCRITIVO: {descritivo}"
-                    )
-
-                else:
-
-                    log(
-                        "DESCRITIVO: NÃO INFORMADO"
-                    )
-
-        log(
-            "============================================================"
-        )
+        log("============================================================")
         log("")
-
     else:
-
-        # ========================================================
-        # COMPATIBILIDADE COM REQUEST ANTIGO
-        # ========================================================
-
-        horas = dados.get(
-            "horas",
-            [],
-        )
-
+        horas = dados.get("horas", [])
         log("")
-        log(
-            "============================================================"
-        )
-        log(
-            "DADOS DE HORAS RECEBIDOS"
-        )
-        log(
-            "============================================================"
-        )
+        log("============================================================")
+        log("DADOS DE HORAS RECEBIDOS")
+        log("============================================================")
+        log(f"Tipo de 'horas': {type(horas).__name__}")
 
-        log(
-            f"Tipo de 'horas': {type(horas).__name__}"
-        )
-
-        if isinstance(
-            horas,
-            list,
-        ):
-
-            log(
-                f"Quantidade de registros em 'horas': {len(horas)}"
-            )
-
-            for indice, hora in enumerate(
-                horas,
-                start=1,
-            ):
-
+        if isinstance(horas, list):
+            log(f"Quantidade de registros em 'horas': {len(horas)}")
+            for indice, hora in enumerate(horas, start=1):
                 log("")
-                log(
-                    f"---------------- HORA {indice} ----------------"
-                )
-
-                log(
-                    f"Tipo do registro: {type(hora).__name__}"
-                )
-
+                log(f"---------------- HORA {indice} ----------------")
                 try:
-
-                    log(
-                        json.dumps(
-                            hora,
-                            ensure_ascii=False,
-                            indent=2,
-                        )
-                    )
-
+                    log(json.dumps(hora, ensure_ascii=False, indent=2))
                 except Exception:
+                    log(str(hora))
 
-                    log(
-                        str(hora)
-                    )
-
-                if isinstance(
-                    hora,
-                    dict,
-                ):
-
-                    descritivo = obter_descritivo_hora(
-                        hora
-                    )
-
-                    if descritivo:
-
-                        log(
-                            f"DESCRITIVO: {descritivo}"
-                        )
-
-                    else:
-
-                        log(
-                            "DESCRITIVO: NÃO INFORMADO"
-                        )
-
+                if isinstance(hora, dict):
+                    descritivo = obter_descritivo_hora(hora)
+                    log(f"DESCRITIVO: {descritivo or '[NÃO INFORMADO]'}")
         else:
+            log("O campo 'horas' NÃO é uma lista.")
 
-            log(
-                "O campo 'horas' NÃO é uma lista."
-            )
-
-            log(
-                f"Valor recebido: {horas}"
-            )
-
-        log(
-            "============================================================"
-        )
+        log("============================================================")
         log("")
 
     return dados
 
-
-# ================================================================
-# DADOS DO REQUEST
-# ================================================================
-
 def obter_url(dados):
-
-    url = str(
-        dados.get(
-            "url",
-            "",
-        )
-    ).strip()
-
+    url = str(dados.get("url", "")).strip()
     if not url:
-
-        raise RuntimeError(
-            "A URL do E-Desk não foi informada."
-        )
-
+        raise RuntimeError("A URL do E-Desk não foi informada.")
     return url
 
-
 def extrair_id_trabalho(dados):
-
-    return str(
-        dados.get(
-            "idTrabalho",
-            "",
-        )
-    ).strip()
-
+    return str(dados.get("idTrabalho", "")).strip()
 
 def extrair_solicitacao(dados):
-
-    return str(
-        dados.get(
-            "solicitacao",
-            "",
-        )
-    ).strip()
-
+    return str(dados.get("solicitacao", "")).strip()
 
 def extrair_horas(dados):
-
-    horas = dados.get(
-        "horas",
-        [],
-    )
-
-    if not isinstance(
-        horas,
-        list,
-    ):
-
+    horas = dados.get("horas", [])
+    if not isinstance(horas, list):
         return []
-
     return horas
 
-
-# ================================================================
-# EXTRAIR TRABALHOS
-#
-# NOVO FORMATO:
-#
-# {
-#   "trabalhos": [
-#       {
-#           "solicitacao": "2262412",
-#           "idTrabalho": "18",
-#           "horas": [...]
-#       },
-#       {
-#           "solicitacao": "2261914",
-#           "idTrabalho": "7",
-#           "horas": [...]
-#       }
-#   ]
-# }
-#
-# IMPORTANTE:
-#
-# O ID relativo do trabalho somente é único dentro da solicitação.
-#
-# Portanto:
-#
-# 2262412 + 18
-#
-# é diferente de:
-#
-# 2261914 + 18
-# ================================================================
-
 def extrair_trabalhos(dados):
+    trabalhos = dados.get("trabalhos", [])
+    resultado = []
 
-    trabalhos = dados.get(
-        "trabalhos",
-        [],
-    )
-
-    # ============================================================
-    # NOVO FORMATO
-    # ============================================================
-
-    if isinstance(
-        trabalhos,
-        list,
-    ) and trabalhos:
-
-        resultado = []
-
+    if isinstance(trabalhos, list) and trabalhos:
         for trabalho in trabalhos:
-
-            if not isinstance(
-                trabalho,
-                dict,
-            ):
-
+            if not isinstance(trabalho, dict):
                 continue
-
-            solicitacao = str(
-                trabalho.get(
-                    "solicitacao",
-                    "",
-                )
-                or ""
-            ).strip()
-
-            id_trabalho = str(
-                trabalho.get(
-                    "idTrabalho",
-                    trabalho.get(
-                        "id_trabalho",
-                        "",
-                    ),
-                )
-                or ""
-            ).strip()
-
-            horas = trabalho.get(
-                "horas",
-                [],
-            )
-
-            if not isinstance(
-                horas,
-                list,
-            ):
-
+            solicitacao = str(trabalho.get("solicitacao", "") or "").strip()
+            id_trabalho = str(trabalho.get("idTrabalho", trabalho.get("id_trabalho", ""),) or "").strip()
+            horas = trabalho.get("horas", [])
+            if not isinstance(horas, list):
                 horas = []
 
-            resultado.append(
-                {
-                    "solicitacao": solicitacao,
-                    "id_trabalho": id_trabalho,
-                    "horas": horas,
-                }
-            )
-
-        return resultado
-
-    # ============================================================
-    # COMPATIBILIDADE COM FORMATO ANTIGO
-    # ============================================================
-
-    solicitacao = extrair_solicitacao(
-        dados
-    )
-
-    id_trabalho = extrair_id_trabalho(
-        dados
-    )
-
-    horas = extrair_horas(
-        dados
-    )
-
-    if solicitacao and id_trabalho:
-
-        return [
-            {
+            resultado.append({
                 "solicitacao": solicitacao,
                 "id_trabalho": id_trabalho,
                 "horas": horas,
-            }
-        ]
+            })
+        return resultado
 
-    return []
+    solicitacao = extrair_solicitacao(dados)
+    id_trabalho = extrair_id_trabalho(dados)
+    horas = extrair_horas(dados)
 
+    if solicitacao and id_trabalho:
+        resultado.append({
+            "solicitacao": solicitacao,
+            "id_trabalho": id_trabalho,
+            "horas": horas,
+        })
 
-# ================================================================
-# DESCRITIVO DA HORA
-# ================================================================
+    return resultado
 
 def obter_descritivo_hora(hora):
-
-    if not isinstance(
-        hora,
-        dict,
-    ):
-
+    if not isinstance(hora, dict):
         return ""
 
     campos = [
-        "descritivo",
-        "descricao",
-        "descrição",
-        "description",
-        "atividade",
-        "motivo",
-        "observacao",
-        "observação",
+        "descritivo", "descricao", "descrição", "description",
+        "atividade", "motivo", "observacao", "observação",
     ]
 
     for campo in campos:
-
-        valor = hora.get(
-            campo,
-            "",
-        )
-
+        valor = hora.get(campo, "")
         if valor is None:
-
             continue
-
-        valor = str(
-            valor
-        ).strip()
-
+        valor = str(valor).strip()
         if valor:
-
             return valor
 
     return ""
 
-
-# ================================================================
-# LIMPAR DESCRITIVO
-# ================================================================
-
-def limpar_descritivo_hora(
-    descritivo,
-    data,
-):
-
-    descritivo = str(
-        descritivo or ""
-    ).strip()
-
-    data = str(
-        data or ""
-    ).strip()
+def limpar_descritivo_hora(descritivo, data):
+    descritivo = str(descritivo or "").strip()
+    data = str(data or "").strip()
 
     if not descritivo:
-
         return ""
 
-    # ------------------------------------------------------------
-    # Remove um "-" inicial.
-    # ------------------------------------------------------------
-
-    descritivo = re.sub(
-        r"^\s*-\s*",
-        "",
-        descritivo,
-    ).strip()
-
-    # ------------------------------------------------------------
-    # Remove a data recebida no início.
-    # ------------------------------------------------------------
+    descritivo = re.sub(r"^\s*-\s*", "", descritivo).strip()
 
     if data:
+        padrao_data = re.escape(data)
+        descritivo = re.sub(rf"^\s*{padrao_data}\s*:?\s*-?\s*", "", descritivo, count=1).strip()
 
-        padrao_data = re.escape(
-            data
-        )
-
-        descritivo = re.sub(
-            rf"^\s*{padrao_data}\s*:?\s*-?\s*",
-            "",
-            descritivo,
-            count=1,
-        ).strip()
-
-    # ------------------------------------------------------------
-    # Remove qualquer data DD/MM/AAAA no início.
-    # ------------------------------------------------------------
-
-    descritivo = re.sub(
-        r"^\s*\d{2}/\d{2}/\d{4}\s*:?\s*-?\s*",
-        "",
-        descritivo,
-        count=1,
-    ).strip()
+    descritivo = re.sub(r"^\s*\d{2}/\d{2}/\d{4}\s*:?\s*-?\s*", "", descritivo, count=1).strip()
 
     return descritivo
 
-
-# ================================================================
-# DATA DA HORA
-# ================================================================
-
 def obter_data_hora(hora):
-
-    if not isinstance(
-        hora,
-        dict,
-    ):
-
+    if not isinstance(hora, dict):
         return ""
 
-    campos = [
-        "data",
-        "date",
-        "dt",
-    ]
-
-    for campo in campos:
-
-        valor = hora.get(
-            campo,
-            "",
-        )
-
+    for campo in ["data", "date", "dt"]:
+        valor = hora.get(campo, "")
         if valor is None:
-
             continue
-
-        valor = str(
-            valor
-        ).strip()
-
+        valor = str(valor).strip()
         if valor:
-
             return valor
 
     return ""
-
-
-# ================================================================
-# INÍCIO DA HORA
-# ================================================================
 
 def obter_inicio_hora(hora):
-
-    if not isinstance(
-        hora,
-        dict,
-    ):
-
+    if not isinstance(hora, dict):
         return ""
 
-    campos = [
-        "inicio",
-        "início",
-        "horaInicio",
-        "hora_inicio",
-        "start",
-    ]
-
-    for campo in campos:
-
-        valor = hora.get(
-            campo,
-            "",
-        )
-
+    for campo in ["inicio", "início", "horaInicio", "hora_inicio", "start"]:
+        valor = hora.get(campo, "")
         if valor is None:
-
             continue
-
-        valor = str(
-            valor
-        ).strip()
-
+        valor = str(valor).strip()
         if valor:
-
             return valor
 
     return ""
-
-
-# ================================================================
-# FIM DA HORA
-# ================================================================
 
 def obter_fim_hora(hora):
-
-    if not isinstance(
-        hora,
-        dict,
-    ):
-
+    if not isinstance(hora, dict):
         return ""
 
-    campos = [
-        "fim",
-        "horaFim",
-        "hora_fim",
-        "end",
-    ]
-
-    for campo in campos:
-
-        valor = hora.get(
-            campo,
-            "",
-        )
-
+    for campo in ["fim", "horaFim", "hora_fim", "end"]:
+        valor = hora.get(campo, "")
         if valor is None:
-
             continue
-
-        valor = str(
-            valor
-        ).strip()
-
+        valor = str(valor).strip()
         if valor:
-
             return valor
 
     return ""
 
-
-# ================================================================
-# MODO DE ENVIO
-# ================================================================
-
 def obter_modo_envio(dados):
-
-    valor = dados.get(
-        "enviar",
-        False,
-    )
-
-    if isinstance(
-        valor,
-        bool,
-    ):
-
+    valor = dados.get("enviar", False)
+    if isinstance(valor, bool):
         return valor
-
-    texto = str(
-        valor
-    ).strip().lower()
-
-    return texto in [
-        "true",
-        "1",
-        "sim",
-        "yes",
-        "envio",
-    ]
-
+    texto = str(valor).strip().lower()
+    return texto in ["true", "1", "sim", "yes", "envio"]
 
 def obter_manter_navegador_aberto(dados):
-
-    valor = dados.get(
-        "manterNavegadorAberto",
-        False,
-    )
-
-    if isinstance(
-        valor,
-        bool,
-    ):
-
+    valor = dados.get("manterNavegadorAberto", False)
+    if isinstance(valor, bool):
         return valor
-
-    texto = str(
-        valor
-    ).strip().lower()
-
-    return texto in [
-        "true",
-        "1",
-        "sim",
-        "yes",
-    ]
-
-
-# ================================================================
-# NORMALIZAÇÃO
-# ================================================================
+    texto = str(valor).strip().lower()
+    return texto in ["true", "1", "sim", "yes"]
 
 def normalizar_texto_resposta(texto):
-
     if not texto:
-
         return ""
-
-    texto = str(
-        texto
-    )
-
-    texto = html.unescape(
-        texto
-    )
-
-    texto = texto.replace(
-        "\\/",
-        "/",
-    )
-
-    texto = texto.replace(
-        "\\u0026",
-        "&",
-    )
-
-    texto = texto.replace(
-        "\\x26",
-        "&",
-    )
+    texto = str(texto)
+    texto = html.unescape(texto)
+    texto = texto.replace("\\/", "/")
+    texto = texto.replace("\\u0026", "&")
+    texto = texto.replace("\\x26", "&")
 
     for _ in range(5):
-
-        novo = unquote(
-            texto
-        )
-
+        novo = unquote(texto)
         if novo == texto:
-
             break
-
         texto = novo
 
     return texto
 
-
-# ================================================================
-# GUID
-# ================================================================
-
 def obter_guid_da_url(url):
-
     try:
-
-        parametros = parse_qs(
-            urlparse(url).query
-        )
-
-        return parametros.get(
-            "GUID",
-            [""],
-        )[0]
-
+        parametros = parse_qs(urlparse(url).query)
+        return parametros.get("GUID", [""])[0]
     except Exception:
-
         return ""
-
-
-# ================================================================
-# PARSE URL
-# ================================================================
 
 def extrair_dados_url(url):
-
     resultado = {
-
         "url": url,
-
         "pagina": "",
-
         "guid": "",
-
         "solicitacao": "",
-
         "cmd": "",
-
         "id_trabalho": "",
-
         "projeto": "",
-
         "atividade": "",
-
         "cmdprj": "",
     }
-
     try:
-
-        partes = urlparse(
-            url
-        )
-
+        partes = urlparse(url)
         resultado["pagina"] = partes.path
-
-        parametros = parse_qs(
-            partes.query
-        )
-
-        resultado["guid"] = parametros.get(
-            "GUID",
-            [""],
-        )[0]
-
-        resultado["solicitacao"] = parametros.get(
-            "solicitacao",
-            [""],
-        )[0]
-
-        resultado["cmd"] = parametros.get(
-            "cmd",
-            [""],
-        )[0]
-
-        resultado["id_trabalho"] = parametros.get(
-            "id_trabalho",
-            [""],
-        )[0]
-
+        parametros = parse_qs(partes.query)
+        resultado["guid"] = parametros.get("GUID", [""])[0]
+        resultado["solicitacao"] = parametros.get("solicitacao", [""])[0]
+        resultado["cmd"] = parametros.get("cmd", [""])[0]
+        resultado["id_trabalho"] = parametros.get("id_trabalho", [""])[0]
         if not resultado["id_trabalho"]:
-
-            resultado["id_trabalho"] = parametros.get(
-                "idTrabalho",
-                [""],
-            )[0]
-
+            resultado["id_trabalho"] = parametros.get("idTrabalho", [""])[0]
     except Exception as erro:
-
-        resultado["erro"] = str(
-            erro
-        )
-
+        resultado["erro"] = str(erro)
     return resultado
 
-
 def extrair_dados_url_trabalho(url):
-
-    return extrair_dados_url(
-        url
-    )
-
-
-# ================================================================
-# IDENTIFICAR PÁGINA
-# ================================================================
+    return extrair_dados_url(url)
 
 def nome_pagina(url):
-
     try:
-
-        return (
-            urlparse(url)
-            .path
-            .split("/")[-1]
-            .lower()
-        )
-
+        return urlparse(url).path.split("/")[-1].lower()
     except Exception:
-
         return ""
 
-
 def eh_solicitacao(url):
-
-    return (
-        nome_pagina(url)
-        == "solicitacao.aspx"
-    )
-
+    return nome_pagina(url) == "solicitacao.aspx"
 
 def eh_trabalho(url):
-
-    return (
-        nome_pagina(url)
-        == "trabalho.aspx"
-    )
-
+    return nome_pagina(url) == "trabalho.aspx"
 
 def eh_trabalho_retroativo(url):
+    return nome_pagina(url) == "trabalhoretroativo.aspx"
 
-    return (
-        nome_pagina(url)
-        == "trabalhoretroativo.aspx"
-    )
-
-
-# ================================================================
-# MONITOR DE NAVEGAÇÃO
-# ================================================================
-
-def instalar_monitor_navegacao(
-    context,
-):
-
+def instalar_monitor_navegacao(context):
     log("")
-    log(
-        "============================================"
-    )
-    log(
-        "INSTALANDO MONITOR DE NAVEGAÇÃO"
-    )
-    log(
-        "============================================"
-    )
+    log("============================================")
+    log("INSTALANDO MONITOR DE NAVEGAÇÃO")
+    log("============================================")
 
     def navegacao(frame):
-
         try:
-
             if frame.parent_frame is not None:
-
                 return
-
             url = frame.url
-
             if not url:
-
                 return
-
-            pagina = nome_pagina(
-                url
-            )
-
-            if pagina not in [
-                "solicitacao.aspx",
-                "trabalho.aspx",
-                "trabalhoretroativo.aspx",
-            ]:
-
+            pagina = nome_pagina(url)
+            if pagina not in ["solicitacao.aspx", "trabalho.aspx", "trabalhoretroativo.aspx"]:
                 return
 
             log("")
-            log(
-                "****************************************"
-            )
-            log(
-                "NAVEGAÇÃO E-DESK DETECTADA"
-            )
-            log(
-                "****************************************"
-            )
-
-            log(
-                f"Página: {pagina}"
-            )
-
-            log(
-                f"URL: {url}"
-            )
-
-            log(
-                "****************************************"
-            )
+            log("****************************************")
+            log("NAVEGAÇÃO E-DESK DETECTADA")
+            log("****************************************")
+            log(f"Página: {pagina}")
+            log(f"URL: {url}")
+            log("****************************************")
             log("")
-
         except Exception as erro:
+            log(f"Erro no monitor de navegação: {erro}")
 
-            log(
-                f"Erro no monitor de navegação: {erro}"
-            )
+    context.on("framenavigated", navegacao)
 
-    context.on(
-        "framenavigated",
-        navegacao,
-    )
+def obter_credenciais_edesk(dados):
+    credenciais = dados.get("edeskCredenciais")
 
+    if not isinstance(credenciais, dict):
+        email = str(dados.get("edeskEmail", "") or "").strip()
+        senha = str(dados.get("edeskSenha", "") or "")
+    else:
+        email = str(credenciais.get("email", "") or "").strip()
+        senha = str(credenciais.get("senha", "") or "")
 
-# ================================================================
-# LOGIN
-# ================================================================
+    if not email:
+        log("E-mail E-Desk não informado.")
+        return None
 
-def aguardar_login(
-    page,
-    timeout_segundos=300,
-):
+    if not senha:
+        log("Senha E-Desk não informada.")
+        return None
+
+    log("Credenciais E-Desk disponíveis para login automático.")
+    log(f"E-mail disponível: SIM | {email}")
+    log(f"Senha disponível: SIM | {len(senha)} caracteres")
+
+    return {
+        "email": email,
+        "senha": senha,
+    }
+
+def localizar_elemento_visivel(page, seletores):
+    for seletor in seletores:
+        try:
+            elementos = page.locator(seletor)
+            quantidade = elementos.count()
+            for indice in range(quantidade):
+                elemento = elementos.nth(indice)
+                try:
+                    if elemento.is_visible():
+                        return elemento
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    try:
+        frames = list(page.frames)
+    except Exception:
+        frames = []
+
+    for frame in frames:
+        try:
+            for seletor in seletores:
+                elementos = frame.locator(seletor)
+                quantidade = elementos.count()
+                for indice in range(quantidade):
+                    elemento = elementos.nth(indice)
+                    try:
+                        if elemento.is_visible():
+                            return elemento
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    return None
+
+def login_confirmado(page):
+    try:
+        if "/Portal/PortalAtendente.aspx" in page.url:
+            return True
+    except Exception:
+        pass
+
+    try:
+        for seletor in ["#cph1_BtCom", "#cph1_txtSol"]:
+            elemento = page.locator(seletor)
+            if elemento.count() > 0:
+                try:
+                    if elemento.first.is_visible(timeout=1000):
+                        return True
+                except Exception:
+                    return True
+    except Exception:
+        pass
+
+    return False
+
+def tela_login_detectada(page):
+    try:
+        senha = localizar_elemento_visivel(page, SELETORES_SENHA_LOGIN)
+        if senha is not None:
+            return True
+    except Exception:
+        pass
+
+    try:
+        url = (page.url or "").lower()
+        marcadores = [
+            "promobid.promob.com",
+            "identity.promob.com",
+            "/authentications/signin",
+            "/signin",
+            "/login",
+        ]
+        return any(marcador in url for marcador in marcadores)
+    except Exception:
+        return False
+
+def tentar_login_automatico(page, credenciais):
+    if not credenciais:
+        log("Login automático indisponível: nenhuma credencial cadastrada.")
+        return False
+
+    email = str(credenciais.get("email", "") or "").strip()
+    senha = str(credenciais.get("senha", "") or "")
+
+    if not email or not senha:
+        log("Credenciais automáticas incompletas.")
+        return False
 
     log("")
-    log(
-        "========================================"
-    )
-    log(
-        "AGUARDANDO AUTENTICAÇÃO DO PROMOB"
-    )
-    log(
-        "========================================"
-    )
-    log("")
+    log("============================================================")
+    log("TENTANDO LOGIN AUTOMÁTICO DO PROMOB ID")
+    log("============================================================")
+    log(f"URL atual: {page.url}")
 
+    campo_email = None
+    inicio = time.time()
+
+    while time.time() - inicio < 30:
+        try:
+            campo_email = localizar_elemento_visivel(page, SELETORES_EMAIL_LOGIN)
+            if campo_email is not None:
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    if campo_email is None:
+        log("Campo de e-mail não encontrado para login automático.")
+        return False
+
+    try:
+        campo_email.click()
+        campo_email.fill(email)
+        log("E-mail preenchido automaticamente.")
+    except Exception as erro:
+        log(f"Erro preenchendo e-mail: {erro}")
+        return False
+
+    campo_senha = None
+    inicio = time.time()
+
+    while time.time() - inicio < 30:
+        try:
+            campo_senha = localizar_elemento_visivel(page, SELETORES_SENHA_LOGIN)
+            if campo_senha is not None:
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    if campo_senha is None:
+        log("Campo de senha não encontrado para login automático.")
+        return False
+
+    try:
+        campo_senha.click()
+        campo_senha.fill(senha)
+        log("Senha preenchida automaticamente.")
+    except Exception as erro:
+        log(f"Erro preenchendo senha: {erro}")
+        return False
+
+    botao_entrar = None
+    inicio = time.time()
+
+    while time.time() - inicio < 20:
+        try:
+            botao_entrar = localizar_elemento_visivel(page, SELETORES_ENTRAR_LOGIN)
+            if botao_entrar is not None:
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    try:
+        if botao_entrar is not None:
+            log("Botão Entrar encontrado.")
+            botao_entrar.click(force=True)
+            log("Clique em Entrar executado.")
+        else:
+            log("Botão Entrar não encontrado. Tentando ENTER no campo de senha.")
+            campo_senha.press("Enter")
+    except Exception as erro:
+        log(f"Erro enviando formulário de login: {erro}")
+        return False
+
+    log("Aguardando confirmação da autenticação...")
     inicio = time.time()
     ultimo_url = ""
 
+    while time.time() - inicio < 40:
+        try:
+            url_atual = page.url
+            if url_atual != ultimo_url:
+                log(f"URL após login: {url_atual}")
+                ultimo_url = url_atual
+
+            if login_confirmado(page):
+                log("LOGIN AUTOMÁTICO CONFIRMADO.")
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+
+    log("LOGIN AUTOMÁTICO NÃO FOI CONFIRMADO.")
+    return False
+
+def aguardar_login(page, credenciais=None, timeout_segundos=300):
+    log("")
+    log("========================================")
+    log("AUTENTICAÇÃO DO PROMOB")
+    log("========================================")
+    log("")
+
+    if login_confirmado(page):
+        log("Sessão E-Desk já autenticada.")
+        return
+
+    inicio = time.time()
+    tentativa_automatica = False
+    ultimo_url = ""
+
     while True:
-
-        if (
-            time.time() - inicio
-            > timeout_segundos
-        ):
-
-            raise RuntimeError(
-                "Tempo limite de autenticação excedido."
-            )
+        if time.time() - inicio > timeout_segundos:
+            raise RuntimeError("Tempo limite de autenticação excedido.")
 
         try:
-
             url_atual = page.url
-
+            if url_atual != ultimo_url:
+                log(f"URL atual: {url_atual}")
+                ultimo_url = url_atual
         except Exception:
+            pass
 
-            url_atual = ""
-
-        if url_atual != ultimo_url:
-
-            log(
-                f"URL atual: {url_atual}"
-            )
-
-            ultimo_url = url_atual
-
-        if (
-            "/Portal/PortalAtendente.aspx"
-            in url_atual
-        ):
-
+        if login_confirmado(page):
+            log("AUTENTICAÇÃO CONFIRMADA.")
             return
 
-        try:
-
-            botao = page.locator(
-                "#cph1_BtCom"
-            )
-
-            if botao.count() > 0:
-
-                if botao.first.is_visible(
-                    timeout=1000
-                ):
-
+        if not tentativa_automatica and credenciais and tela_login_detectada(page):
+            tentativa_automatica = True
+            try:
+                sucesso = tentar_login_automatico(page, credenciais)
+                if sucesso:
                     return
-
-        except Exception:
-
-            pass
+            except Exception as erro:
+                log(f"Erro no login automático: {erro}")
+            log("Login automático não confirmado. Aguardando login manual como fallback.")
 
         time.sleep(1)
 
-
-# ================================================================
-# ACESSAR GRID
-# ================================================================
-
-def acessar_minha_grid(page):
-
+def acessar_minha_grid(page, guid=None):
     log("")
-    log(
-        "============================================"
-    )
-    log(
-        "ACESSANDO MINHA GRID"
-    )
-    log(
-        "============================================"
-    )
+    log("============================================")
+    log("ACESSANDO MINHA GRID")
+    log("============================================")
 
-    guid = obter_guid_da_url(
-        page.url
-    )
-
+    guid = str(guid or obter_guid_da_url(page.url) or "").strip()
     if not guid:
+        raise RuntimeError("GUID da sessão do E-Desk não encontrado.")
 
-        raise RuntimeError(
-            "GUID da sessão do E-Desk não encontrado."
-        )
+    url_grid = f"https://promob.e-desk.com.br/Portal/ListaSolicitacao.aspx?GUID={guid}"
+    log(f"Acessando Grid: {url_grid}")
 
-    url_grid = (
-        "https://promob.e-desk.com.br/"
-        "Portal/ListaSolicitacao.aspx"
-        f"?GUID={guid}"
-    )
+    try:
+        page.goto(url_grid, wait_until="domcontentloaded", timeout=60000)
+    except Exception as erro:
+        log(f"Aviso durante acesso à Grid: {erro}")
 
-    log(
-        f"Acessando Grid: {url_grid}"
-    )
-
-    page.goto(
-        url_grid,
-        wait_until="commit",
-        timeout=60000,
-    )
-
-    page.wait_for_timeout(
-        5000
-    )
-
-
-# ================================================================
-# MONITOR REQUEST
-# ================================================================
+    page.wait_for_timeout(4000)
+    log(f"URL atual da Grid: {page.url}")
 
 def instalar_monitor_requests(page):
-
     def monitor_request(request):
-
         try:
-
             url = request.url
-
             paginas_interesse = [
                 "ListaSolicitacao.aspx",
                 "Solicitacao.aspx",
                 "Trabalho.aspx",
                 "TrabalhoRetroativo.aspx",
             ]
-
-            if not any(
-                pagina in url
-                for pagina in paginas_interesse
-            ):
-
+            if not any(pagina in url for pagina in paginas_interesse):
                 return
-
         except Exception:
-
             pass
+    page.on("request", monitor_request)
 
-    page.on(
-        "request",
-        monitor_request,
-    )
-
-
-# ================================================================
-# LOCALIZAR SOLICITAÇÃO NA GRID
-# ================================================================
-
-def localizar_solicitacao(
-    page,
-    numero_solicitacao,
-):
-
-    numero_solicitacao = str(
-        numero_solicitacao
-    ).strip()
+def localizar_solicitacao(page, numero_solicitacao, atividade_alvo=""):
+    numero_solicitacao = str(numero_solicitacao or "").strip()
+    atividade_alvo = str(atividade_alvo or "").strip()
 
     log("")
-    log(
-        "============================================"
-    )
-    log(
-        "LOCALIZANDO SOLICITAÇÃO NA GRID"
-    )
-    log(
-        "============================================"
-    )
+    log("============================================")
+    log("PESQUISANDO SOLICITAÇÃO NA GRID")
+    log("============================================")
+    log(f"Solicitação: {numero_solicitacao}")
+    log(f"Atividade alvo: {atividade_alvo or '[NÃO INFORMADA]'}")
 
-    seletor_tabela = (
-        "#ctl00_cph1_hgrSol_ctl00"
-    )
+    seletor_tabela = "#ctl00_cph1_hgrSol_ctl00"
 
     try:
+        campo = page.locator("#cph1_txtSol").first
+        campo.wait_for(state="visible", timeout=20000)
+        campo.fill("")
+        campo.fill(numero_solicitacao)
+        log("Número preenchido no campo Pesquisar.")
 
-        page.wait_for_selector(
-            seletor_tabela,
-            state="attached",
-            timeout=30000,
-        )
+        botao = page.locator("#cph1_btnLocSol").first
+        botao.wait_for(state="attached", timeout=20000)
+        log("Executando pesquisa...")
+        try:
+            botao.click(force=True, timeout=10000)
+        except Exception:
+            campo.press("Enter")
 
-    except Exception:
+        inicio = time.time()
+        while time.time() - inicio < 25:
+            try:
+                page.wait_for_timeout(400)
+                tabela = page.locator(seletor_tabela).first
+                if tabela.count() and numero_solicitacao in tabela.inner_text(timeout=3000):
+                    break
+            except Exception:
+                pass
 
-        pass
+        log(f"URL após pesquisa: {page.url}")
+    except Exception as erro:
+        log(f"Erro ao pesquisar solicitação: {erro}")
+        return None
+
+    try:
+        tabela = page.locator(seletor_tabela).first
+        tabela.wait_for(state="visible", timeout=15000)
+    except Exception as erro:
+        log(f"Grid não ficou visível após a pesquisa: {erro}")
+        return None
 
     linhas = page.locator(
-        "#ctl00_cph1_hgrSol_ctl00 tr.rgRow"
+        f"{seletor_tabela} tr.rgRow, {seletor_tabela} tr.rgAltRow"
     )
+    candidatos = []
 
-    quantidade = linhas.count()
-
-    log(
-        f"Linhas rgRow encontradas na tabela: {quantidade}"
-    )
-
-    for i in range(
-        quantidade
-    ):
-
+    for i in range(linhas.count()):
         linha = linhas.nth(i)
-
         try:
-
-            celulas = linha.locator(
-                "td"
-            )
-
-            if celulas.count() < 2:
-
-                continue
-
-            numero = celulas.nth(
-                1
-            ).inner_text(
-                timeout=1000
-            ).strip()
-
-            if numero != numero_solicitacao:
-
-                continue
-
-            log(
-                f"Solicitação {numero_solicitacao} encontrada na linha {i}."
-            )
-
-            return linha
-
+            texto_linha = linha.inner_text(timeout=2000).strip()
+            celulas = linha.locator("td")
+            numero_linha = ""
+            if celulas.count() >= 2:
+                numero_linha = celulas.nth(1).inner_text(timeout=1000).strip()
+            if numero_linha == numero_solicitacao or numero_solicitacao in texto_linha:
+                candidatos.append((i, linha, texto_linha))
+                log(f"Candidato {len(candidatos)}: linha {i} | {texto_linha}")
         except Exception:
-
             continue
 
-    log(
-        f"Solicitação {numero_solicitacao} não encontrada."
-    )
+    if not candidatos:
+        log("Tentando localizar a solicitação em todos os TRs...")
+        todas = tabela.locator("tr")
+        for i in range(todas.count()):
+            linha = todas.nth(i)
+            try:
+                texto_linha = linha.inner_text(timeout=1500).strip()
+                classe = (linha.get_attribute("class") or "").lower()
+                if numero_solicitacao not in texto_linha:
+                    continue
+                if "rgheader" in classe or "rggroupheader" in classe or "rgfilterrow" in classe:
+                    continue
+                candidatos.append((i, linha, texto_linha))
+            except Exception:
+                continue
 
-    return None
+    if not candidatos:
+        log(f"Solicitação {numero_solicitacao} não encontrada após usar Pesquisar.")
+        return None
 
+    def normalizar(valor):
+        valor = str(valor or "").lower()
+        trocas = {
+            "á":"a", "à":"a", "ã":"a", "â":"a", "ä":"a",
+            "é":"e", "è":"e", "ê":"e", "ë":"e",
+            "í":"i", "ì":"i", "î":"i", "ï":"i",
+            "ó":"o", "ò":"o", "õ":"o", "ô":"o", "ö":"o",
+            "ú":"u", "ù":"u", "û":"u", "ü":"u", "ç":"c",
+        }
+        for origem, destino in trocas.items():
+            valor = valor.replace(origem, destino)
+        return re.sub(r"[^a-z0-9]+", " ", valor).strip()
 
-# ================================================================
-# ABRIR TRABALHO NA SOLICITAÇÃO
-# ================================================================
+    escolhido = None
+    if atividade_alvo and len(candidatos) > 1:
+        alvo = normalizar(atividade_alvo)
+        for item in candidatos:
+            if alvo and alvo in normalizar(item[2]):
+                escolhido = item
+                break
 
-def abrir_trabalho_na_solicitacao(
-    page,
-    context,
-    id_trabalho,
-):
+        if escolhido is None:
+            palavras = [p for p in alvo.split() if len(p) >= 3]
+            melhor = None
+            melhor_pontos = -1
+            for item in candidatos:
+                texto_norm = normalizar(item[2])
+                pontos = sum(1 for palavra in palavras if palavra in texto_norm)
+                if pontos > melhor_pontos:
+                    melhor_pontos = pontos
+                    melhor = item
+            if melhor is not None and melhor_pontos > 0:
+                escolhido = melhor
 
+    if escolhido is None:
+        escolhido = candidatos[0]
+
+    indice, linha, texto_linha = escolhido
     log("")
-    log(
-        "=" * 60
-    )
-    log(
-        "ABRINDO TRABALHO NA ABA TRABALHOS"
-    )
-    log(
-        "=" * 60
-    )
+    log("LINHA ESCOLHIDA APÓS PESQUISA")
+    log(f"Índice: {indice}")
+    log(f"Texto: {texto_linha}")
+    log(f"Ocorrências: {len(candidatos)}")
+    return linha
 
-    id_trabalho = str(
-        id_trabalho or ""
-    ).strip()
+def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
+    log("")
+    log("=" * 60)
+    log("ABRINDO TRABALHO NA ABA TRABALHOS")
+    log("=" * 60)
 
+    id_trabalho = str(id_trabalho or "").strip()
     if not id_trabalho:
-
-        log(
-            "ID do trabalho não informado."
-        )
-
+        log("ID do trabalho não informado.")
         return None
 
     seletor_aba = "#cph1_rpvTrabalhos"
-
     try:
-
-        aba = page.locator(
-            seletor_aba
-        ).first
-
-        aba.wait_for(
-            state="visible",
-            timeout=10000,
-        )
-
+        aba = page.locator(seletor_aba).first
+        aba.wait_for(state="visible", timeout=10000)
     except Exception as erro:
-
-        log(
-            f"Aba de trabalhos não visível: {erro}"
-        )
-
+        log(f"Aba de trabalhos não visível: {erro}")
         return None
 
-    tabela = aba.locator(
-        "#cph1_gvwTra"
-    ).first
-
+    tabela = aba.locator("#cph1_gvwTra").first
     try:
-
-        tabela.wait_for(
-            state="visible",
-            timeout=10000,
-        )
-
+        tabela.wait_for(state="visible", timeout=10000)
     except Exception as erro:
-
-        log(
-            f"Tabela de trabalhos não visível: {erro}"
-        )
-
+        log(f"Tabela de trabalhos não visível: {erro}")
         return None
 
-    linhas = tabela.locator(
-        "tr"
-    )
-
+    linhas = tabela.locator("tr")
     quantidade = linhas.count()
-
-    log(
-        f"Linhas encontradas na tabela de trabalhos: {quantidade}"
-    )
+    log(f"Linhas encontradas na tabela de trabalhos: {quantidade}")
 
     linha_alvo = None
-
-    for i in range(
-        quantidade
-    ):
-
+    for i in range(quantidade):
         linha = linhas.nth(i)
-
         try:
-
-            celulas = linha.locator(
-                "td"
-            )
-
+            celulas = linha.locator("td")
             if celulas.count() < 2:
-
                 continue
-
-            valor_id = (
-                celulas
-                .nth(1)
-                .inner_text()
-                .strip()
-            )
-
-            log(
-                f"LINHA {i} - ID E-DESK VISÍVEL: {valor_id}"
-            )
-
+            valor_id = celulas.nth(1).inner_text().strip()
+            log(f"LINHA {i} - ID E-DESK VISÍVEL: {valor_id}")
             if valor_id == id_trabalho:
-
                 linha_alvo = linha
-
-                log(
-                    f"Trabalho {id_trabalho} encontrado pelo ID exato na linha {i}."
-                )
-
+                log(f"Trabalho {id_trabalho} encontrado pelo ID exato na linha {i}.")
                 break
-
         except Exception:
-
             continue
 
     if linha_alvo is None:
-
         log("")
-        log(
-            "============================================================"
-        )
-        log(
-            "ID EXATO NÃO ENCONTRADO"
-        )
-        log(
-            "============================================================"
-        )
-
-        log(
-            f"ID recebido do Flutter: {id_trabalho}"
-        )
-
-        log(
-            "Nenhum trabalho foi selecionado automaticamente."
-        )
-
+        log("============================================================")
+        log("ID EXATO NÃO ENCONTRADO")
+        log("============================================================")
+        log(f"ID recebido do Flutter: {id_trabalho}")
         return None
 
-    celulas_selecao = (
-        linha_alvo.locator(
-            'td[onclick*="btnSelTra"]'
-        )
-    )
+    celulas_selecao = linha_alvo.locator('td[onclick*="btnSelTra"]')
+    if celulas_selecao.count() == 0:
+        log("A linha encontrada não possui td com btnSelTra.")
+        try:
+            elementos = linha_alvo.locator('[onclick*="btnSelTra"]')
+            if elementos.count() > 0:
+                celulas_selecao = elementos
+        except Exception:
+            pass
 
     if celulas_selecao.count() == 0:
-
-        log(
-            "A linha encontrada não possui btnSelTra."
-        )
-
+        log("Nenhum elemento de seleção btnSelTra encontrado.")
         return None
 
-    alvo = (
-        celulas_selecao.first
-    )
-
+    alvo = celulas_selecao.first
     try:
-
-        onclick = (
-            alvo.get_attribute(
-                "onclick"
-            )
-            or ""
-        )
-
+        onclick = alvo.get_attribute("onclick") or ""
     except Exception:
-
         onclick = ""
 
-    log(
-        f"POSTBACK ENCONTRADO: {onclick}"
-    )
-
+    log(f"POSTBACK ENCONTRADO: {onclick}")
     if not onclick:
-
-        log(
-            "O elemento de seleção não possui onclick."
-        )
-
+        log("O elemento de seleção não possui onclick.")
         return None
 
-    postback_match = re.search(
-        r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)",
-        onclick,
-    )
-
+    postback_match = re.search(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)", onclick)
     if postback_match:
+        log(f"EVENT TARGET: {postback_match.group(1)}")
+        log(f"EVENT ARGUMENT: {postback_match.group(2)}")
 
-        log(
-            f"EVENT TARGET: {postback_match.group(1)}"
-        )
-
-        log(
-            f"EVENT ARGUMENT: {postback_match.group(2)}"
-        )
-
-    log(
-        "Executando clique original do botão de seleção..."
-    )
-
+    log("Executando clique original do botão de seleção...")
     try:
-
-        alvo.scroll_into_view_if_needed(
-            timeout=5000
-        )
-
+        alvo.scroll_into_view_if_needed(timeout=5000)
     except Exception:
-
         pass
 
     try:
-
-        alvo.click(
-            timeout=15000,
-            force=True,
-        )
-
+        alvo.click(timeout=15000, force=True)
     except Exception as erro:
-
-        log(
-            f"Erro no clique do btnSelTra: {erro}"
-        )
-
+        log(f"Erro no clique do btnSelTra: {erro}")
         return None
 
-    log(
-        "Clique executado."
-    )
-
-    page.wait_for_timeout(
-        1000
-    )
-
-    log(
-        "Aguardando abertura de Trabalho.aspx..."
-    )
+    log("Clique executado.")
+    page.wait_for_timeout(1500)
+    log("Aguardando abertura de Trabalho.aspx...")
 
     inicio = time.time()
-    ultimo_url = ""
+    urls_vistas = set()
 
-    while (
-        time.time() - inicio < 30
-    ):
-
+    while time.time() - inicio < 30:
         for pagina in context.pages:
-
             try:
-
                 if pagina.is_closed():
-
                     continue
-
                 url_atual = pagina.url
+                if url_atual not in urls_vistas:
+                    log(f"URL durante abertura do trabalho: {url_atual}")
+                    urls_vistas.add(url_atual)
 
-                if url_atual != ultimo_url:
-
-                    log(
-                        f"URL durante abertura do trabalho: {url_atual}"
-                    )
-
-                    ultimo_url = url_atual
-
-                if eh_trabalho(
-                    url_atual
-                ):
-
+                if eh_trabalho(url_atual):
                     log("")
-                    log(
-                        "****************************************"
-                    )
-                    log(
-                        "TRABALHO ABERTO COM SUCESSO"
-                    )
-                    log(
-                        "****************************************"
-                    )
-                    log(
-                        f"URL: {url_atual}"
-                    )
+                    log("****************************************")
+                    log("TRABALHO ABERTO COM SUCESSO")
+                    log("****************************************")
+                    log(f"URL: {url_atual}")
                     log("")
-
                     return pagina
-
             except Exception:
-
                 continue
 
         try:
-
-            if eh_trabalho(
-                page.url
-            ):
-
+            if eh_trabalho(page.url):
                 return page
-
         except Exception:
-
             pass
 
-        time.sleep(
-            0.5
-        )
+        time.sleep(0.5)
 
-    log(
-        "Tempo limite aguardando Trabalho.aspx."
-    )
-
-    log(
-        f"URL atual: {page.url}"
-    )
-
+    log("Tempo limite aguardando Trabalho.aspx.")
+    log(f"URL atual: {page.url}")
     return None
 
-
-# ================================================================
-# ABRIR TRABALHO RETROATIVO
-# ================================================================
-
-def abrir_trabalho_retroativo(
-    pagina_trabalho,
-    dados_trabalho,
-):
-
+def abrir_trabalho_retroativo(pagina_trabalho, dados_trabalho):
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "ABRINDO TELA TRABALHO RETROATIVO"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log("ABRINDO TELA TRABALHO RETROATIVO")
+    log("============================================================")
 
     if pagina_trabalho is None:
-
         return None
 
-    dados_url = extrair_dados_url(
-        pagina_trabalho.url
-    )
+    dados_url = extrair_dados_url(pagina_trabalho.url)
+    guid = str((dados_trabalho.get("guid", "") or dados_url.get("guid", "") or obter_guid_da_url(pagina_trabalho.url)) or "").strip()
+    solicitacao = str((dados_trabalho.get("solicitacao", "") or dados_url.get("solicitacao", "")) or "").strip()
+    id_trabalho = str((dados_trabalho.get("id_trabalho", "") or dados_url.get("id_trabalho", "")) or "").strip()
 
-    guid = str(
-        (
-            dados_trabalho.get(
-                "guid",
-                "",
-            )
-            or dados_url.get(
-                "guid",
-                "",
-            )
-            or obter_guid_da_url(
-                pagina_trabalho.url
-            )
-        )
-        or ""
-    ).strip()
-
-    solicitacao = str(
-        (
-            dados_trabalho.get(
-                "solicitacao",
-                "",
-            )
-            or dados_url.get(
-                "solicitacao",
-                "",
-            )
-        )
-        or ""
-    ).strip()
-
-    id_trabalho = str(
-        (
-            dados_trabalho.get(
-                "id_trabalho",
-                "",
-            )
-            or dados_url.get(
-                "id_trabalho",
-                "",
-            )
-        )
-        or ""
-    ).strip()
-
-    log(
-        f"GUID: {guid}"
-    )
-
-    log(
-        f"SOLICITAÇÃO: {solicitacao}"
-    )
-
-    log(
-        f"ID TRABALHO E-DESK: {id_trabalho}"
-    )
+    log(f"GUID: {guid}")
+    log(f"SOLICITAÇÃO: {solicitacao}")
+    log(f"ID TRABALHO E-DESK: {id_trabalho}")
 
     if not guid:
-
-        log(
-            "GUID não encontrado."
-        )
-
+        log("GUID não encontrado.")
         return pagina_trabalho
 
     if not id_trabalho:
-
-        log(
-            "ID do trabalho E-Desk não encontrado."
-        )
-
+        log("ID do trabalho E-Desk não encontrado.")
         return pagina_trabalho
 
     parametros = {
@@ -1846,459 +1003,351 @@ def abrir_trabalho_retroativo(
     }
 
     if solicitacao:
-
         parametros["solicitacao"] = solicitacao
 
-    url_retroativo = (
-        "https://promob.e-desk.com.br/"
-        "Portal/TrabalhoRetroativo.aspx?"
-        + urlencode(
-            parametros
-        )
-    )
-
-    log(
-        f"Acessando TrabalhoRetroativo: {url_retroativo}"
-    )
+    url_retroativo = "https://promob.e-desk.com.br/Portal/TrabalhoRetroativo.aspx?" + urlencode(parametros)
+    log(f"Acessando TrabalhoRetroativo: {url_retroativo}")
 
     try:
+        pagina_trabalho.goto(url_retroativo, wait_until="domcontentloaded", timeout=30000)
+        pagina_trabalho.wait_for_timeout(2500)
 
-        pagina_trabalho.goto(
-            url_retroativo,
-            wait_until="domcontentloaded",
-            timeout=30000,
-        )
-
-        pagina_trabalho.wait_for_timeout(
-            2500
-        )
-
-        if eh_trabalho_retroativo(
-            pagina_trabalho.url
-        ):
-
+        if eh_trabalho_retroativo(pagina_trabalho.url):
             log("")
-            log(
-                "****************************************"
-            )
-            log(
-                "TELA TRABALHO RETROATIVO ABERTA COM SUCESSO"
-            )
-            log(
-                "****************************************"
-            )
-            log(
-                f"URL: {pagina_trabalho.url}"
-            )
+            log("****************************************")
+            log("TELA TRABALHO RETROATIVO ABERTA COM SUCESSO")
+            log("****************************************")
+            log(f"URL: {pagina_trabalho.url}")
             log("")
-
             return pagina_trabalho
-
     except Exception as erro:
-
-        log(
-            f"Erro ao abrir TrabalhoRetroativo: {erro}"
-        )
+        log(f"Erro ao abrir TrabalhoRetroativo: {erro}")
 
     return pagina_trabalho
 
-
-# ================================================================
-# SALVAR MAPEAMENTO
-# ================================================================
-
-def salvar_mapeamento(
-    dados,
-):
-
-    arquivo = (
-        LOGS_PATH
-        / "mapeamento_trabalho_cmd.json"
-    )
-
+def salvar_mapeamento(dados):
+    arquivo = LOGS_PATH / "mapeamento_trabalho_cmd.json"
     try:
-
         registros = []
-
         if arquivo.exists():
-
             try:
-
-                with arquivo.open(
-                    "r",
-                    encoding="utf-8",
-                ) as f:
-
-                    registros = json.load(
-                        f
-                    )
-
+                with arquivo.open("r", encoding="utf-8") as f:
+                    registros = json.load(f)
             except Exception:
-
                 registros = []
 
-        registros.append(
-            dados
-        )
-
-        with arquivo.open(
-            "w",
-            encoding="utf-8",
-        ) as f:
-
-            json.dump(
-                registros,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
-
+        registros.append(dados)
+        with arquivo.open("w", encoding="utf-8") as f:
+            json.dump(registros, f, ensure_ascii=False, indent=2)
     except Exception:
-
         pass
 
-
-# ================================================================
-# ABRIR SOLICITAÇÃO E TRABALHO
-# ================================================================
-
-def abrir_trabalho(
-    page,
-    context,
-    linha_grid,
-    numero_solicitacao,
-    id_trabalho,
-):
-
-    id_trabalho = str(
-        id_trabalho
-    ).strip()
-
-    numero_solicitacao = str(
-        numero_solicitacao
-        or ""
-    ).strip()
+def abrir_trabalho(page, context, linha_grid, numero_solicitacao, id_trabalho):
+    id_trabalho = str(id_trabalho).strip()
+    numero_solicitacao = str(numero_solicitacao).strip()
 
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "ABERTURA DA SOLICITAÇÃO E TRABALHO"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log("ABERTURA DA SOLICITAÇÃO E TRABALHO")
+    log(f"SOLICITAÇÃO: {numero_solicitacao}")
+    log(f"TRABALHO RELATIVO: {id_trabalho}")
+    log("============================================================")
 
-    log(
-        f"SOLICITAÇÃO: {numero_solicitacao}"
-    )
+    guid = obter_guid_da_url(page.url)
+    if not guid:
+        raise RuntimeError("GUID da sessão não encontrado antes de abrir solicitação.")
 
-    log(
-        f"TRABALHO RELATIVO: {id_trabalho}"
-    )
+    if linha_grid is None:
+        raise RuntimeError(f"A linha da solicitação {numero_solicitacao} não foi encontrada.")
 
-    guid = obter_guid_da_url(
-        page.url
-    )
+    paginas_antes = set(id(pagina) for pagina in context.pages)
 
-    if linha_grid is not None:
-
-        try:
-
-            linha_grid.scroll_into_view_if_needed()
-
-            page.wait_for_timeout(
-                300
-            )
-
-            linha_grid.click(
-                timeout=10000
-            )
-
-        except Exception:
-
-            pass
+    log("Tentando abrir a Solicitação pela linha da Grid...")
+    try:
+        linha_grid.scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        linha_grid.dblclick(delay=100, timeout=10000)
+    except Exception as erro:
+        log(f"Aviso ao clicar na linha da solicitação: {erro}")
 
     inicio = time.time()
-
     pagina_solicitacao = None
 
-    while (
-        time.time() - inicio < 10
-    ):
-
+    while time.time() - inicio < 10:
         for pagina in context.pages:
-
             try:
-
                 if pagina.is_closed():
+                    continue
+                if eh_solicitacao(pagina.url):
+                    pagina_solicitacao = pagina
+                    break
+            except Exception:
+                pass
+        if pagina_solicitacao:
+            break
+        time.sleep(0.5)
 
+    if not pagina_solicitacao:
+        log("Clique na linha não abriu a Solicitação.aspx.")
+        log("Procurando elemento clicável dentro da linha...")
+        elementos_clicaveis = []
+
+        try:
+            elementos = linha_grid.locator("a, td[onclick], span[onclick], input, img")
+            quantidade = elementos.count()
+            log(f"Elementos clicáveis encontrados na linha: {quantidade}")
+
+            for i in range(quantidade):
+                elemento = elementos.nth(i)
+                try:
+                    texto = elemento.inner_text(timeout=500).strip()
+                except Exception:
+                    texto = ""
+
+                try:
+                    href = elemento.get_attribute("href") or ""
+                except Exception:
+                    href = ""
+
+                try:
+                    onclick = elemento.get_attribute("onclick") or ""
+                except Exception:
+                    onclick = ""
+
+                descricao = f"Elemento {i} | texto={texto} | href={href} | onclick={onclick}"
+                log(descricao[:1000])
+                elementos_clicaveis.append((elemento, texto, href, onclick))
+        except Exception as erro:
+            log(f"Erro ao procurar elemento clicável: {erro}")
+
+        candidatos = []
+        for item in elementos_clicaveis:
+            elemento, texto, href, onclick = item
+            texto_completo = f"{texto} {href} {onclick}".lower()
+            if "solicitacao.aspx" in texto_completo:
+                candidatos.insert(0, item)
+            elif numero_solicitacao.lower() in texto_completo:
+                candidatos.append(item)
+
+        candidatos.extend([item for item in elementos_clicaveis if item not in candidatos])
+
+        for item in candidatos:
+            elemento, texto, href, onclick = item
+            try:
+                log("Tentando clicar elemento da solicitação...")
+                elemento.scroll_into_view_if_needed(timeout=3000)
+                elemento.click(timeout=7000, force=True)
+
+                inicio = time.time()
+                while time.time() - inicio < 8:
+                    for pagina in context.pages:
+                        try:
+                            if pagina.is_closed():
+                                continue
+                            if eh_solicitacao(pagina.url):
+                                pagina_solicitacao = pagina
+                                break
+                        except Exception:
+                            continue
+                    if pagina_solicitacao:
+                        break
+                    time.sleep(0.5)
+
+                if pagina_solicitacao:
+                    break
+            except Exception as erro:
+                log(f"Falha no elemento: {erro}")
+
+    if not pagina_solicitacao:
+        log("Nenhum elemento da linha abriu a solicitação.")
+        log("Tentando localizar link da solicitação pelo número...")
+        try:
+            links = page.locator("a")
+            quantidade_links = links.count()
+
+            for i in range(quantidade_links):
+                link = links.nth(i)
+                try:
+                    texto = link.inner_text(timeout=500).strip()
+                except Exception:
+                    texto = ""
+
+                try:
+                    href = link.get_attribute("href") or ""
+                except Exception:
+                    href = ""
+
+                if numero_solicitacao not in texto and numero_solicitacao not in href:
                     continue
 
-                if eh_solicitacao(
-                    pagina.url
-                ):
+                log(f"Link candidato encontrado: texto={texto} href={href}")
+                try:
+                    link.click(timeout=7000, force=True)
+                except Exception:
+                    continue
 
-                    pagina_solicitacao = pagina
+                inicio = time.time()
+                while time.time() - inicio < 8:
+                    for pagina in context.pages:
+                        try:
+                            if pagina.is_closed():
+                                continue
+                            if eh_solicitacao(pagina.url):
+                                pagina_solicitacao = pagina
+                                break
+                        except Exception:
+                            continue
+                    if pagina_solicitacao:
+                        break
+                    time.sleep(0.5)
 
+                if pagina_solicitacao:
                     break
-
-            except Exception:
-
-                pass
-
-        if pagina_solicitacao:
-
-            break
-
-        time.sleep(
-            0.5
-        )
+        except Exception as erro:
+            log(f"Erro procurando link global: {erro}")
 
     if not pagina_solicitacao:
-
-        log(
-            "Clique na grade não abriu a Solicitação.aspx automaticamente."
-        )
-
+        log("Tentando comando interno do Telerik RadGrid na linha escolhida...")
         try:
-
-            link_sol = page.locator(
-                f"a:has-text('{numero_solicitacao}')"
-            ).first
-
-            if link_sol.count() > 0:
-
-                link_sol.click(
-                    timeout=5000
-                )
-
-                page.wait_for_timeout(
-                    3000
-                )
-
-        except Exception:
-
-            pass
-
-    for pagina in context.pages:
-
-        try:
-
-            if pagina.is_closed():
-
-                continue
-
-            if eh_solicitacao(
-                pagina.url
-            ):
-
-                pagina_solicitacao = pagina
-
-                break
-
-        except Exception:
-
-            pass
+            resultado_telerik = page.evaluate(
+                """
+                (rowId) => {
+                    const grid = window.$find ? window.$find('ctl00_cph1_hgrSol') : null;
+                    if (!grid || !grid.get_masterTableView) {
+                        return {sucesso:false, erro:'RadGrid não encontrado'};
+                    }
+                    const view = grid.get_masterTableView();
+                    const itens = view.get_dataItems ? view.get_dataItems() : [];
+                    for (let i = 0; i < itens.length; i++) {
+                        const item = itens[i];
+                        let el = null;
+                        try { el = item.get_element(); } catch (_) {}
+                        if (!el || el.id !== rowId) continue;
+                        let itemIndex = i;
+                        try { itemIndex = item.get_itemIndex(); } catch (_) {}
+                        try {
+                            if (item.set_selected) item.set_selected(true);
+                        } catch (_) {}
+                        try {
+                            if (view.fireCommand) {
+                                view.fireCommand('Select', String(itemIndex));
+                                return {sucesso:true, metodo:'fireCommand Select', itemIndex:itemIndex};
+                            }
+                        } catch (e) {
+                            return {sucesso:false, erro:String(e), itemIndex:itemIndex};
+                        }
+                        return {sucesso:false, erro:'fireCommand indisponível', itemIndex:itemIndex};
+                    }
+                    return {sucesso:false, erro:'Linha não localizada nos dataItems'};
+                }
+                """,
+                linha_grid.get_attribute("id") or "",
+            )
+            log(f"Resultado Telerik: {resultado_telerik}")
+            inicio = time.time()
+            while time.time() - inicio < 12:
+                for pagina in context.pages:
+                    try:
+                        if pagina.is_closed():
+                            continue
+                        if eh_solicitacao(pagina.url):
+                            pagina_solicitacao = pagina
+                            break
+                    except Exception:
+                        continue
+                if pagina_solicitacao:
+                    break
+                time.sleep(0.5)
+        except Exception as erro:
+            log(f"Falha no comando interno Telerik: {erro}")
 
     if not pagina_solicitacao:
-
-        raise RuntimeError(
-            "O E-Desk não abriu a Solicitação.aspx."
-        )
+        log("")
+        log("============================================================")
+        log("FALHA AO ABRIR SOLICITAÇÃO")
+        log("============================================================")
+        log(f"SOLICITAÇÃO: {numero_solicitacao}")
+        log(f"TRABALHO RELATIVO: {id_trabalho}")
+        log(f"URL ATUAL: {page.url}")
+        raise RuntimeError("O E-Desk não abriu a Solicitação.aspx.")
 
     page = pagina_solicitacao
+    log(f"Solicitação aberta: {page.url}")
 
-    log(
-        f"Solicitação aberta: {page.url}"
-    )
+    dados_solicitacao = extrair_dados_url(page.url)
+    solicitacao_encoded = dados_solicitacao.get("solicitacao", "") or numero_solicitacao
+    cmd = dados_solicitacao.get("cmd", "")
 
-    dados_solicitacao = extrair_dados_url(
-        page.url
-    )
-
-    solicitacao_encoded = (
-        dados_solicitacao.get(
-            "solicitacao"
-        )
-    )
-
-    cmd = (
-        dados_solicitacao.get(
-            "cmd"
-        )
-    )
-
-    # ============================================================
-    # IMPORTANTE:
-    #
-    # O ID DO TRABALHO É PROCURADO DENTRO DESTA SOLICITAÇÃO.
-    #
-    # Isso evita confundir:
-    #
-    # Solicitação 2262412 / Trabalho 18
-    #
-    # com:
-    #
-    # Solicitação 2261914 / Trabalho 18
-    # ============================================================
-
-    pagina_trabalho = (
-        abrir_trabalho_na_solicitacao(
-            page,
-            context,
-            id_trabalho,
-        )
-    )
-
+    pagina_trabalho = abrir_trabalho_na_solicitacao(page, context, id_trabalho)
     if not pagina_trabalho:
+        log("Não foi possível abrir Trabalho.aspx.")
+        raise RuntimeError(f"Não foi possível abrir o trabalho relativo {id_trabalho} da solicitação {numero_solicitacao}.")
 
-        log(
-            "Não foi possível abrir Trabalho.aspx."
-        )
+    dados_trabalho = extrair_dados_url(pagina_trabalho.url)
+    id_efetivo = dados_trabalho.get("id_trabalho", "") or id_trabalho
 
-        return page
-
-    dados_trabalho = (
-        extrair_dados_url(
-            pagina_trabalho.url
-        )
-    )
-
-    id_efetivo = (
-        dados_trabalho.get(
-            "id_trabalho",
-            "",
-        )
-        or id_trabalho
-    )
-
-    if not dados_trabalho.get(
-        "guid"
-    ):
-
-        dados_trabalho[
-            "guid"
-        ] = guid
-
-    if not dados_trabalho.get(
-        "solicitacao"
-    ):
-
-        dados_trabalho[
-            "solicitacao"
-        ] = solicitacao_encoded
-
-    if not dados_trabalho.get(
-        "id_trabalho"
-    ):
-
-        dados_trabalho[
-            "id_trabalho"
-        ] = id_efetivo
+    if not dados_trabalho.get("guid"):
+        dados_trabalho["guid"] = guid
+    if not dados_trabalho.get("solicitacao"):
+        dados_trabalho["solicitacao"] = solicitacao_encoded
+    if not dados_trabalho.get("id_trabalho"):
+        dados_trabalho["id_trabalho"] = id_efetivo
 
     mapeamento = {
-
-        "idTrabalhoFlutter":
-            id_trabalho,
-
-        "idTrabalhoEdesk":
-            id_efetivo,
-
-        "solicitacao":
-            numero_solicitacao,
-
-        "solicitacaoEncoded":
-            solicitacao_encoded,
-
-        "cmd":
-            cmd,
-
-        "guid":
-            guid,
-
-        "urlSolicitacao":
-            page.url,
-
-        "urlTrabalho":
-            pagina_trabalho.url,
-
-        "timestamp":
-            time.strftime(
-                "%Y-%m-%dT%H:%M:%S"
-            ),
+        "solicitacao": numero_solicitacao,
+        "idTrabalhoFlutter": id_trabalho,
+        "idTrabalhoEdesk": id_efetivo,
+        "cmd": cmd,
+        "solicitacaoEncoded": solicitacao_encoded,
+        "guid": guid,
+        "urlSolicitacao": page.url,
+        "urlTrabalho": pagina_trabalho.url,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    salvar_mapeamento(
-        mapeamento
-    )
-
+    salvar_mapeamento(mapeamento)
     log("")
-    log(
-        "MAPEAMENTO DO TRABALHO"
-    )
-    log(
-        json.dumps(
-            mapeamento,
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+    log("MAPEAMENTO DO TRABALHO")
+    log(json.dumps(mapeamento, ensure_ascii=False, indent=2))
     log("")
 
-    return abrir_trabalho_retroativo(
-        pagina_trabalho,
-        dados_trabalho,
-    )
+    return abrir_trabalho_retroativo(pagina_trabalho, dados_trabalho)
 
+def salvar_hora(page, hora, indice_hora, total_horas):
+    """
+    Salva uma hora no E-Desk usando o POST AJAX do ASP.NET WebForms.
 
-# ================================================================
-# SALVAR UMA HORA NO E-DESK
-# ================================================================
+    O login e toda a navegação continuam usando a sessão autenticada
+    do Playwright.
 
-def salvar_hora(
-    page,
-    hora,
-    indice_hora,
-    total_horas,
-):
+    Somente o salvamento deixa de depender do clique visual no botão
+    Salvar. O POST é executado dentro da própria página, preservando:
+    - cookies da sessão;
+    - VIEWSTATE;
+    - EVENTVALIDATION;
+    - campos ocultos;
+    - estado atual do formulário WebForms.
+    """
 
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        f"SALVANDO HORA {indice_hora} DE {total_horas}"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log(f"SALVANDO HORA {indice_hora} DE {total_horas} VIA HTTP")
+    log("============================================================")
 
-    if not isinstance(
-        hora,
-        dict,
-    ):
+    # ============================================================
+    # 1. VALIDA OS DADOS RECEBIDOS
+    # ============================================================
 
+    if not isinstance(hora, dict):
         raise RuntimeError(
             f"A HORA {indice_hora} não é um objeto JSON válido."
         )
 
-    data = obter_data_hora(
-        hora
-    )
+    data = obter_data_hora(hora)
+    inicio = obter_inicio_hora(hora)
+    fim = obter_fim_hora(hora)
 
-    inicio = obter_inicio_hora(
-        hora
-    )
-
-    fim = obter_fim_hora(
-        hora
-    )
-
-    descritivo_original = obter_descritivo_hora(
-        hora
-    )
+    descritivo_original = obter_descritivo_hora(hora)
 
     descritivo = limpar_descritivo_hora(
         descritivo_original,
@@ -2306,93 +1355,74 @@ def salvar_hora(
     )
 
     log("")
-    log(
-        f"DADOS DA HORA {indice_hora}"
-    )
-    log(
-        f"Data: {data}"
-    )
-    log(
-        f"Início: {inicio}"
-    )
-    log(
-        f"Fim: {fim}"
-    )
+    log(f"DADOS DA HORA {indice_hora}")
+    log(f"Data: {data}")
+    log(f"Início: {inicio}")
+    log(f"Fim: {fim}")
+
     log(
         f"Descritivo recebido: "
         f"{descritivo_original or '[NÃO INFORMADO]'}"
     )
+
     log(
         f"Descritivo limpo: "
         f"{descritivo or '[NÃO INFORMADO]'}"
     )
+
     log("")
 
-    # ============================================================
-    # VALIDAR DADOS
-    # ============================================================
-
     if not data:
-
         raise RuntimeError(
             f"A HORA {indice_hora} não possui data."
         )
 
     if not inicio:
-
         raise RuntimeError(
             f"A HORA {indice_hora} não possui horário de início."
         )
 
     if not fim:
-
         raise RuntimeError(
             f"A HORA {indice_hora} não possui horário de fim."
         )
 
     if not descritivo:
-
         raise RuntimeError(
-            f"A HORA {indice_hora} não possui descritivo. "
-            "O Flutter precisa enviar o campo 'descritivo'."
+            f"A HORA {indice_hora} não possui descritivo."
         )
 
     # ============================================================
-    # LOCALIZAR CAMPOS
+    # 2. CONFIRMA QUE ESTAMOS NA TELA CORRETA
     # ============================================================
 
-    campo_data = page.locator(
-        "#cph1_txtDatTem"
-    )
+    if not eh_trabalho_retroativo(page.url):
+        raise RuntimeError(
+            "A página atual não é TrabalhoRetroativo.aspx. "
+            f"URL atual: {page.url}"
+        )
 
-    campo_inicio = page.locator(
-        "#cph1_txtHorIni"
-    )
+    log(f"Tela de horas confirmada: {page.url}")
 
-    campo_fim = page.locator(
-        "#cph1_txtHorFin"
-    )
+    # ============================================================
+    # 3. LOCALIZA OS CAMPOS
+    # ============================================================
 
-    campo_tipo = page.locator(
-        "#cph1_ddlTipReg"
-    )
+    campo_data = page.locator("#cph1_txtDatTem")
+    campo_inicio = page.locator("#cph1_txtHorIni")
+    campo_fim = page.locator("#cph1_txtHorFin")
+    campo_tipo = page.locator("#cph1_ddlTipReg")
+    campo_rea = page.locator("#cph1_txtRea")
 
-    campo_rea = page.locator(
-        "#cph1_txtRea"
-    )
-
-    botao_salvar = page.locator(
-        "#cph1_BtAtu"
-    )
-
-    for nome, elemento in [
+    campos = [
         ("Data", campo_data),
         ("Início", campo_inicio),
         ("Fim", campo_fim),
         ("Tipo", campo_tipo),
         ("Descritivo", campo_rea),
-        ("Salvar", botao_salvar),
-    ]:
+    ]
+
+    for nome, elemento in campos:
 
         try:
 
@@ -2404,12 +1434,72 @@ def salvar_hora(
         except Exception as erro:
 
             raise RuntimeError(
-                f"Campo '{nome}' não ficou disponível "
-                f"para a HORA {indice_hora}: {erro}"
+                f"Campo '{nome}' não ficou disponível: {erro}"
             )
 
     # ============================================================
-    # LER TEXTO EXISTENTE
+    # 4. PREENCHE A TELA
+    #
+    # Mantemos o preenchimento normal porque o E-Desk pode utilizar
+    # JavaScript/postback para atualizar estado interno do formulário.
+    # ============================================================
+
+    log("")
+    log("PREENCHENDO CAMPOS DA HORA...")
+
+    log(f"Preenchendo DATA: {data}")
+
+    campo_data.fill(data)
+
+    log(f"Preenchendo INÍCIO: {inicio}")
+
+    campo_inicio.fill(inicio)
+
+    log(f"Preenchendo FIM: {fim}")
+
+    campo_fim.fill(fim)
+
+    # ============================================================
+    # 5. TIPO DE REGISTRO
+    # ============================================================
+
+    log("Selecionando TIPO DE REGISTRO: 0")
+
+    try:
+
+        campo_tipo.select_option("0")
+
+    except Exception as erro:
+
+        raise RuntimeError(
+            f"Erro ao selecionar tipo de registro: {erro}"
+        )
+
+    # Pequena espera apenas para permitir que eventual AJAX/postback
+    # da seleção termine.
+    page.wait_for_timeout(500)
+
+    # ============================================================
+    # 6. RECUPERA OS CAMPOS NOVAMENTE
+    #
+    # ASP.NET UpdatePanel pode substituir elementos do DOM.
+    # ============================================================
+
+    campo_data = page.locator("#cph1_txtDatTem")
+    campo_inicio = page.locator("#cph1_txtHorIni")
+    campo_fim = page.locator("#cph1_txtHorFin")
+    campo_tipo = page.locator("#cph1_ddlTipReg")
+    campo_rea = page.locator("#cph1_txtRea")
+
+    # Reaplica os valores caso o postback da seleção tenha alterado
+    # algum deles.
+
+    campo_data.fill(data)
+    campo_inicio.fill(inicio)
+    campo_fim.fill(fim)
+
+    # ============================================================
+    # 7. MONTA O DESCRITIVO
     # ============================================================
 
     try:
@@ -2425,137 +1515,17 @@ def salvar_hora(
     ).strip()
 
     log("")
-    log(
-        "CONTEÚDO ATUAL DO CAMPO txtRea:"
-    )
-    log(
-        texto_existente
-        if texto_existente
-        else "[VAZIO]"
-    )
+    log("CONTEÚDO ATUAL DO CAMPO txtRea:")
 
-    # ============================================================
-    # PREENCHER DATA
-    # ============================================================
+    if texto_existente:
 
-    log("")
-    log(
-        f"Preenchendo DATA: {data}"
-    )
+        log(texto_existente)
 
-    campo_data.fill(
-        data
-    )
+    else:
 
-    # ============================================================
-    # PREENCHER INÍCIO
-    # ============================================================
+        log("[VAZIO]")
 
-    log(
-        f"Preenchendo INÍCIO: {inicio}"
-    )
-
-    campo_inicio.fill(
-        inicio
-    )
-
-    # ============================================================
-    # PREENCHER FIM
-    # ============================================================
-
-    log(
-        f"Preenchendo FIM: {fim}"
-    )
-
-    campo_fim.fill(
-        fim
-    )
-
-    # ============================================================
-    # TIPO DE REGISTRO
-    #
-    # 0 = Registrar somente um tempo trabalhado
-    # ============================================================
-
-    log(
-        "Selecionando TIPO DE REGISTRO: 0"
-    )
-
-    try:
-
-        campo_tipo.select_option(
-            "0"
-        )
-
-    except Exception as erro:
-
-        raise RuntimeError(
-            f"Erro ao selecionar tipo de registro "
-            f"na HORA {indice_hora}: {erro}"
-        )
-
-    # ============================================================
-    # AGUARDAR EVENTUAL POSTBACK DO SELECT
-    # ============================================================
-
-    page.wait_for_timeout(
-        1000
-    )
-
-    try:
-
-        campo_rea = page.locator(
-            "#cph1_txtRea"
-        )
-
-        campo_rea.wait_for(
-            state="visible",
-            timeout=10000,
-        )
-
-    except Exception as erro:
-
-        raise RuntimeError(
-            f"Campo txtRea não disponível após seleção "
-            f"do tipo na HORA {indice_hora}: {erro}"
-        )
-
-    # ============================================================
-    # LER NOVAMENTE O TEXTO EXISTENTE
-    # ============================================================
-
-    try:
-
-        texto_existente = campo_rea.input_value()
-
-    except Exception:
-
-        texto_existente = ""
-
-    texto_existente = str(
-        texto_existente or ""
-    ).strip()
-
-    # ============================================================
-    # MONTAR NOVO DESCRITIVO
-    #
-    # Exemplo:
-    #
-    # 02/09/2026:
-    # - Agenda / E-mails
-    #
-    # 10/09/2026: - Agenda
-    #
-    # 15/09/2026:
-    # - teste
-    #
-    # A data não é duplicada dentro do descritivo.
-    # ============================================================
-
-    novo_bloco = (
-        f"{data}: -"
-        f"{descritivo}"
-    )
+    novo_bloco = f"{data}: - {descritivo}"
 
     if texto_existente:
 
@@ -2576,163 +1546,329 @@ def salvar_hora(
         texto_final = novo_bloco
 
     log("")
-    log(
-        "NOVO CONTEÚDO DO txtRea:"
-    )
-    log(
-        texto_final
-    )
+    log("NOVO CONTEÚDO DO txtRea:")
+    log(texto_final)
+
+    campo_rea.fill(texto_final)
 
     # ============================================================
-    # PREENCHER DESCRITIVO
-    # ============================================================
-
-    campo_rea.fill(
-        texto_final
-    )
-
-    # ============================================================
-    # CONFERÊNCIA ANTES DE SALVAR
+    # 8. CONFERÊNCIA
     # ============================================================
 
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        f"CONFERÊNCIA ANTES DO SALVAMENTO - HORA {indice_hora}"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log("CONFERÊNCIA ANTES DO POST HTTP")
+    log("============================================================")
 
     try:
-
         log(
-            f"DATA: {campo_data.input_value()}"
+            f"DATA: "
+            f"{campo_data.input_value()}"
         )
-
     except Exception:
+        pass
 
+    try:
+        log(
+            f"INÍCIO: "
+            f"{campo_inicio.input_value()}"
+        )
+    except Exception:
+        pass
+
+    try:
+        log(
+            f"FIM: "
+            f"{campo_fim.input_value()}"
+        )
+    except Exception:
+        pass
+
+    try:
+        log(
+            f"TIPO: "
+            f"{campo_tipo.input_value()}"
+        )
+    except Exception:
         pass
 
     try:
 
-        log(
-            f"INÍCIO: {campo_inicio.input_value()}"
-        )
-
-    except Exception:
-
-        pass
-
-    try:
-
-        log(
-            f"FIM: {campo_fim.input_value()}"
-        )
-
-    except Exception:
-
-        pass
-
-    try:
-
-        log(
-            f"TIPO: {campo_tipo.input_value()}"
-        )
-
-    except Exception:
-
-        pass
-
-    try:
-
-        log(
-            "DESCRITIVO:"
-        )
-
-        log(
-            campo_rea.input_value()
-        )
+        log("DESCRITIVO:")
+        log(campo_rea.input_value())
 
     except Exception:
 
         pass
 
     # ============================================================
-    # SALVAR
+    # 9. POST HTTP / WEBFORMS
+    #
+    # O HAR mostrou que o botão Salvar envia um POST AJAX para
+    # TrabalhoRetroativo.aspx.
+    #
+    # Em vez de reconstruir VIEWSTATE manualmente, pegamos o
+    # formulário REAL da página atual.
+    #
+    # Isso inclui automaticamente:
+    #
+    # __VIEWSTATE
+    # __VIEWSTATEGENERATOR
+    # __EVENTVALIDATION (quando existir)
+    # campos ocultos Telerik
+    # dados do trabalho
+    # dados do atendente
+    # demais campos WebForms
     # ============================================================
 
     log("")
-    log(
-        f"Clicando no botão SALVAR - HORA {indice_hora}..."
-    )
+    log("============================================================")
+    log("ENVIANDO POST HTTP PARA O E-DESK")
+    log("============================================================")
 
     try:
 
-        botao_salvar = page.locator(
-            "#cph1_BtAtu"
-        )
+        resultado = page.evaluate(
+            """
+            async () => {
 
-        botao_salvar.wait_for(
-            state="visible",
-            timeout=10000,
-        )
+                const form =
+                    document.querySelector('form#frmF')
+                    || document.querySelector('form');
 
-        botao_salvar.click(
-            timeout=15000,
+                if (!form) {
+
+                    throw new Error(
+                        'Formulário WebForms não encontrado.'
+                    );
+
+                }
+
+                /*
+                 * Copia o formulário exatamente como está
+                 * no navegador.
+                 */
+
+                const formData = new FormData(form);
+
+                const body =
+                    new URLSearchParams();
+
+                for (
+                    const [chave, valor]
+                    of formData.entries()
+                ) {
+
+                    body.append(
+                        chave,
+                        valor
+                    );
+
+                }
+
+                /*
+                 * Configuração identificada no HAR
+                 * da operação Salvar.
+                 */
+
+                body.set(
+                    'ctl00$scmF',
+                    'ctl00$cph1$uppG|ctl00$cph1$BtAtu'
+                );
+
+                body.set(
+                    '__EVENTTARGET',
+                    ''
+                );
+
+                body.set(
+                    '__EVENTARGUMENT',
+                    ''
+                );
+
+                body.set(
+                    '__LASTFOCUS',
+                    ''
+                );
+
+                body.set(
+                    '__ASYNCPOST',
+                    'true'
+                );
+
+                body.set(
+                    'ctl00$cph1$BtAtu',
+                    'Salvar'
+                );
+
+                /*
+                 * Executa o POST usando a própria sessão
+                 * autenticada do navegador.
+                 */
+
+                const resposta = await fetch(
+                    window.location.href,
+                    {
+
+                        method: 'POST',
+
+                        credentials: 'include',
+
+                        headers: {
+
+                            'Content-Type':
+                                'application/x-www-form-urlencoded; charset=UTF-8',
+
+                            'X-MicrosoftAjax':
+                                'Delta=true',
+
+                            'X-Requested-With':
+                                'XMLHttpRequest'
+
+                        },
+
+                        body: body.toString()
+
+                    }
+                );
+
+                const texto =
+                    await resposta.text();
+
+                return {
+
+                    ok:
+                        resposta.ok,
+
+                    status:
+                        resposta.status,
+
+                    statusText:
+                        resposta.statusText,
+
+                    tamanho:
+                        texto.length,
+
+                    resposta:
+                        texto.substring(
+                            0,
+                            5000
+                        )
+
+                };
+
+            }
+            """
         )
 
     except Exception as erro:
 
         raise RuntimeError(
-            f"Erro ao clicar em Salvar na HORA "
-            f"{indice_hora}: {erro}"
-        )
-
-    log(
-        "Clique em SALVAR executado."
-    )
-
-    # ============================================================
-    # AGUARDAR POSTBACK
-    # ============================================================
-
-    page.wait_for_timeout(
-        3000
-    )
-
-    log(
-        f"URL após salvar: {page.url}"
-    )
-
-    # ============================================================
-    # VERIFICAR SE A PÁGINA CONTINUA NO RETROATIVO
-    # ============================================================
-
-    if not eh_trabalho_retroativo(
-        page.url
-    ):
-
-        log(
-            "ATENÇÃO: após salvar a URL mudou."
+            f"Erro ao enviar POST HTTP "
+            f"da HORA {indice_hora}: {erro}"
         )
 
     # ============================================================
-    # VERIFICAR TABELA DE HORAS
+    # 10. VALIDA A RESPOSTA HTTP
+    # ============================================================
+
+    status = resultado.get(
+        "status"
+    )
+
+    resposta = str(
+        resultado.get(
+            "resposta",
+            "",
+        )
+        or ""
+    )
+
+    tamanho_resposta = resultado.get(
+        "tamanho",
+        0,
+    )
+
+    log("")
+    log(
+        f"Resposta HTTP do E-Desk: "
+        f"{status}"
+    )
+
+    log(
+        f"Tamanho da resposta: "
+        f"{tamanho_resposta} bytes"
+    )
+
+    if not resultado.get("ok"):
+
+        raise RuntimeError(
+            f"E-Desk retornou HTTP "
+            f"{status} ao salvar "
+            f"a HORA {indice_hora}."
+        )
+
+    # ============================================================
+    # ASP.NET AJAX pode retornar HTTP 200 mesmo quando ocorreu
+    # erro do servidor.
+    # ============================================================
+
+    resposta_lower = resposta.lower()
+
+    if "|error|" in resposta_lower:
+
+        raise RuntimeError(
+            f"E-Desk retornou erro WebForms "
+            f"ao salvar a HORA {indice_hora}. "
+            f"Resposta: {resposta[:700]}"
+        )
+
+    log("")
+    log(
+        "POST HTTP aceito pelo E-Desk."
+    )
+
+    # ============================================================
+    # 11. RECARREGA A TELA
+    #
+    # Não confiamos somente no HTTP 200.
+    # Recarregamos TrabalhoRetroativo para consultar o estado
+    # persistido pelo servidor.
     # ============================================================
 
     log("")
     log(
-        "============================================================"
+        "Recarregando TrabalhoRetroativo "
+        "para confirmar a gravação..."
     )
+
+    try:
+
+        page.reload(
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+
+    except Exception as erro:
+
+        raise RuntimeError(
+            f"O POST retornou HTTP {status}, "
+            f"mas não foi possível recarregar "
+            f"a tela para confirmar "
+            f"a HORA {indice_hora}: {erro}"
+        )
+
+    # ============================================================
+    # 12. CONFIRMA NA TABELA
+    # ============================================================
+
+    log("")
+    log("============================================================")
     log(
-        f"VERIFICANDO REGISTRO SALVO - HORA {indice_hora}"
+        f"VERIFICANDO REGISTRO "
+        f"DA HORA {indice_hora}"
     )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
 
     try:
 
@@ -2740,1313 +1876,716 @@ def salvar_hora(
             "#cph1_gvwTempos"
         )
 
-        quantidade = tabela.count()
-
-        log(
-            f"Tabela #cph1_gvwTempos encontrada: {quantidade}"
+        tabela.wait_for(
+            state="visible",
+            timeout=10000,
         )
 
-        if quantidade > 0:
+        texto_tabela = tabela.inner_text(
+            timeout=5000
+        ).strip()
 
-            tabela.wait_for(
-                state="visible",
-                timeout=10000,
+        log("")
+        log(
+            "CONTEÚDO DA TABELA DE HORAS:"
+        )
+
+        log(texto_tabela)
+
+        encontrou_horario = (
+            inicio in texto_tabela
+            or fim in texto_tabela
+        )
+
+        if not encontrou_horario:
+
+            raise RuntimeError(
+                f"O POST da HORA {indice_hora} "
+                f"retornou HTTP {status}, "
+                "mas o horário não apareceu "
+                "na tabela após recarregar."
             )
 
-            texto_tabela = (
-                tabela.inner_text(
-                    timeout=5000
-                )
-                .strip()
-            )
+    except RuntimeError:
 
-            log("")
-            log(
-                "CONTEÚDO DA TABELA DE HORAS:"
-            )
-            log(
-                texto_tabela
-            )
-
-            encontrou_horario = (
-                inicio in texto_tabela
-                or fim in texto_tabela
-            )
-
-            if encontrou_horario:
-
-                log("")
-                log(
-                    "****************************************"
-                )
-                log(
-                    f"HORA {indice_hora} SALVA COM SUCESSO"
-                )
-                log(
-                    "****************************************"
-                )
-                log("")
-
-                return True
-
-            log("")
-            log(
-                "A tabela foi encontrada, mas não foi possível "
-                "confirmar o horário pelo texto."
-            )
-
-            # O clique de salvar ocorreu.
-            return True
+        raise
 
     except Exception as erro:
 
-        log(
-            f"Não foi possível validar a tabela de horas: {erro}"
+        raise RuntimeError(
+            f"Não foi possível confirmar "
+            f"a HORA {indice_hora} "
+            f"na tabela após o POST: {erro}"
         )
 
+    # ============================================================
+    # 13. SUCESSO
+    # ============================================================
+
     log("")
+    log("****************************************")
     log(
-        f"HORA {indice_hora}: SALVAMENTO EXECUTADO. "
-        "Não foi possível confirmar pela tabela."
+        f"HORA {indice_hora} "
+        "SALVA COM SUCESSO VIA HTTP"
     )
+    log("****************************************")
     log("")
 
     return True
 
-
-# ================================================================
-# DIAGNÓSTICO DA TELA DE HORAS
-# ================================================================
-
-def diagnosticar_tela_horas(
-    page,
-):
-
+def diagnosticar_tela_horas(page):
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "DIAGNÓSTICO COMPLETO DA TELA DE HORAS"
-    )
-    log(
-        "============================================================"
-    )
-
-    log(
-        f"URL atual: {page.url}"
-    )
+    log("============================================================")
+    log("DIAGNÓSTICO COMPLETO DA TELA DE HORAS")
+    log("============================================================")
+    log(f"URL atual: {page.url}")
 
     campos_procurados = [
-
-        "txtDatTem",
-
-        "txtHorIni",
-
-        "txtHorFin",
-
-        "ddlTipReg",
-
-        "txlGtt",
-
-        "txlTtr",
-
-        "txlEqt",
-
-        "txlAte",
-
-        "txtDet",
-
-        "txtRea",
-
+        "txtDatTem", "txtHorIni", "txtHorFin", "ddlTipReg",
+        "txlGtt", "txlTtr", "txlEqt", "txlAte", "txtDet", "txtRea",
     ]
 
     try:
-
         frames = page.frames
-
         log("")
-        log(
-            f"TOTAL DE FRAMES ENCONTRADOS: {len(frames)}"
-        )
-
+        log(f"TOTAL DE FRAMES ENCONTRADOS: {len(frames)}")
     except Exception as erro:
-
-        log(
-            f"Erro ao obter frames: {erro}"
-        )
-
+        log(f"Erro ao obter frames: {erro}")
         frames = []
 
     for indice_frame, frame in enumerate(frames):
-
         log("")
-        log(
-            "------------------------------------------------------------"
-        )
-        log(
-            f"FRAME {indice_frame}"
-        )
-        log(
-            "------------------------------------------------------------"
-        )
+        log("------------------------------------------------------------")
+        log(f"FRAME {indice_frame}")
+        log("------------------------------------------------------------")
 
         try:
-
-            log(
-                f"URL DO FRAME: {frame.url}"
-            )
-
+            log(f"URL DO FRAME: {frame.url}")
         except Exception:
-
-            log(
-                "URL DO FRAME: não disponível"
-            )
+            log("URL DO FRAME: não disponível")
 
         for nome_campo in campos_procurados:
-
             try:
-
-                elementos = frame.locator(
-                    f'[id*="{nome_campo}"], '
-                    f'[name*="{nome_campo}"]'
-                )
-
+                elementos = frame.locator(f'[id*="{nome_campo}"], [name*="{nome_campo}"]')
                 quantidade = elementos.count()
-
                 if quantidade > 0:
-
                     log("")
-                    log(
-                        f"*** CAMPO PROCURADO: {nome_campo} "
-                        f"-> {quantidade} encontrado(s)"
-                    )
-
-                    for indice in range(
-                        quantidade
-                    ):
-
-                        elemento = elementos.nth(
-                            indice
-                        )
-
+                    log(f"*** CAMPO PROCURADO: {nome_campo} -> {quantidade} encontrado(s)")
+                    for indice in range(quantidade):
+                        elemento = elementos.nth(indice)
                         try:
-
-                            tag = elemento.evaluate(
-                                "(el) => el.tagName"
-                            )
-
+                            tag = elemento.evaluate("(el) => el.tagName")
                         except Exception:
-
                             tag = ""
-
                         try:
-
-                            id_elemento = (
-                                elemento.get_attribute(
-                                    "id"
-                                )
-                                or ""
-                            )
-
+                            id_elemento = elemento.get_attribute("id") or ""
                         except Exception:
-
                             id_elemento = ""
-
                         try:
-
-                            name_elemento = (
-                                elemento.get_attribute(
-                                    "name"
-                                )
-                                or ""
-                            )
-
+                            name_elemento = elemento.get_attribute("name") or ""
                         except Exception:
-
                             name_elemento = ""
-
                         try:
-
-                            tipo_elemento = (
-                                elemento.get_attribute(
-                                    "type"
-                                )
-                                or ""
-                            )
-
+                            tipo_elemento = elemento.get_attribute("type") or ""
                         except Exception:
-
                             tipo_elemento = ""
-
                         try:
-
-                            valor_elemento = (
-                                elemento.get_attribute(
-                                    "value"
-                                )
-                                or ""
-                            )
-
+                            valor_elemento = elemento.get_attribute("value") or ""
                         except Exception:
-
                             valor_elemento = ""
-
                         try:
-
-                            texto_elemento = (
-                                elemento.inner_text(
-                                    timeout=1000
-                                )
-                                .strip()
-                            )
-
+                            texto_elemento = elemento.inner_text(timeout=1000).strip()
                         except Exception:
-
                             texto_elemento = ""
 
-                        log(
-                            f"  TAG: {tag}"
-                        )
-
-                        log(
-                            f"  ID: {id_elemento}"
-                        )
-
-                        log(
-                            f"  NAME: {name_elemento}"
-                        )
-
-                        log(
-                            f"  TYPE: {tipo_elemento}"
-                        )
-
-                        log(
-                            f"  VALUE: {valor_elemento}"
-                        )
-
+                        log(f"  TAG: {tag}")
+                        log(f"  ID: {id_elemento}")
+                        log(f"  NAME: {name_elemento}")
+                        log(f"  TYPE: {tipo_elemento}")
+                        log(f"  VALUE: {valor_elemento}")
                         if texto_elemento:
-
-                            log(
-                                f"  TEXTO: {texto_elemento[:300]}"
-                            )
-
+                            log(f"  TEXTO: {texto_elemento[:300]}")
             except Exception as erro:
-
-                log(
-                    f"Erro procurando {nome_campo}: {erro}"
-                )
-
-        # ========================================================
-        # INPUTS
-        # ========================================================
+                log(f"Erro procurando {nome_campo}: {erro}")
 
         try:
-
-            inputs = frame.locator(
-                "input"
-            )
-
+            inputs = frame.locator("input")
             quantidade_inputs = inputs.count()
-
             log("")
-            log(
-                f"INPUTS ENCONTRADOS NO FRAME: {quantidade_inputs}"
-            )
+            log(f"INPUTS ENCONTRADOS NO FRAME: {quantidade_inputs}")
 
-            for indice in range(
-                quantidade_inputs
-            ):
-
-                elemento = inputs.nth(
-                    indice
-                )
-
+            for indice in range(quantidade_inputs):
+                elemento = inputs.nth(indice)
                 try:
+                    id_elemento = elemento.get_attribute("id") or ""
+                    name_elemento = elemento.get_attribute("name") or ""
+                    tipo_elemento = elemento.get_attribute("type") or ""
+                    valor_elemento = elemento.get_attribute("value") or ""
+                    placeholder = elemento.get_attribute("placeholder") or ""
+                    onclick = elemento.get_attribute("onclick") or ""
 
-                    id_elemento = (
-                        elemento.get_attribute(
-                            "id"
-                        )
-                        or ""
-                    )
-
-                    name_elemento = (
-                        elemento.get_attribute(
-                            "name"
-                        )
-                        or ""
-                    )
-
-                    tipo_elemento = (
-                        elemento.get_attribute(
-                            "type"
-                        )
-                        or ""
-                    )
-
-                    valor_elemento = (
-                        elemento.get_attribute(
-                            "value"
-                        )
-                        or ""
-                    )
-
-                    placeholder = (
-                        elemento.get_attribute(
-                            "placeholder"
-                        )
-                        or ""
-                    )
-
-                    onclick = (
-                        elemento.get_attribute(
-                            "onclick"
-                        )
-                        or ""
-                    )
-
-                    descricao = (
-                        f"INPUT {indice} | "
-                        f"id={id_elemento} | "
-                        f"name={name_elemento} | "
-                        f"type={tipo_elemento} | "
-                        f"value={valor_elemento} | "
-                        f"placeholder={placeholder}"
-                    )
-
-                    texto_busca = (
-                        descricao
-                        + " "
-                        + onclick
-                    ).lower()
-
-                    relevante = any(
-                        campo.lower()
-                        in texto_busca
-                        for campo in campos_procurados
-                    )
+                    descricao = f"INPUT {indice} | id={id_elemento} | name={name_elemento} | type={tipo_elemento} | value={valor_elemento} | placeholder={placeholder}"
+                    texto_busca = (descricao + " " + onclick).lower()
+                    relevante = any(campo.lower() in texto_busca for campo in campos_procurados)
 
                     if relevante:
-
-                        log(
-                            f"  [RELEVANTE] {descricao}"
-                        )
-
+                        log(f"  [RELEVANTE] {descricao}")
                         if onclick:
-
-                            log(
-                                f"      onclick={onclick[:500]}"
-                            )
-
+                            log(f"      onclick={onclick[:500]}")
                     else:
-
-                        log(
-                            f"  {descricao}"
-                        )
-
+                        log(f"  {descricao}")
                 except Exception as erro:
-
-                    log(
-                        f"  INPUT {indice} -> erro: {erro}"
-                    )
-
+                    log(f"  INPUT {indice} -> erro: {erro}")
         except Exception as erro:
-
-            log(
-                f"Erro ao listar inputs: {erro}"
-            )
-
-        # ========================================================
-        # SELECTS
-        # ========================================================
+            log(f"Erro ao listar inputs: {erro}")
 
         try:
-
-            selects = frame.locator(
-                "select"
-            )
-
+            selects = frame.locator("select")
             quantidade_selects = selects.count()
-
             log("")
-            log(
-                f"SELECTS ENCONTRADOS NO FRAME: {quantidade_selects}"
-            )
+            log(f"SELECTS ENCONTRADOS NO FRAME: {quantidade_selects}")
 
-            for indice in range(
-                quantidade_selects
-            ):
-
-                elemento = selects.nth(
-                    indice
-                )
-
+            for indice in range(quantidade_selects):
+                elemento = selects.nth(indice)
                 try:
+                    id_elemento = elemento.get_attribute("id") or ""
+                    name_elemento = elemento.get_attribute("name") or ""
+                    valor_elemento = elemento.input_value()
+                    texto = elemento.inner_text(timeout=1000).strip()
 
-                    id_elemento = (
-                        elemento.get_attribute(
-                            "id"
-                        )
-                        or ""
-                    )
-
-                    name_elemento = (
-                        elemento.get_attribute(
-                            "name"
-                        )
-                        or ""
-                    )
-
-                    valor_elemento = (
-                        elemento.input_value()
-                    )
-
-                    texto = (
-                        elemento.inner_text(
-                            timeout=1000
-                        )
-                        .strip()
-                    )
-
-                    log(
-                        f"  SELECT {indice} | "
-                        f"id={id_elemento} | "
-                        f"name={name_elemento} | "
-                        f"value={valor_elemento}"
-                    )
-
+                    log(f"  SELECT {indice} | id={id_elemento} | name={name_elemento} | value={valor_elemento}")
                     if texto:
-
-                        log(
-                            f"      opções/texto: {texto[:500]}"
-                        )
-
+                        log(f"      opções/texto: {texto[:500]}")
                 except Exception as erro:
-
-                    log(
-                        f"  SELECT {indice} -> erro: {erro}"
-                    )
-
+                    log(f"  SELECT {indice} -> erro: {erro}")
         except Exception as erro:
-
-            log(
-                f"Erro ao listar selects: {erro}"
-            )
-
-        # ========================================================
-        # TEXTAREAS
-        # ========================================================
+            log(f"Erro ao listar selects: {erro}")
 
         try:
-
-            textareas = frame.locator(
-                "textarea"
-            )
-
+            textareas = frame.locator("textarea")
             quantidade_textareas = textareas.count()
-
             log("")
-            log(
-                f"TEXTAREAS ENCONTRADOS NO FRAME: {quantidade_textareas}"
-            )
+            log(f"TEXTAREAS ENCONTRADOS NO FRAME: {quantidade_textareas}")
 
-            for indice in range(
-                quantidade_textareas
-            ):
-
-                elemento = textareas.nth(
-                    indice
-                )
-
+            for indice in range(quantidade_textareas):
+                elemento = textareas.nth(indice)
                 try:
+                    id_elemento = elemento.get_attribute("id") or ""
+                    name_elemento = elemento.get_attribute("name") or ""
+                    valor_elemento = elemento.input_value()
 
-                    id_elemento = (
-                        elemento.get_attribute(
-                            "id"
-                        )
-                        or ""
-                    )
-
-                    name_elemento = (
-                        elemento.get_attribute(
-                            "name"
-                        )
-                        or ""
-                    )
-
-                    valor_elemento = (
-                        elemento.input_value()
-                    )
-
-                    log(
-                        f"  TEXTAREA {indice} | "
-                        f"id={id_elemento} | "
-                        f"name={name_elemento} | "
-                        f"value={valor_elemento[:500]}"
-                    )
-
+                    log(f"  TEXTAREA {indice} | id={id_elemento} | name={name_elemento} | value={valor_elemento[:500]}")
                 except Exception as erro:
-
-                    log(
-                        f"  TEXTAREA {indice} -> erro: {erro}"
-                    )
-
+                    log(f"  TEXTAREA {indice} -> erro: {erro}")
         except Exception as erro:
-
-            log(
-                f"Erro ao listar textareas: {erro}"
-            )
-
-        # ========================================================
-        # BOTÕES
-        # ========================================================
+            log(f"Erro ao listar textareas: {erro}")
 
         try:
-
-            botoes = frame.locator(
-                "button, input[type='button'], input[type='submit']"
-            )
-
+            botoes = frame.locator("button, input[type='button'], input[type='submit']")
             quantidade_botoes = botoes.count()
-
             log("")
-            log(
-                f"BOTÕES ENCONTRADOS NO FRAME: {quantidade_botoes}"
-            )
+            log(f"BOTÕES ENCONTRADOS NO FRAME: {quantidade_botoes}")
 
-            for indice in range(
-                quantidade_botoes
-            ):
-
-                elemento = botoes.nth(
-                    indice
-                )
-
+            for indice in range(quantidade_botoes):
+                elemento = botoes.nth(indice)
                 try:
+                    id_elemento = elemento.get_attribute("id") or ""
+                    name_elemento = elemento.get_attribute("name") or ""
+                    tipo_elemento = elemento.get_attribute("type") or ""
+                    value_elemento = elemento.get_attribute("value") or ""
+                    texto_elemento = elemento.inner_text(timeout=500).strip()
+                    onclick = elemento.get_attribute("onclick") or ""
 
-                    id_elemento = (
-                        elemento.get_attribute(
-                            "id"
-                        )
-                        or ""
-                    )
-
-                    name_elemento = (
-                        elemento.get_attribute(
-                            "name"
-                        )
-                        or ""
-                    )
-
-                    tipo_elemento = (
-                        elemento.get_attribute(
-                            "type"
-                        )
-                        or ""
-                    )
-
-                    value_elemento = (
-                        elemento.get_attribute(
-                            "value"
-                        )
-                        or ""
-                    )
-
-                    texto_elemento = (
-                        elemento.inner_text(
-                            timeout=500
-                        )
-                        .strip()
-                    )
-
-                    onclick = (
-                        elemento.get_attribute(
-                            "onclick"
-                        )
-                        or ""
-                    )
-
-                    log(
-                        f"  BOTÃO {indice} | "
-                        f"id={id_elemento} | "
-                        f"name={name_elemento} | "
-                        f"type={tipo_elemento} | "
-                        f"value={value_elemento} | "
-                        f"texto={texto_elemento[:150]}"
-                    )
-
+                    log(f"  BOTÃO {indice} | id={id_elemento} | name={name_elemento} | type={tipo_elemento} | value={value_elemento} | texto={texto_elemento[:150]}")
                     if onclick:
-
-                        log(
-                            f"      onclick={onclick[:500]}"
-                        )
-
+                        log(f"      onclick={onclick[:500]}")
                 except Exception:
-
                     continue
-
         except Exception as erro:
-
-            log(
-                f"Erro ao listar botões: {erro}"
-            )
+            log(f"Erro ao listar botões: {erro}")
 
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "FIM DO DIAGNÓSTICO DA TELA DE HORAS"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log("FIM DO DIAGNÓSTICO DA TELA DE HORAS")
+    log("============================================================")
     log("")
 
-
-# ================================================================
-# AGUARDAR NAVEGADOR
-# ================================================================
-
-def aguardar_navegador(
-    context,
-):
-
+def aguardar_navegador(context):
     while True:
-
         try:
-
-            paginas = [
-                pagina
-                for pagina in context.pages
-                if not pagina.is_closed()
-            ]
-
+            paginas = [pagina for pagina in context.pages if not pagina.is_closed()]
             if not paginas:
-
                 break
-
-            time.sleep(
-                0.5
-            )
-
+            time.sleep(0.5)
         except Exception:
-
             break
 
-
-# ================================================================
-# FECHAR PLAYWRIGHT
-# ================================================================
-
-def fechar_playwright(
-    context,
-    playwright,
-):
-
+def fechar_playwright(context, playwright):
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "ENCERRANDO AUTOMAÇÃO E-DESK"
-    )
-    log(
-        "============================================================"
-    )
-
-    # ------------------------------------------------------------
-    # Fechar contexto primeiro.
-    # ------------------------------------------------------------
+    log("============================================================")
+    log("ENCERRANDO AUTOMAÇÃO E-DESK")
+    log("============================================================")
 
     if context is not None:
-
         try:
-
-            paginas = list(
-                context.pages
-            )
-
-            log(
-                f"Páginas abertas antes do encerramento: {len(paginas)}"
-            )
-
+            paginas = list(context.pages)
+            log(f"Páginas abertas antes do encerramento: {len(paginas)}")
         except Exception:
-
             paginas = []
 
         try:
-
             context.close()
-
-            log(
-                "Contexto Playwright encerrado."
-            )
-
+            log("Contexto Playwright encerrado.")
         except Exception as erro:
-
-            log(
-                f"Aviso ao fechar contexto Playwright: {erro}"
-            )
-
-    # ------------------------------------------------------------
-    # Depois parar Playwright.
-    # ------------------------------------------------------------
+            log(f"Aviso ao fechar contexto Playwright: {erro}")
 
     if playwright is not None:
-
         try:
-
             playwright.stop()
-
-            log(
-                "Playwright encerrado."
-            )
-
+            log("Playwright encerrado.")
         except Exception as erro:
+            log(f"Aviso ao parar Playwright: {erro}")
 
-            log(
-                f"Aviso ao parar Playwright: {erro}"
-            )
-
-    log(
-        "Automação E-Desk finalizada."
-    )
+    log("Automação E-Desk finalizada.")
     log("")
-
-
-# ================================================================
-# MAIN
-# ================================================================
 
 def main():
-
     dados = carregar_request()
-
-    url = obter_url(
-        dados
-    )
-
-    trabalhos = extrair_trabalhos(
-        dados
-    )
-
-    enviar = obter_modo_envio(
-        dados
-    )
-
-    manter_navegador_aberto = (
-        obter_manter_navegador_aberto(
-            dados
-        )
-    )
-
-    # ============================================================
-    # VALIDAR TRABALHOS
-    # ============================================================
+    credenciais = obter_credenciais_edesk(dados)
+    url = obter_url(dados)
+    trabalhos = extrair_trabalhos(dados)
+    enviar = obter_modo_envio(dados)
+    manter_navegador_aberto = obter_manter_navegador_aberto(dados)
 
     if not trabalhos:
-
-        raise RuntimeError(
-            "Nenhum trabalho foi informado no request."
-        )
-
-    # ============================================================
-    # RESUMO
-    # ============================================================
+        raise RuntimeError("Nenhum trabalho foi informado no request.")
 
     log("")
-    log(
-        "============================================================"
-    )
-    log(
-        "RESUMO DOS DADOS DO REQUEST"
-    )
-    log(
-        "============================================================"
-    )
+    log("============================================================")
+    log("RESUMO DOS DADOS DO REQUEST")
+    log("============================================================")
+    log(f"URL: {url}")
+    log(f"Quantidade de trabalhos: {len(trabalhos)}")
 
-    log(
-        f"URL: {url}"
-    )
+    for indice, trabalho in enumerate(trabalhos, start=1):
+        solicitacao = trabalho.get("solicitacao", "")
+        id_trabalho = trabalho.get("id_trabalho", "")
+        horas = trabalho.get("horas", [])
 
-    log(
-        f"Quantidade de trabalhos: {len(trabalhos)}"
-    )
-
-    total_horas = 0
-
-    for indice_trabalho, trabalho in enumerate(
-        trabalhos,
-        start=1,
-    ):
-
-        solicitacao = str(
-            trabalho.get(
-                "solicitacao",
-                "",
-            )
-            or ""
-        ).strip()
-
-        id_trabalho = str(
-            trabalho.get(
-                "id_trabalho",
-                "",
-            )
-            or ""
-        ).strip()
-
-        horas = trabalho.get(
-            "horas",
-            [],
-        )
-
-        if not isinstance(
-            horas,
-            list,
-        ):
-
-            horas = []
-
-        total_horas += len(
-            horas
-        )
-
-        log("")
         log(
-            f"TRABALHO {indice_trabalho}:"
-        )
-        log(
-            f"  Solicitação: {solicitacao}"
-        )
-        log(
-            f"  ID Trabalho: {id_trabalho}"
-        )
-        log(
-            f"  Quantidade de horas: {len(horas)}"
+            f"TRABALHO {indice}: "
+            f"Solicitação={solicitacao} | "
+            f"Trabalho={id_trabalho} | "
+            f"Horas={len(horas)}"
         )
 
+    log(f"Modo envio: {enviar}")
+    log(f"Manter navegador aberto: {manter_navegador_aberto}")
+    log("============================================================")
     log("")
-    log(
-        f"Quantidade TOTAL de horas: {total_horas}"
-    )
-
-    log(
-        f"Modo envio: {enviar}"
-    )
-
-    log(
-        f"Manter navegador aberto: {manter_navegador_aberto}"
-    )
-
-    log(
-        "============================================================"
-    )
-    log("")
-
-    # ============================================================
-    # QUANDO O FLUTTER ESTÁ ENVIANDO:
-    #
-    # nunca deixar o Python ficar aguardando o navegador.
-    # ============================================================
 
     if enviar:
-
         manter_navegador_aberto = False
 
     playwright = None
     context = None
 
     try:
-
-        # ========================================================
-        # INICIAR PLAYWRIGHT
-        # ========================================================
-
         playwright = sync_playwright().start()
 
-        context = (
-            playwright.chromium
-            .launch_persistent_context(
-                user_data_dir=str(
-                    PROFILE_PATH
-                ),
-                headless=False,
-                args=[
-                    "--start-maximized",
-                ],
-                viewport=None,
+        context = playwright.chromium.launch_persistent_context(
+            user_data_dir=str(PROFILE_PATH),
+            headless=False,
+            args=["--start-maximized"],
+            viewport=None,
+        )
+
+        instalar_monitor_navegacao(context)
+
+        page = None
+
+        # ============================================================
+        # LOCALIZA UMA PÁGINA EXISTENTE DO E-DESK
+        # ============================================================
+
+        for pagina_existente in context.pages:
+            try:
+                if pagina_existente.is_closed():
+                    continue
+
+                url_existente = pagina_existente.url or ""
+
+                if (
+                    "/Portal/" in url_existente
+                    or "promob.e-desk.com.br" in url_existente
+                ):
+                    page = pagina_existente
+                    break
+
+            except Exception:
+                continue
+
+        if page is None:
+            if context.pages:
+                page = context.pages[0]
+            else:
+                page = context.new_page()
+
+        instalar_monitor_requests(page)
+
+        # ============================================================
+        # LOGIN
+        # ============================================================
+
+        autenticado = login_confirmado(page)
+
+        if not autenticado:
+            log("")
+            log("============================================================")
+            log("ABRINDO E-DESK - PRIMEIRA VEZ NESTA SESSÃO")
+            log("============================================================")
+
+            page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=60000,
             )
-        )
 
-        instalar_monitor_navegacao(
-            context
-        )
-
-        # ========================================================
-        # OBTER PÁGINA
-        # ========================================================
-
-        if context.pages:
-
-            page = context.pages[0]
+            aguardar_login(page, credenciais)
 
         else:
-
-            page = context.new_page()
-
-        instalar_monitor_requests(
-            page
-        )
-
-        # ========================================================
-        # ABRIR E-DESK
-        # ========================================================
+            log("")
+            log("============================================================")
+            log("SESSÃO E-DESK JÁ AUTENTICADA - REUTILIZANDO")
+            log("============================================================")
+            log(f"URL REUTILIZADA: {page.url}")
 
         log("")
-        log(
-            "============================================================"
-        )
-        log(
-            "ABRINDO E-DESK"
-        )
-        log(
-            "============================================================"
-        )
+        log("****************************************")
+        log("AUTENTICAÇÃO CONCLUÍDA")
+        log("****************************************")
+        log(f"URL AUTENTICADA: {page.url}")
+        log("")
 
-        page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=60000,
-        )
+        # ============================================================
+        # GUID DA SESSÃO
+        # ============================================================
 
-        # ========================================================
-        # LOGIN
-        # ========================================================
+        guid_sessao = obter_guid_da_url(page.url)
 
-        aguardar_login(
-            page
-        )
+        if not guid_sessao:
+            raise RuntimeError(
+                "Não foi possível obter o GUID da sessão após o login."
+            )
 
-        # ========================================================
-        # PROCESSAR CADA TRABALHO
-        # ========================================================
+        log(f"GUID DA SESSÃO: {guid_sessao}")
 
-        for indice_trabalho, trabalho in enumerate(
-            trabalhos,
-            start=1,
-        ):
+         # ============================================================
+        # PROCESSAMENTO DOS TRABALHOS / HORAS
+        #
+        # REGRA:
+        # Cada hora é uma operação completamente independente:
+        #
+        # Grid
+        #   -> pesquisar solicitação
+        #   -> abrir solicitação
+        #   -> abrir trabalho correto
+        #   -> abrir trabalho retroativo
+        #   -> salvar UMA hora
+        #   -> voltar para Grid
+        #   -> repetir para a próxima hora
+        #
+        # Isso evita reutilizar páginas/solicitações/trabalhos da hora
+        # anterior.
+        # ============================================================
 
-            if not isinstance(
-                trabalho,
-                dict,
-            ):
+        total_trabalhos = len(trabalhos)
 
-                raise RuntimeError(
-                    f"O TRABALHO {indice_trabalho} "
-                    "não é um objeto JSON válido."
-                )
+        for indice_trabalho, trabalho in enumerate(trabalhos, start=1):
 
             solicitacao = str(
-                trabalho.get(
-                    "solicitacao",
-                    "",
-                )
-                or ""
+                trabalho.get("solicitacao", "") or ""
             ).strip()
 
             id_trabalho = str(
-                trabalho.get(
-                    "id_trabalho",
-                    "",
-                )
-                or ""
+                trabalho.get("id_trabalho", "") or ""
             ).strip()
 
-            horas = trabalho.get(
-                "horas",
-                [],
-            )
+            horas = trabalho.get("horas", [])
 
-            if not isinstance(
-                horas,
-                list,
-            ):
-
+            if not isinstance(horas, list):
                 horas = []
 
             log("")
+            log("############################################################")
             log(
-                "############################################################"
+                f"INICIANDO TRABALHO "
+                f"{indice_trabalho} DE {total_trabalhos}"
             )
-            log(
-                f"INICIANDO TRABALHO {indice_trabalho} DE {len(trabalhos)}"
-            )
-            log(
-                "############################################################"
-            )
-
-            log(
-                f"SOLICITAÇÃO: {solicitacao}"
-            )
-
-            log(
-                f"ID TRABALHO RELATIVO: {id_trabalho}"
-            )
-
-            log(
-                f"QUANTIDADE DE HORAS: {len(horas)}"
-            )
-
-            # ====================================================
-            # VALIDAR IDENTIFICAÇÃO
-            # ====================================================
+            log("############################################################")
+            log(f"SOLICITAÇÃO: {solicitacao}")
+            log(f"ID TRABALHO: {id_trabalho}")
+            log(f"QUANTIDADE DE HORAS: {len(horas)}")
+            log("")
 
             if not solicitacao:
-
                 raise RuntimeError(
                     f"O TRABALHO {indice_trabalho} "
-                    "não possui número de solicitação."
+                    f"não possui solicitação."
                 )
 
             if not id_trabalho:
-
                 raise RuntimeError(
                     f"O TRABALHO {indice_trabalho} "
-                    f"da solicitação {solicitacao} "
-                    "não possui ID do trabalho."
+                    f"não possui idTrabalho."
                 )
 
-            # ====================================================
-            # VOLTAR PARA A GRID
-            #
-            # Isto é necessário porque, depois de processar um
-            # trabalho, a página está em TrabalhoRetroativo.aspx.
-            #
-            # Para cada novo trabalho voltamos à Grid e procuramos
-            # novamente a solicitação.
-            # ====================================================
+            total_horas = len(horas)
 
-            log("")
-            log(
-                "------------------------------------------------------------"
-            )
-            log(
-                "VOLTANDO PARA A GRID PARA LOCALIZAR O PRÓXIMO TRABALHO"
-            )
-            log(
-                "------------------------------------------------------------"
-            )
+            if total_horas == 0:
 
-            acessar_minha_grid(
-                page
-            )
-
-            # ====================================================
-            # LOCALIZAR SOLICITAÇÃO
-            # ====================================================
-
-            linha_grid = localizar_solicitacao(
-                page,
-                solicitacao,
-            )
-
-            if linha_grid is None:
-
-                raise RuntimeError(
-                    f"Solicitação {solicitacao} não encontrada "
-                    "na Grid."
+                log(
+                    f"Nenhuma hora enviada para "
+                    f"{solicitacao} / {id_trabalho}."
                 )
 
-            # ====================================================
-            # ABRIR TRABALHO
-            #
-            # O ID É RELATIVO À SOLICITAÇÃO.
-            #
-            # Exemplo:
-            #
-            # solicitação 2262412 / trabalho 18
-            #
-            # e:
-            #
-            # solicitação 2261914 / trabalho 18
-            #
-            # são tratados separadamente.
-            # ====================================================
+                continue
 
-            pagina_final = abrir_trabalho(
-                page,
-                context,
-                linha_grid,
-                solicitacao,
-                id_trabalho,
-            )
+            # ========================================================
+            # CADA HORA COMEÇA NOVAMENTE PELA GRID
+            # ========================================================
 
-            if pagina_final is None:
-
-                raise RuntimeError(
-                    f"Não foi possível abrir o trabalho "
-                    f"{id_trabalho} da solicitação "
-                    f"{solicitacao}."
-                )
-
-            page = pagina_final
-
-            # ====================================================
-            # CONFIRMAR PÁGINA
-            # ====================================================
-
-            if not eh_trabalho_retroativo(
-                page.url
+            for indice_hora, hora in enumerate(
+                horas,
+                start=1
             ):
 
+                log("")
+                log("============================================================")
                 log(
-                    f"Página atual antes do diagnóstico: {page.url}"
+                    f"INICIANDO HORA "
+                    f"{indice_hora} DE {total_horas}"
+                )
+                log("============================================================")
+                log(f"SOLICITAÇÃO: {solicitacao}")
+                log(f"TRABALHO: {id_trabalho}")
+                log("")
+
+                # ----------------------------------------------------
+                # 1. GARANTE QUE ESTAMOS NA GRID
+                # ----------------------------------------------------
+
+                log(
+                    "VOLTANDO PARA A GRID ANTES "
+                    "DE PROCESSAR A HORA..."
                 )
 
-            # ====================================================
-            # DIAGNÓSTICO
-            #
-            # Mantido porque já está sendo usado para validar os
-            # campos do E-Desk.
-            # ====================================================
+                acessar_minha_grid(
+                    page,
+                    guid_sessao
+                )
 
-            diagnosticar_tela_horas(
-                page
+                # ----------------------------------------------------
+                # 2. IDENTIFICA A ATIVIDADE DESTA HORA
+                # ----------------------------------------------------
+
+                atividade_alvo = ""
+
+                if isinstance(hora, dict):
+                    atividade_alvo = str(
+                        hora.get("tarefa", "") or ""
+                    ).strip()
+
+                log(
+                    f"ATIVIDADE ALVO: "
+                    f"{atividade_alvo or '[NÃO INFORMADA]'}"
+                )
+
+                # ----------------------------------------------------
+                # 3. PESQUISA NOVAMENTE A SOLICITAÇÃO
+                #
+                # localizar_solicitacao já utiliza o campo Pesquisar
+                # da Grid.
+                # ----------------------------------------------------
+
+                linha_grid = localizar_solicitacao(
+                    page,
+                    solicitacao,
+                    atividade_alvo
+                )
+
+                if linha_grid is None:
+                    raise RuntimeError(
+                        f"Solicitação {solicitacao} "
+                        f"não encontrada na Grid "
+                        f"para a HORA {indice_hora}."
+                    )
+
+                # ----------------------------------------------------
+                # 4. ABRE NOVAMENTE SOLICITAÇÃO / TRABALHO
+                # ----------------------------------------------------
+
+                log("")
+                log(
+                    "ABRINDO SOLICITAÇÃO / "
+                    "TRABALHO PARA ESTA HORA..."
+                )
+
+                pagina_final = abrir_trabalho(
+                    page,
+                    context,
+                    linha_grid,
+                    solicitacao,
+                    id_trabalho
+                )
+
+                if pagina_final is None:
+                    raise RuntimeError(
+                        f"Não foi possível abrir o trabalho "
+                        f"{id_trabalho} da solicitação "
+                        f"{solicitacao} para a "
+                        f"HORA {indice_hora}."
+                    )
+
+                # A partir daqui usamos SOMENTE a página
+                # retornada para esta hora.
+                pagina_hora = pagina_final
+
+                # ----------------------------------------------------
+                # 5. SALVA SOMENTE ESTA HORA
+                # ----------------------------------------------------
+
+                log("")
+                log(
+                    f"SALVANDO HORA "
+                    f"{indice_hora} DE {total_horas}"
+                )
+
+                sucesso_hora = salvar_hora(
+                    pagina_hora,
+                    hora,
+                    indice_hora,
+                    total_horas
+                )
+
+                if not sucesso_hora:
+                    raise RuntimeError(
+                        f"Não foi possível salvar a "
+                        f"HORA {indice_hora} DE {total_horas} "
+                        f"do trabalho {id_trabalho} "
+                        f"da solicitação {solicitacao}."
+                    )
+
+                log("")
+                log("****************************************")
+                log(
+                    f"HORA {indice_hora} DE "
+                    f"{total_horas} CONCLUÍDA"
+                )
+                log("****************************************")
+                log("")
+
+                # ----------------------------------------------------
+                # 6. TERMINOU A HORA.
+                #
+                # NÃO reutilizamos a tela TrabalhoRetroativo.
+                # NÃO reutilizamos a tela Trabalho.
+                # NÃO reutilizamos a Solicitação.
+                #
+                # A mesma página é levada diretamente de volta
+                # para a Grid usando o GUID autenticado.
+                # ----------------------------------------------------
+
+                log(
+                    "HORA FINALIZADA. "
+                    "FECHANDO O FLUXO DA SOLICITAÇÃO "
+                    "E RETORNANDO PARA A GRID..."
+                )
+
+                try:
+
+                    acessar_minha_grid(
+                        pagina_hora,
+                        guid_sessao
+                    )
+
+                    # A página principal passa a ser novamente
+                    # a Grid.
+                    page = pagina_hora
+
+                    log(
+                        "RETORNO PARA A GRID "
+                        "CONCLUÍDO COM SUCESSO."
+                    )
+
+                except Exception as erro:
+
+                    raise RuntimeError(
+                        f"A HORA {indice_hora} foi salva, "
+                        f"mas não foi possível retornar "
+                        f"para a Grid: {erro}"
+                    )
+
+                log("")
+                log(
+                    f"CICLO DA HORA {indice_hora} "
+                    f"ENCERRADO."
+                )
+                log("")
+
+            # ========================================================
+            # TRABALHO CONCLUÍDO
+            # ========================================================
+
+            log("")
+            log("############################################################")
+            log(
+                f"TRABALHO {indice_trabalho} "
+                f"DE {total_trabalhos} CONCLUÍDO"
             )
+            log(f"SOLICITAÇÃO: {solicitacao}")
+            log(f"TRABALHO: {id_trabalho}")
+            log(f"HORAS PROCESSADAS: {total_horas}")
+            log("############################################################")
+            log("")
 
-            # ====================================================
-            # SALVAR HORAS DESTE TRABALHO
-            # ====================================================
+        # ============================================================
+        # TODOS OS TRABALHOS
+        # ============================================================
 
-            if horas:
-
-                for indice_hora, hora in enumerate(
-                    horas,
-                    start=1,
-                ):
-
-                    sucesso_hora = salvar_hora(
-                        page,
-                        hora,
-                        indice_hora,
-                        len(horas),
-                    )
-
-                    if not sucesso_hora:
-
-                        raise RuntimeError(
-                            f"Não foi possível salvar a "
-                            f"HORA {indice_hora} do trabalho "
-                            f"{id_trabalho}, solicitação "
-                            f"{solicitacao}."
-                        )
-
-                    log("")
-                    log(
-                        "------------------------------------------------------------"
-                    )
-                    log(
-                        f"HORA {indice_hora} DE {len(horas)} "
-                        "CONCLUÍDA"
-                    )
-                    log(
-                        f"Solicitação: {solicitacao}"
-                    )
-                    log(
-                        f"Trabalho: {id_trabalho}"
-                    )
-                    log(
-                        "------------------------------------------------------------"
-                    )
-
-                log("")
-                log(
-                    "============================================================"
-                )
-                log(
-                    f"TODAS AS {len(horas)} HORAS DO TRABALHO "
-                    f"{id_trabalho} FORAM PROCESSADAS"
-                )
-                log(
-                    f"SOLICITAÇÃO: {solicitacao}"
-                )
-                log(
-                    "============================================================"
-                )
-                log("")
-
-            else:
-
-                log("")
-                log(
-                    f"Nenhuma hora enviada para o trabalho "
-                    f"{id_trabalho} da solicitação {solicitacao}."
-                )
-                log("")
-
-        # ========================================================
-        # NAVEGADOR ABERTO SOMENTE SE SOLICITADO
-        # ========================================================
+        log("")
+        log("============================================================")
+        log("TODOS OS TRABALHOS FORAM PROCESSADOS")
+        log("============================================================")
+        log(f"Total de trabalhos: {total_trabalhos}")
 
         if manter_navegador_aberto:
-
             log(
                 "Modo 'manter navegador aberto' ativado."
             )
-
-            aguardar_navegador(
-                context
-            )
-
-        # ========================================================
-        # RESULTADO FINAL
-        # ========================================================
+            aguardar_navegador(context)
 
         log("")
+        log("============================================================")
+        log("PROCESSAMENTO CONCLUÍDO COM SUCESSO")
+        log("============================================================")
         log(
-            "############################################################"
+            f"TRABALHOS PROCESSADOS: "
+            f"{total_trabalhos}"
         )
-        log(
-            "PROCESSAMENTO DE TODOS OS TRABALHOS CONCLUÍDO"
-        )
-        log(
-            "############################################################"
-        )
-
-        log(
-            f"Trabalhos processados: {len(trabalhos)}"
-        )
-
-        log(
-            f"Horas processadas: {total_horas}"
-        )
-
+        log("============================================================")
         log("")
 
         return 0
 
     except Exception as erro:
-
         log("")
-        log(
-            "============================================================"
-        )
-        log(
-            "ERRO DURANTE A EXECUÇÃO"
-        )
-        log(
-            "============================================================"
-        )
-
-        log(
-            f"{erro}"
-        )
+        log("============================================================")
+        log("ERRO DURANTE A EXECUÇÃO")
+        log("============================================================")
+        log(f"{erro}")
 
         import traceback
-
         traceback.print_exc()
 
         if (
@@ -4054,56 +2593,25 @@ def main():
             and manter_navegador_aberto
             and not enviar
         ):
-
             try:
-
-                aguardar_navegador(
-                    context
-                )
-
+                aguardar_navegador(context)
             except Exception:
-
                 pass
 
         raise
 
     finally:
-
-        # ========================================================
-        # IMPORTANTE:
-        #
-        # Quando o Flutter está enviando, o Python precisa terminar
-        # completamente para que o processo não fique travado.
-        # ========================================================
-
         if not manter_navegador_aberto:
-
             fechar_playwright(
                 context,
                 playwright,
             )
-
-
-# ================================================================
-# EXECUÇÃO
-# ================================================================
-
+            
 if __name__ == "__main__":
-
     try:
-
         codigo = main()
-
-        sys.exit(
-            codigo
-            if codigo is not None
-            else 0
-        )
-
+        sys.exit(codigo if codigo is not None else 0)
     except KeyboardInterrupt:
-
         sys.exit(1)
-
     except Exception:
-
         sys.exit(1)

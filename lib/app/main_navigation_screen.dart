@@ -119,31 +119,47 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       fit: StackFit.expand,
       children: [
         // --------------------------------------------------------
-        // IMAGEM DE FUNDO
+        // IMAGEM DE FUNDO ÚNICA
         // --------------------------------------------------------
 
-        Image.asset(
-          AppTheme.caminhoFundo,
-          fit: BoxFit.cover,
+        Positioned.fill(
+          child: Image.asset(
+            AppTheme.caminhoFundo,
+            fit: BoxFit.cover,
+          ),
         ),
 
         // --------------------------------------------------------
         // CAMADA ESCURA SOBRE A IMAGEM
         //
-        // Deixa os textos, cards e tabelas mais fáceis de enxergar.
+        // Mantém a leitura dos textos e componentes.
         // --------------------------------------------------------
 
-        Container(
-          color: Colors.black.withOpacity(
-            AppTheme.opacidadeFundo,
+        Positioned.fill(
+          child: Container(
+            color: Colors.black.withOpacity(
+              AppTheme.opacidadeFundo,
+            ),
           ),
         ),
 
         // --------------------------------------------------------
-        // PÁGINA ATUAL
+        // TELA ATUAL
+        //
+        // O Theme abaixo torna os Scaffold das telas
+        // transparentes, permitindo que o mesmo fundo continue
+        // aparecendo também atrás do cabeçalho.
         // --------------------------------------------------------
 
-        child,
+        Positioned.fill(
+          child: Theme(
+            data: Theme.of(context).copyWith(
+              scaffoldBackgroundColor: Colors.transparent,
+              canvasColor: Colors.transparent,
+            ),
+            child: child,
+          ),
+        ),
       ],
     );
   }
@@ -266,7 +282,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             : 0;
 
     // ==========================================================
-    // PÁGINA ATUAL COM FUNDO GLOBAL
+    // PÁGINA ATUAL COM FUNDO GLOBAL ÚNICO
     // ==========================================================
 
     return _buildGlobalBackground(

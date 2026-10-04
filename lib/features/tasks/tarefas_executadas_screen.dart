@@ -14,7 +14,7 @@ import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
-import 'package:gerenciador_horas/features/edesk/screens/edesk_webview_test_screen.dart';
+import 'package:gerenciador_horas/data/services/edesk_credentials_service.dart';
 
 class TarefasScreen extends StatefulWidget {
   final int selectedIndex;
@@ -487,10 +487,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 final bool wide = width >= 1250;
                 final bool medium = width >= 800 && width < 1250;
 
-                // ==================================================
-                // DESKTOP LARGO
-                // ==================================================
-
                 if (wide) {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -522,10 +518,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   );
                 }
 
-                // ==================================================
-                // TAMANHO MÉDIO
-                // ==================================================
-
                 if (medium) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -549,10 +541,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     ],
                   );
                 }
-
-                // ==================================================
-                // TELA COMPACTA
-                // ==================================================
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1491,6 +1479,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
       );
     }).toList();
 
+    // ============================================================
+    // SELEÇÃO DOS TRABALHOS PARA ENVIO
+    // Todos iniciam selecionados.
+    // ============================================================
+
+    final Set<String> selecionados = {
+      for (final draft in drafts) draft.log.id,
+    };
+
     final taskControllers = <String, TextEditingController>{
       for (final draft in drafts)
         draft.log.id: TextEditingController(
@@ -1511,9 +1508,26 @@ class _TarefasScreenState extends State<TarefasScreen> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            // ============================================================
+            // SELECIONADOS
+            // ============================================================
+
+            final draftsSelecionados = drafts
+                .where(
+                  (draft) => selecionados.contains(draft.log.id),
+                )
+                .toList();
+
+            final bool todosSelecionados =
+                drafts.isNotEmpty && draftsSelecionados.length == drafts.length;
+
+            // ============================================================
+            // TOTAL DOS SELECIONADOS
+            // ============================================================
+
             int totalMinutes = 0;
 
-            for (final draft in drafts) {
+            for (final draft in draftsSelecionados) {
               totalMinutes += _calcularMinutos(
                 draft.startTime,
                 draft.endTime,
@@ -1524,9 +1538,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 '${(totalMinutes ~/ 60).toString().padLeft(2, '0')}:'
                 '${(totalMinutes % 60).toString().padLeft(2, '0')}';
 
-            // ==========================================================
-            // SELECIONAR HORÁRIO
-            // ==========================================================
+            // ============================================================
+            // SELETOR DE HORÁRIO
+            // ============================================================
 
             Future<void> pickTime(
               _EdeskDraft draft,
@@ -1584,9 +1598,10 @@ class _TarefasScreenState extends State<TarefasScreen> {
               }
             }
 
-            // ==========================================================
+            // ============================================================
             // SALVAR ALTERAÇÕES NO FIREBASE
-            // ==========================================================
+            // Mantém o comportamento original: salva todos.
+            // ============================================================
 
             Future<void> salvarAlteracoes() async {
               try {
@@ -1623,7 +1638,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                   draft.log.hours = hours;
 
-                  await widget.timeLogStore.updateFirebaseLog(draft.log);
+                  await widget.timeLogStore.updateFirebaseLog(
+                    draft.log,
+                  );
                 }
 
                 if (!mounted) return;
@@ -1653,17 +1670,36 @@ class _TarefasScreenState extends State<TarefasScreen> {
               }
             }
 
-// ==========================================================
-// ENVIAR HORAS PARA O E-DESK
-// ==========================================================
+            // ============================================================
+            // ENVIAR PARA O E-DESK
+            // ============================================================
 
             Future<void> enviarParaEdesk() async {
               try {
-                // ------------------------------------------------------
-                // 1. ATUALIZA E VALIDA OS DADOS
-                // ------------------------------------------------------
+                // ========================================================
+                // SOMENTE OS SELECIONADOS
+                // ========================================================
 
-                for (final draft in drafts) {
+                final draftsParaEnvio = drafts
+                    .where(
+                      (draft) => selecionados.contains(
+                        draft.log.id,
+                      ),
+                    )
+                    .toList();
+
+                if (draftsParaEnvio.isEmpty) {
+                  throw const EdeskException(
+                    'Selecione pelo menos um trabalho '
+                    'para enviar ao E-Desk.',
+                  );
+                }
+
+                // ========================================================
+                // VALIDAÇÃO E ATUALIZAÇÃO
+                // ========================================================
+
+                for (final draft in draftsParaEnvio) {
                   draft.taskName = taskControllers[draft.log.id]?.text.trim() ??
                       draft.taskName.trim();
 
@@ -1693,29 +1729,31 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   }
 
                   draft.log.taskName = draft.taskName;
-                  draft.log.description = draft.description;
-                  draft.log.startTime = draft.startTime;
-                  draft.log.endTime = draft.endTime;
-                  draft.log.durationMinutes = minutos;
-                  draft.log.durationFormatted = _formatarMinutos(minutos);
-                  draft.log.hours = minutos / 60.0;
 
-                  // ----------------------------------------------------
-                  // Salva a alteração no Firebase ANTES do envio
-                  // ----------------------------------------------------
+                  draft.log.description = draft.description;
+
+                  draft.log.startTime = draft.startTime;
+
+                  draft.log.endTime = draft.endTime;
+
+                  draft.log.durationMinutes = minutos;
+
+                  draft.log.durationFormatted = _formatarMinutos(minutos);
+
+                  draft.log.hours = minutos / 60.0;
 
                   await widget.timeLogStore.updateFirebaseLog(
                     draft.log,
                   );
                 }
 
-                // ------------------------------------------------------
-                // 2. AGRUPA OS TRABALHOS POR SOLICITAÇÃO / TRABALHO
-                // ------------------------------------------------------
+                // ========================================================
+                // AGRUPAMENTO SOMENTE DOS SELECIONADOS
+                // ========================================================
 
                 final Map<String, List<_EdeskDraft>> grupos = {};
 
-                for (final draft in drafts) {
+                for (final draft in draftsParaEnvio) {
                   final referencia = _extrairReferenciaEdesk(
                     draft.log,
                   );
@@ -1733,18 +1771,14 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                 if (grupos.isEmpty) {
                   throw const EdeskException(
-                    'Nenhum trabalho válido foi encontrado.',
+                    'Nenhum trabalho válido '
+                    'foi encontrado.',
                   );
                 }
 
-                // ------------------------------------------------------
-                // 3. MONTA TODOS OS TRABALHOS
-                //
-                // IMPORTANTE:
-                // NÃO executamos o Python dentro do for.
-                //
-                // Todos os trabalhos serão enviados em UM único payload.
-                // ------------------------------------------------------
+                // ========================================================
+                // MONTA PAYLOAD
+                // ========================================================
 
                 final trabalhos = <Map<String, dynamic>>[];
 
@@ -1758,11 +1792,8 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   );
 
                   final solicitacao = referencia['solicitacao']!;
-                  final idTrabalho = referencia['idTrabalho']!;
 
-                  // ----------------------------------------------------
-                  // Monta as horas deste trabalho
-                  // ----------------------------------------------------
+                  final idTrabalho = referencia['idTrabalho']!;
 
                   final horas = <Map<String, dynamic>>[];
 
@@ -1776,34 +1807,19 @@ class _TarefasScreenState extends State<TarefasScreen> {
                       'data': _formatarDataEdesk(
                         draft.log.date,
                       ),
-
                       'inicio': draft.startTime,
-
                       'fim': draft.endTime,
-
-                      // Tipo de registro do E-Desk.
                       'tipo': _normalizarTipoEdesk(
                         draft.log.typeHs,
                       ),
-
                       'tarefa': draft.taskName.trim(),
-
                       'descricao': draft.description.trim(),
-
-                      // Dados adicionais.
                       'projeto': draft.log.projectName ?? '',
-
                       'targetId': draft.log.targetId,
-
                       'duracaoMinutos': minutos,
-
                       'horas': minutos / 60.0,
                     });
                   }
-
-                  // ----------------------------------------------------
-                  // Adiciona este trabalho à lista geral
-                  // ----------------------------------------------------
 
                   trabalhos.add({
                     'solicitacao': solicitacao,
@@ -1814,56 +1830,33 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                 if (trabalhos.isEmpty) {
                   throw const EdeskException(
-                    'Nenhum trabalho válido foi preparado para envio.',
+                    'Nenhum trabalho válido '
+                    'foi preparado para envio.',
                   );
                 }
 
-                // ------------------------------------------------------
-                // 4. MONTA UM ÚNICO PAYLOAD
-                // ------------------------------------------------------
-                //
-                // Antes:
-                //
-                // {
-                //   "solicitacao": "...",
-                //   "idTrabalho": "...",
-                //   "horas": [...]
-                // }
-                //
-                // Agora:
-                //
-                // {
-                //   "url": "...",
-                //   "trabalhos": [
-                //     {
-                //       "solicitacao": "...",
-                //       "idTrabalho": "...",
-                //       "horas": [...]
-                //     },
-                //     {
-                //       "solicitacao": "...",
-                //       "idTrabalho": "...",
-                //       "horas": [...]
-                //     }
-                //   ]
-                // }
+                // ========================================================
+                // CREDENCIAIS
+                // ========================================================
+
+                final credenciais = await EdeskCredentialsService().ler();
 
                 final payload = {
                   'url': 'https://promob.e-desk.com.br',
                   'trabalhos': trabalhos,
+                  'edeskCredenciais': credenciais == null
+                      ? null
+                      : {
+                          'email': credenciais['email'],
+                          'senha': credenciais['senha'],
+                        },
                 };
 
                 final requestJson = jsonEncode(payload);
 
-                // ------------------------------------------------------
-                // 5. CHAMA O PYTHON UMA ÚNICA VEZ
-                // ------------------------------------------------------
-                //
-                // É aqui que está a correção principal.
-                //
-                // O Python receberá todos os trabalhos de uma vez e
-                // poderá reutilizar a mesma sessão/browser autenticado.
-                // ------------------------------------------------------
+                // ========================================================
+                // PYTHON
+                // ========================================================
 
                 final resultado = await executarPythonEdesk(
                   requestJson: requestJson,
@@ -1876,19 +1869,12 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     resultado.message.isNotEmpty
                         ? resultado.message
                         : 'O Python não conseguiu '
-                            'registrar as horas no E-Desk.',
+                            'registrar as horas '
+                            'no E-Desk.',
                   );
                 }
 
-                // ------------------------------------------------------
-                // 6. QUANTIDADE DE TRABALHOS ENVIADOS
-                // ------------------------------------------------------
-
                 final enviados = trabalhos.length;
-
-                // ------------------------------------------------------
-                // 7. FINALIZA
-                // ------------------------------------------------------
 
                 if (!mounted) return;
 
@@ -1898,14 +1884,18 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                 Navigator.of(dialogContext).pop();
 
-                ScaffoldMessenger.of(this.context).showSnackBar(
+                ScaffoldMessenger.of(
+                  this.context,
+                ).showSnackBar(
                   SnackBar(
                     content: Text(
                       '$enviados trabalho(s) '
                       'enviado(s) para o E-Desk.',
                     ),
                     backgroundColor: CoresApp.primaria,
-                    duration: const Duration(seconds: 6),
+                    duration: const Duration(
+                      seconds: 6,
+                    ),
                   ),
                 );
               } catch (e) {
@@ -1915,20 +1905,26 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   _enviandoEdesk = false;
                 });
 
-                ScaffoldMessenger.of(this.context).showSnackBar(
+                ScaffoldMessenger.of(
+                  this.context,
+                ).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Erro ao enviar horas para o E-Desk: $e',
+                      'Erro ao enviar horas '
+                      'para o E-Desk: $e',
                     ),
                     backgroundColor: CoresApp.erro,
-                    duration: const Duration(seconds: 8),
+                    duration: const Duration(
+                      seconds: 8,
+                    ),
                   ),
                 );
               }
             }
-            // ==========================================================
-            // INTERFACE
-            // ==========================================================
+
+            // ============================================================
+            // MODAL
+            // ============================================================
 
             return Dialog(
               backgroundColor: CoresApp.superficie,
@@ -1944,9 +1940,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 height: 700,
                 child: Column(
                   children: [
-                    // ==================================================
+                    // ====================================================
                     // CABEÇALHO
-                    // ==================================================
+                    // ====================================================
 
                     Container(
                       height: 64,
@@ -1970,7 +1966,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: CoresApp.primaria.withOpacity(0.15),
+                              color: CoresApp.primaria.withOpacity(
+                                0.15,
+                              ),
                               borderRadius: BorderRadius.circular(
                                 10,
                               ),
@@ -1981,7 +1979,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               size: 20,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(
+                            width: 12,
+                          ),
                           Expanded(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1996,7 +1996,8 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${drafts.length} trabalho(s) • '
+                                  '${draftsSelecionados.length} de '
+                                  '${drafts.length} selecionado(s) • '
                                   'Total: $totalFormatted',
                                   style: const TextStyle(
                                     color: CoresApp.textoSecundario,
@@ -2022,16 +2023,110 @@ class _TarefasScreenState extends State<TarefasScreen> {
                       ),
                     ),
 
-                    // ==================================================
+                    // ====================================================
+                    // SELECIONAR TODOS
+                    // ====================================================
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CoresApp.fundo,
+                        border: Border(
+                          bottom: BorderSide(
+                            color: CoresApp.borda.withOpacity(
+                              0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: todosSelecionados,
+                            activeColor: CoresApp.primaria,
+                            onChanged: _enviandoEdesk
+                                ? null
+                                : (value) {
+                                    setModalState(
+                                      () {
+                                        if (value == true) {
+                                          selecionados
+                                            ..clear()
+                                            ..addAll(
+                                              drafts.map(
+                                                (draft) => draft.log.id,
+                                              ),
+                                            );
+                                        } else {
+                                          selecionados.clear();
+                                        }
+                                      },
+                                    );
+                                  },
+                          ),
+                          TextButton(
+                            onPressed: _enviandoEdesk
+                                ? null
+                                : () {
+                                    setModalState(
+                                      () {
+                                        if (todosSelecionados) {
+                                          selecionados.clear();
+                                        } else {
+                                          selecionados
+                                            ..clear()
+                                            ..addAll(
+                                              drafts.map(
+                                                (draft) => draft.log.id,
+                                              ),
+                                            );
+                                        }
+                                      },
+                                    );
+                                  },
+                            child: Text(
+                              todosSelecionados
+                                  ? 'Desmarcar todos'
+                                  : 'Selecionar todos',
+                              style: const TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${draftsSelecionados.length} '
+                            'selecionado(s)',
+                            style: const TextStyle(
+                              color: CoresApp.textoSecundario,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ====================================================
                     // LISTA
-                    // ==================================================
+                    // ====================================================
 
                     Expanded(
                       child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(
+                          16,
+                        ),
                         itemCount: drafts.length,
                         itemBuilder: (context, index) {
                           final draft = drafts[index];
+
+                          final estaSelecionado = selecionados.contains(
+                            draft.log.id,
+                          );
 
                           final minutes = _calcularMinutos(
                             draft.startTime,
@@ -2053,14 +2148,48 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                 12,
                               ),
                               border: Border.all(
-                                color: CoresApp.borda.withOpacity(0.6),
+                                color: estaSelecionado
+                                    ? CoresApp.primaria.withOpacity(
+                                        0.55,
+                                      )
+                                    : CoresApp.borda.withOpacity(
+                                        0.6,
+                                      ),
                               ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                // ========================================
+                                // CABEÇALHO DO TRABALHO
+                                // ========================================
+
                                 Row(
                                   children: [
+                                    Checkbox(
+                                      value: estaSelecionado,
+                                      activeColor: CoresApp.primaria,
+                                      onChanged: _enviandoEdesk
+                                          ? null
+                                          : (value) {
+                                              setModalState(
+                                                () {
+                                                  if (value == true) {
+                                                    selecionados.add(
+                                                      draft.log.id,
+                                                    );
+                                                  } else {
+                                                    selecionados.remove(
+                                                      draft.log.id,
+                                                    );
+                                                  }
+                                                },
+                                              );
+                                            },
+                                    ),
+                                    const SizedBox(
+                                      width: 4,
+                                    ),
                                     Container(
                                       width: 28,
                                       height: 28,
@@ -2082,7 +2211,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 10),
+                                    const SizedBox(
+                                      width: 10,
+                                    ),
                                     Expanded(
                                       child: Text(
                                         draft.log.projectName
@@ -2108,7 +2239,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+
+                                const SizedBox(
+                                  height: 8,
+                                ),
+
+                                // ========================================
+                                // REFERÊNCIA E-DESK
+                                // ========================================
+
                                 Row(
                                   children: [
                                     const Icon(
@@ -2116,7 +2255,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                       color: CoresApp.destaque,
                                       size: 15,
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(
+                                      width: 6,
+                                    ),
                                     const Text(
                                       'Referência E-Desk:',
                                       style: TextStyle(
@@ -2124,7 +2265,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                         fontSize: 11,
                                       ),
                                     ),
-                                    const SizedBox(width: 5),
+                                    const SizedBox(
+                                      width: 5,
+                                    ),
                                     Text(
                                       _referenciaEdesk(
                                         draft.log,
@@ -2137,7 +2280,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+
+                                const SizedBox(
+                                  height: 12,
+                                ),
+
+                                // ========================================
+                                // TAREFA / HORÁRIOS
+                                // ========================================
+
                                 Row(
                                   children: [
                                     Expanded(
@@ -2154,7 +2305,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 10),
+                                    const SizedBox(
+                                      width: 10,
+                                    ),
                                     Expanded(
                                       child: Row(
                                         children: [
@@ -2182,7 +2335,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                               ),
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
+                                          const SizedBox(
+                                            width: 8,
+                                          ),
                                           Expanded(
                                             child: InkWell(
                                               onTap: _enviandoEdesk
@@ -2212,7 +2367,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 10),
+
+                                const SizedBox(
+                                  height: 10,
+                                ),
+
+                                // ========================================
+                                // DESCRIÇÃO
+                                // ========================================
+
                                 TextField(
                                   controller:
                                       descriptionControllers[draft.log.id],
@@ -2227,7 +2390,11 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     'Descrição / Descritivo',
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+
+                                const SizedBox(
+                                  height: 8,
+                                ),
+
                                 Row(
                                   children: [
                                     Text(
@@ -2257,9 +2424,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                       ),
                     ),
 
-                    // ==================================================
+                    // ====================================================
                     // RODAPÉ
-                    // ==================================================
+                    // ====================================================
 
                     Container(
                       padding: const EdgeInsets.fromLTRB(
@@ -2272,7 +2439,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                         color: CoresApp.superficie,
                         border: Border(
                           top: BorderSide(
-                            color: CoresApp.borda.withOpacity(0.7),
+                            color: CoresApp.borda.withOpacity(
+                              0.7,
+                            ),
                           ),
                         ),
                       ),
@@ -2292,7 +2461,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
+
+                          const SizedBox(
+                            width: 10,
+                          ),
+
+                          // ==============================================
+                          // SALVAR
+                          // ==============================================
+
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: CoresApp.fundo,
@@ -2316,7 +2493,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               'Salvar alterações',
                             ),
                           ),
-                          const SizedBox(width: 10),
+
+                          const SizedBox(
+                            width: 10,
+                          ),
+
+                          // ==============================================
+                          // ENVIAR SELECIONADOS
+                          // ==============================================
+
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: CoresApp.primaria,
@@ -2328,17 +2513,18 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                 ),
                               ),
                             ),
-                            onPressed: _enviandoEdesk
-                                ? null
-                                : () {
-                                    setModalState(
-                                      () {
-                                        _enviandoEdesk = true;
-                                      },
-                                    );
+                            onPressed:
+                                _enviandoEdesk || draftsSelecionados.isEmpty
+                                    ? null
+                                    : () {
+                                        setModalState(
+                                          () {
+                                            _enviandoEdesk = true;
+                                          },
+                                        );
 
-                                    enviarParaEdesk();
-                                  },
+                                        enviarParaEdesk();
+                                      },
                             icon: _enviandoEdesk
                                 ? const SizedBox(
                                     width: 18,
@@ -2355,7 +2541,8 @@ class _TarefasScreenState extends State<TarefasScreen> {
                             label: Text(
                               _enviandoEdesk
                                   ? 'Enviando horas...'
-                                  : 'Registrar horas no E-Desk',
+                                  : 'Registrar selecionados '
+                                      '(${draftsSelecionados.length})',
                             ),
                           ),
                         ],
@@ -2370,6 +2557,10 @@ class _TarefasScreenState extends State<TarefasScreen> {
       },
     );
 
+    // ============================================================
+    // LIMPEZA DOS CONTROLLERS
+    // ============================================================
+
     dialogFuture.whenComplete(() {
       for (final controller in taskControllers.values) {
         controller.dispose();
@@ -2380,10 +2571,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
       }
     });
   }
-
-// ============================================================
-// FORMATA DATA PARA O E-DESK
-// ============================================================
 
   String _formatarDataEdesk(dynamic date) {
     if (date == null) {
@@ -2402,14 +2589,12 @@ class _TarefasScreenState extends State<TarefasScreen> {
       return '';
     }
 
-    // Já está no padrão do E-Desk.
     if (RegExp(
       r'^\d{2}/\d{2}/\d{4}$',
     ).hasMatch(texto)) {
       return texto;
     }
 
-    // Tenta ISO: 2026-09-19
     final iso = DateTime.tryParse(texto);
 
     if (iso != null) {
@@ -2421,10 +2606,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
     return texto;
   }
 
-// ============================================================
-// NORMALIZA TIPO PARA O E-DESK
-// ============================================================
-
   String _normalizarTipoEdesk(String? tipo) {
     final valor = tipo?.trim() ?? '';
 
@@ -2432,12 +2613,10 @@ class _TarefasScreenState extends State<TarefasScreen> {
       return '0';
     }
 
-    // Se já for um código numérico do E-Desk.
     if (RegExp(r'^\d+$').hasMatch(valor)) {
       return valor;
     }
 
-    // Mantém compatibilidade com possíveis nomes usados no app.
     switch (valor.toLowerCase()) {
       case 'interno':
         return '0';
@@ -2453,10 +2632,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
         return '0';
     }
   }
-
-// ============================================================
-// CALCULA MINUTOS
-// ============================================================
 
   int _calcularMinutos(
     String inicio,
@@ -2486,10 +2661,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
     }
   }
 
-// ============================================================
-// DECORAÇÃO DOS CAMPOS
-// ============================================================
-
   InputDecoration _edeskInputDecoration(
     String label,
   ) {
@@ -2518,9 +2689,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
       ),
     );
   }
-  // ============================================================
-  // MODAL DE EDIÇÃO
-  // ============================================================
 
   void _abrirModalEdicao(TimeLog log) {
     final descController = TextEditingController(
@@ -2762,10 +2930,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
     );
   }
 
-  // ============================================================
-  // MODAL FILTRO PDF
-  // ============================================================
-
   void _abrirModalFiltroPdf() {
     String filtroSelecionado = _filter;
     DateTime? inicioTemp = _startDate;
@@ -2980,10 +3144,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
     );
   }
 
-  // ============================================================
-  // PDF
-  // ============================================================
-
   Future<void> _gerarPdfComFiltroEspecifico(
     String filtroEscolhido,
     DateTime? inicio,
@@ -3074,31 +3234,14 @@ class _TarefasScreenState extends State<TarefasScreen> {
       final pdf = pw.Document();
 
       const corPrimariaPdf = PdfColor.fromInt(0xFF3F51B5);
-
-      const corPrimariaEscuraPdf = PdfColor.fromInt(0xFF303F9F);
-
       const corFundoCabecalho = PdfColor.fromInt(0xFF303F9F);
-
       const corLinhaAlternada = PdfColor.fromInt(0xFFF7F8FA);
-
       const corBordaPdf = PdfColor.fromInt(0xFFE0E3E7);
-
       const corTextoPdf = PdfColor.fromInt(0xFF263238);
-
       const corTextoSecundarioPdf = PdfColor.fromInt(0xFF687078);
-
       const corFundoResumo = PdfColor.fromInt(0xFFF1F4F8);
 
-      // Evita warning de constante declarada
-      // para manter a paleta do relatório.
-      // ignore: unused_local_variable
-      const _ = corPrimariaEscuraPdf;
-
       final totalMinutos = _totalMinutos(logsFiltrados);
-
-      final totalHoras = _formatarMinutos(totalMinutos);
-
-      final totalProjetos = _projetosUnicos(logsFiltrados).length;
 
       String periodoDescricao;
 
@@ -3497,7 +3640,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
   }
 
   static const PdfColor corTextoPdfLocal = PdfColor.fromInt(0xFF263238);
-
   static const PdfColor corTextoSecundarioPdfLocal =
       PdfColor.fromInt(0xFF687078);
 
@@ -3973,233 +4115,201 @@ class _TarefasScreenState extends State<TarefasScreen> {
           userName: '',
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              AppTheme.caminhoFundo,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return const SizedBox.shrink();
-              },
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          14,
+          12,
+          14,
+          14,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ==================================================
+            // CABEÇALHO UNIFICADO
+            // ==================================================
+            _buildUnifiedHeader(
+              totalRegistros: totalRegistros,
+              totalProjetos: totalProjetos,
+              totalHoras: totalHoras,
+              totalDias: totalDias,
             ),
-          ),
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(
-                AppTheme.opacidadeFundo,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              14,
-              12,
-              14,
-              14,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ==================================================
-                // CABEÇALHO UNIFICADO
-                // ==================================================
 
-                _buildUnifiedHeader(
-                  totalRegistros: totalRegistros,
-                  totalProjetos: totalProjetos,
-                  totalHoras: totalHoras,
-                  totalDias: totalDias,
+            const SizedBox(height: 12),
+
+            // ==================================================
+            // FILTROS
+            // ==================================================
+            _buildFiltersBar(),
+
+            const SizedBox(height: 12),
+
+            // ==================================================
+            // HISTÓRICO (Envolvido em Expanded + ListView interno)
+            // ==================================================
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(
+                  12,
                 ),
-
-                const SizedBox(height: 12),
-
-                // ==================================================
-                // FILTROS
-                // ==================================================
-
-                _buildFiltersBar(),
-
-                const SizedBox(height: 12),
-
-                // ==================================================
-                // HISTÓRICO
-                // ==================================================
-
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(
-                      12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: CoresApp.superficie.withOpacity(
-                        0.95,
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        14,
-                      ),
-                      border: Border.all(
-                        color: CoresApp.borda.withOpacity(
-                          0.7,
-                        ),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(
-                            0.06,
-                          ),
-                          blurRadius: 10,
-                          offset: const Offset(
-                            0,
-                            3,
-                          ),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 4,
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: CoresApp.sucesso.withOpacity(
-                                    0.12,
-                                  ),
-                                  borderRadius: BorderRadius.circular(
-                                    8,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.history_rounded,
-                                  color: CoresApp.sucesso,
-                                  size: 18,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Histórico de apontamentos',
-                                      style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 1),
-                                    Text(
-                                      'Organizado por semana',
-                                      style: TextStyle(
-                                        color: CoresApp.textoSecundario,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (sortedWeekKeys.isNotEmpty)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: CoresApp.fundo,
-                                    borderRadius: BorderRadius.circular(
-                                      7,
-                                    ),
-                                    border: Border.all(
-                                      color: CoresApp.borda,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '${sortedWeekKeys.length} '
-                                    '${sortedWeekKeys.length == 1 ? 'semana' : 'semanas'}',
-                                    style: const TextStyle(
-                                      color: CoresApp.textoSecundario,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: sortedWeekKeys.isEmpty
-                              ? _buildEmptyState()
-                              : ListView.builder(
-                                  padding: EdgeInsets.zero,
-                                  itemCount: sortedWeekKeys.length,
-                                  itemBuilder: (context, index) {
-                                    final weekKey = sortedWeekKeys[index];
-
-                                    final logsDaSemana = groupedWeeks[weekKey]!;
-
-                                    final weekStart = _weekStart(
-                                      logsDaSemana.first.date,
-                                    );
-
-                                    final currentWeekKey = _weekKey(
-                                      DateTime.now(),
-                                    );
-
-                                    final isCurrentWeek =
-                                        weekKey == currentWeekKey;
-
-                                    final expanded =
-                                        _semanasExpandidas.contains(
-                                              weekKey,
-                                            ) ||
-                                            isCurrentWeek;
-
-                                    if (isCurrentWeek &&
-                                        !_semanasExpandidas.contains(
-                                          weekKey,
-                                        )) {
-                                      WidgetsBinding.instance
-                                          .addPostFrameCallback(
-                                        (_) {
-                                          if (mounted) {
-                                            setState(
-                                              () => _semanasExpandidas.add(
-                                                weekKey,
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      );
-                                    }
-
-                                    return _buildWeekCard(
-                                      weekStart: weekStart,
-                                      logsDaSemana: logsDaSemana,
-                                      expanded: expanded,
-                                    );
-                                  },
-                                ),
-                        ),
-                      ],
+                decoration: BoxDecoration(
+                  color: CoresApp.superficie.withOpacity(
+                    0.95,
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    14,
+                  ),
+                  border: Border.all(
+                    color: CoresApp.borda.withOpacity(
+                      0.7,
                     ),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(
+                        0.06,
+                      ),
+                      blurRadius: 10,
+                      offset: const Offset(
+                        0,
+                        3,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: CoresApp.sucesso.withOpacity(
+                                0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                8,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.history_rounded,
+                              color: CoresApp.sucesso,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Histórico de apontamentos',
+                                  style: TextStyle(
+                                    color: CoresApp.textoPrincipal,
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                SizedBox(height: 1),
+                                Text(
+                                  'Organizado por semana',
+                                  style: TextStyle(
+                                    color: CoresApp.textoSecundario,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (sortedWeekKeys.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: CoresApp.fundo,
+                                borderRadius: BorderRadius.circular(7),
+                                border: Border.all(
+                                  color: CoresApp.borda,
+                                ),
+                              ),
+                              child: Text(
+                                '${sortedWeekKeys.length} '
+                                '${sortedWeekKeys.length == 1 ? 'semana' : 'semanas'}',
+                                style: const TextStyle(
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: sortedWeekKeys.isEmpty
+                          ? _buildEmptyState()
+                          : ListView.builder(
+                              itemCount: sortedWeekKeys.length,
+                              itemBuilder: (context, index) {
+                                final weekKey = sortedWeekKeys[index];
+
+                                final logsDaSemana = groupedWeeks[weekKey]!;
+
+                                final weekStart = _weekStart(
+                                  logsDaSemana.first.date,
+                                );
+
+                                final currentWeekKey = _weekKey(DateTime.now());
+
+                                final isCurrentWeek = weekKey == currentWeekKey;
+
+                                final expanded = _semanasExpandidas.contains(
+                                      weekKey,
+                                    ) ||
+                                    isCurrentWeek;
+
+                                if (isCurrentWeek &&
+                                    !_semanasExpandidas.contains(
+                                      weekKey,
+                                    )) {
+                                  WidgetsBinding.instance.addPostFrameCallback(
+                                    (_) {
+                                      if (mounted) {
+                                        setState(
+                                          () => _semanasExpandidas.add(
+                                            weekKey,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  );
+                                }
+
+                                return _buildWeekCard(
+                                  weekStart: weekStart,
+                                  logsDaSemana: logsDaSemana,
+                                  expanded: expanded,
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

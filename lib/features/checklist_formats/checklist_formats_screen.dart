@@ -2311,348 +2311,230 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
           userName: '',
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // ========================================================
-          // FUNDO
-          // ========================================================
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool compact = constraints.maxWidth < 1000;
 
-          Positioned.fill(
-            child: Image.asset(
-              AppTheme.caminhoFundo,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  color: CoresApp.fundo,
-                );
-              },
+          return SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 18 : 28,
+              vertical: 22,
             ),
-          ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ==================================================
+                // HERO
+                // ==================================================
 
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(
-                AppTheme.opacidadeFundo,
-              ),
-            ),
-          ),
-
-          // ========================================================
-          // CONTEÚDO
-          // ========================================================
-
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final bool compact = constraints.maxWidth < 1000;
-
-              return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 18 : 28,
-                  vertical: 22,
+                Container(
+                  padding: const EdgeInsets.all(
+                    20,
+                  ),
+                  decoration: BoxDecoration(
+                    color: CoresTelas.fundoCard,
+                    borderRadius: BorderRadius.circular(
+                      18,
+                    ),
+                    border: Border.all(
+                      color: CoresApp.borda,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(
+                          0.12,
+                        ),
+                        blurRadius: 18,
+                        offset: const Offset(
+                          0,
+                          6,
+                        ),
+                      ),
+                    ],
+                  ),
+                  child: compact
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildPageTitle(),
+                            const SizedBox(
+                              height: 17,
+                            ),
+                            _buildActionButtons(),
+                            const SizedBox(
+                              height: 17,
+                            ),
+                            Row(
+                              children: [
+                                _buildStatCard(
+                                  icon: Icons.checklist_rtl_rounded,
+                                  label: 'Modelos',
+                                  value: '${_checklistFormats.length}',
+                                  description: 'cadastrados',
+                                ),
+                                const SizedBox(
+                                  width: 9,
+                                ),
+                                _buildStatCard(
+                                  icon: Icons.format_list_bulleted_rounded,
+                                  label: 'Etapas',
+                                  value: '$totalItems',
+                                  description: 'configuradas',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(
+                              height: 9,
+                            ),
+                            Row(
+                              children: [
+                                _buildStatCard(
+                                  icon: Icons.analytics_outlined,
+                                  label: 'Média',
+                                  value: avgItems.toStringAsFixed(
+                                    1,
+                                  ),
+                                  description: 'etapas/modelo',
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildPageTitle(),
+                                  const SizedBox(
+                                    height: 15,
+                                  ),
+                                  _buildActionButtons(),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 20,
+                            ),
+                            Expanded(
+                              flex: 4,
+                              child: Row(
+                                children: [
+                                  _buildStatCard(
+                                    icon: Icons.checklist_rtl_rounded,
+                                    label: 'Modelos',
+                                    value: '${_checklistFormats.length}',
+                                    description: 'cadastrados',
+                                  ),
+                                  const SizedBox(
+                                    width: 9,
+                                  ),
+                                  _buildStatCard(
+                                    icon: Icons.format_list_bulleted_rounded,
+                                    label: 'Etapas',
+                                    value: '$totalItems',
+                                    description: 'configuradas',
+                                  ),
+                                  const SizedBox(
+                                    width: 9,
+                                  ),
+                                  _buildStatCard(
+                                    icon: Icons.analytics_outlined,
+                                    label: 'Média',
+                                    value: avgItems.toStringAsFixed(
+                                      1,
+                                    ),
+                                    description: 'etapas/modelo',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ==================================================
-                    // HERO
-                    // ==================================================
 
-                    Container(
-                      padding: const EdgeInsets.all(
-                        20,
-                      ),
-                      decoration: BoxDecoration(
-                        color: CoresTelas.fundoCard,
-                        borderRadius: BorderRadius.circular(
-                          18,
-                        ),
-                        border: Border.all(
-                          color: CoresApp.borda,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(
-                              0.12,
-                            ),
-                            blurRadius: 18,
-                            offset: const Offset(
-                              0,
-                              6,
-                            ),
-                          ),
-                        ],
-                      ),
-                      child: compact
-                          ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildPageTitle(),
-                                const SizedBox(
-                                  height: 17,
-                                ),
-                                _buildActionButtons(),
-                                const SizedBox(
-                                  height: 17,
-                                ),
-                                Row(
-                                  children: [
-                                    _buildStatCard(
-                                      icon: Icons.checklist_rtl_rounded,
-                                      label: 'Modelos',
-                                      value: '${_checklistFormats.length}',
-                                      description: 'cadastrados',
-                                    ),
-                                    const SizedBox(
-                                      width: 9,
-                                    ),
-                                    _buildStatCard(
-                                      icon: Icons.format_list_bulleted_rounded,
-                                      label: 'Etapas',
-                                      value: '$totalItems',
-                                      description: 'configuradas',
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(
-                                  height: 9,
-                                ),
-                                Row(
-                                  children: [
-                                    _buildStatCard(
-                                      icon: Icons.analytics_outlined,
-                                      label: 'Média',
-                                      value: avgItems.toStringAsFixed(
-                                        1,
-                                      ),
-                                      description: 'etapas/modelo',
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            )
-                          : Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      _buildPageTitle(),
-                                      const SizedBox(
-                                        height: 15,
-                                      ),
-                                      _buildActionButtons(),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(
-                                  width: 20,
-                                ),
-                                Expanded(
-                                  flex: 4,
-                                  child: Row(
-                                    children: [
-                                      _buildStatCard(
-                                        icon: Icons.checklist_rtl_rounded,
-                                        label: 'Modelos',
-                                        value: '${_checklistFormats.length}',
-                                        description: 'cadastrados',
-                                      ),
-                                      const SizedBox(
-                                        width: 9,
-                                      ),
-                                      _buildStatCard(
-                                        icon:
-                                            Icons.format_list_bulleted_rounded,
-                                        label: 'Etapas',
-                                        value: '$totalItems',
-                                        description: 'configuradas',
-                                      ),
-                                      const SizedBox(
-                                        width: 9,
-                                      ),
-                                      _buildStatCard(
-                                        icon: Icons.analytics_outlined,
-                                        label: 'Média',
-                                        value: avgItems.toStringAsFixed(
-                                          1,
-                                        ),
-                                        description: 'etapas/modelo',
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
+                const SizedBox(
+                  height: 22,
+                ),
+
+                // ==================================================
+                // LISTAGEM
+                // ==================================================
+
+                Container(
+                  decoration: BoxDecoration(
+                    color: CoresTelas.fundoCard,
+                    borderRadius: BorderRadius.circular(
+                      18,
                     ),
-
-                    const SizedBox(
-                      height: 22,
+                    border: Border.all(
+                      color: CoresApp.borda,
                     ),
-
-                    // ==================================================
-                    // LISTAGEM
-                    // ==================================================
-
-                    Container(
-                      decoration: BoxDecoration(
-                        color: CoresTelas.fundoCard,
-                        borderRadius: BorderRadius.circular(
-                          18,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(
+                          0.11,
                         ),
-                        border: Border.all(
-                          color: CoresApp.borda,
+                        blurRadius: 18,
+                        offset: const Offset(
+                          0,
+                          7,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(
-                              0.11,
-                            ),
-                            blurRadius: 18,
-                            offset: const Offset(
-                              0,
-                              7,
-                            ),
-                          ),
-                        ],
                       ),
-                      child: Column(
-                        children: [
-                          // --------------------------------------------
-                          // TÍTULO + CONTADOR
-                          // --------------------------------------------
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      // --------------------------------------------
+                      // TÍTULO + CONTADOR
+                      // --------------------------------------------
 
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              22,
-                              19,
-                              22,
-                              12,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          22,
+                          19,
+                          22,
+                          12,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: CoresApp.destaque.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                              child: const Icon(
+                                Icons.view_list_rounded,
+                                color: CoresApp.destaque,
+                                size: 17,
+                              ),
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: CoresApp.destaque.withOpacity(
-                                      0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(
-                                      9,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.view_list_rounded,
-                                    color: CoresApp.destaque,
-                                    size: 17,
-                                  ),
-                                ),
-                                const SizedBox(
-                                  width: 10,
-                                ),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Modelos cadastrados',
-                                        style: TextStyle(
-                                          color: CoresApp.textoPrincipal,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        height: 2,
-                                      ),
-                                      Text(
-                                        'Gerencie seus modelos e respectivas etapas',
-                                        style: TextStyle(
-                                          color: CoresApp.textoSecundario,
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 11,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: CoresApp.destaque.withOpacity(
-                                      0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(
-                                      20,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '${filteredFormats.length} exibindo',
-                                    style: const TextStyle(
-                                      color: CoresApp.destaque,
-                                      fontSize: 10,
+                            const SizedBox(
+                              width: 10,
+                            ),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Modelos cadastrados',
+                                    style: TextStyle(
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // --------------------------------------------
-                          // PESQUISA
-                          // --------------------------------------------
-
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              22,
-                              0,
-                              22,
-                              15,
-                            ),
-                            child: _buildSearchField(),
-                          ),
-
-                          // --------------------------------------------
-                          // CABEÇALHO
-                          // --------------------------------------------
-
-                          _buildTableHeader(
-                            compact,
-                          ),
-
-                          // --------------------------------------------
-                          // CONTEÚDO
-                          // --------------------------------------------
-
-                          if (_isLoading)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(
-                                vertical: 65,
-                              ),
-                              child: Column(
-                                children: [
                                   SizedBox(
-                                    width: 23,
-                                    height: 23,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: CoresApp.destaque,
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    height: 12,
+                                    height: 2,
                                   ),
                                   Text(
-                                    'Carregando modelos...',
+                                    'Gerencie seus modelos e respectivas etapas',
                                     style: TextStyle(
                                       color: CoresApp.textoSecundario,
                                       fontSize: 10,
@@ -2660,62 +2542,138 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                   ),
                                 ],
                               ),
-                            )
-                          else if (filteredFormats.isEmpty)
-                            _buildEmptyFormats()
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: filteredFormats.length,
-                              separatorBuilder: (_, __) => Divider(
-                                height: 1,
-                                color: CoresApp.bordaSuave,
-                              ),
-                              itemBuilder: (context, index) {
-                                return _buildTableRow(
-                                  filteredFormats[index],
-                                  compact,
-                                );
-                              },
                             ),
-                        ],
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 11,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: CoresApp.destaque.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${filteredFormats.length} exibindo',
+                                style: const TextStyle(
+                                  color: CoresApp.destaque,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 15),
+                      // --------------------------------------------
+                      // PESQUISA
+                      // --------------------------------------------
 
-                    // ==================================================
-                    // RODAPÉ INFORMATIVO
-                    // ==================================================
-
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline_rounded,
-                          color: CoresApp.textoSecundario,
-                          size: 14,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          22,
+                          0,
+                          22,
+                          15,
                         ),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text(
-                            'Os modelos podem ser reutilizados ao criar novos projetos e suas etapas ficam salvas no Firebase.',
-                            style: TextStyle(
-                              color: CoresApp.textoSecundario.withOpacity(
-                                0.62,
-                              ),
-                              fontSize: 9.5,
-                            ),
+                        child: _buildSearchField(),
+                      ),
+
+                      // --------------------------------------------
+                      // CABEÇALHO
+                      // --------------------------------------------
+
+                      _buildTableHeader(
+                        compact,
+                      ),
+
+                      // --------------------------------------------
+                      // CONTEÚDO
+                      // --------------------------------------------
+
+                      if (_isLoading)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(
+                            vertical: 65,
                           ),
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                width: 23,
+                                height: 23,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: CoresApp.destaque,
+                                ),
+                              ),
+                              SizedBox(
+                                height: 12,
+                              ),
+                              Text(
+                                'Carregando modelos...',
+                                style: TextStyle(
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (filteredFormats.isEmpty)
+                        _buildEmptyFormats()
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: filteredFormats.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: CoresApp.bordaSuave,
+                          ),
+                          itemBuilder: (context, index) {
+                            return _buildTableRow(
+                              filteredFormats[index],
+                              compact,
+                            );
+                          },
                         ),
-                      ],
+                    ],
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 15,
+                ),
+
+                // ==================================================
+                // RODAPÉ INFORMATIVO
+                // ==================================================
+
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: CoresApp.textoSecundario,
+                      size: 14,
+                    ),
+                    const SizedBox(
+                      width: 7,
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Os modelos podem ser reutilizados ao criar novos projetos e suas etapas ficam salvas no Firebase.',
+                        style: TextStyle(
+                          color: CoresApp.textoSecundario.withOpacity(0.62),
+                          fontSize: 9.5,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              );
-            },
-          ),
-        ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }

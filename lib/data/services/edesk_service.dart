@@ -4,6 +4,7 @@ import 'package:gerenciador_horas/data/services/edesk_python.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:gerenciador_horas/data/services/edesk_credentials_service.dart';
 
 /// ================================================================
 /// DADOS DO TRABALHO E-DESK
@@ -1202,8 +1203,172 @@ class EdeskService {
   }
 
   /// ==============================================================
-  /// EXECUTAR COMENTÁRIO VIA PYTHON
+  /// ATUALIZAR DATAS DAS FASES VIA PYTHON
+  ///
+  /// FLUXO:
+  /// - Localiza a solicitação pelo ID
+  /// - Confere o Cliente
+  /// - Localiza as fases pelo nome
+  /// - Atualiza Data Inicial Ajustada
+  /// - Atualiza Data Final Ajustada
+  /// - Salva no E-Desk
+  ///
+  /// CREDENCIAIS:
+  /// - Lê e-mail e senha salvos no FlutterSecureStorage
+  /// - Envia ao Python apenas durante a execução
+  /// - Nunca imprime a senha no log
+  ///
+  /// O Python roda em BACKGROUND porque mantém o navegador aberto.
   /// ==============================================================
+
+  Future<EdeskSendResult> atualizarFasesViaPython({
+    required String id,
+    required String cliente,
+    required List<Map<String, String>> fases,
+    void Function(
+      bool sucesso,
+      String mensagem,
+    )? onConcluido,
+  }) async {
+    final idValue = id.trim();
+    final clienteValue = cliente.trim();
+
+    // =============================================================
+    // VALIDAÇÕES
+    // =============================================================
+
+    if (idValue.isEmpty) {
+      return const EdeskSendResult(
+        confirmed: false,
+        statusCode: 0,
+        message: 'O ID da solicitação não foi informado.',
+        responseBody: '',
+      );
+    }
+
+    if (clienteValue.isEmpty) {
+      return const EdeskSendResult(
+        confirmed: false,
+        statusCode: 0,
+        message: 'O cliente não foi informado.',
+        responseBody: '',
+      );
+    }
+
+    if (fases.isEmpty) {
+      return const EdeskSendResult(
+        confirmed: false,
+        statusCode: 0,
+        message: 'Nenhuma fase foi informada para atualização.',
+        responseBody: '',
+      );
+    }
+
+    // =============================================================
+    // CREDENCIAIS E-DESK
+    // =============================================================
+
+    final credenciais = await EdeskCredentialsService().ler();
+
+    debugPrint(
+      '[E-Desk] Credenciais automáticas: '
+      '${credenciais != null ? 'disponíveis' : 'não cadastradas'}',
+    );
+
+    // =============================================================
+    // DEBUG
+    // =============================================================
+
+    debugPrint(
+      '[E-Desk] ========================================',
+    );
+
+    debugPrint(
+      '[E-Desk] Atualizando datas das fases via Python',
+    );
+
+    debugPrint(
+      '[E-Desk] ID: $idValue',
+    );
+
+    debugPrint(
+      '[E-Desk] Cliente: $clienteValue',
+    );
+
+    debugPrint(
+      '[E-Desk] Quantidade de fases: ${fases.length}',
+    );
+
+    for (final fase in fases) {
+      debugPrint(
+        '[E-Desk] Fase: ${fase['nome']} | '
+        'Inicial: ${fase['dataInicial']} | '
+        'Final: ${fase['dataFinal']}',
+      );
+    }
+
+    debugPrint(
+      '[E-Desk] ========================================',
+    );
+
+    // =============================================================
+    // JSON PARA O PYTHON
+    // =============================================================
+
+    final requestJson = jsonEncode({
+      'id': idValue,
+      'cliente': clienteValue,
+      'fases': fases,
+      'edeskCredenciais': credenciais == null
+          ? null
+          : {
+              'email': credenciais['email'],
+              'senha': credenciais['senha'],
+            },
+    });
+
+    // IMPORTANTE:
+    // NÃO imprimir requestJson porque ele contém a senha.
+
+    debugPrint(
+      '[E-Desk] Dados enviados ao Python. '
+      'Credenciais: '
+      '${credenciais != null ? 'sim' : 'não'}',
+    );
+
+    // =============================================================
+    // EXECUTAR PYTHON EM BACKGROUND
+    //
+    // Esta função retorna void no seu projeto.
+    // Portanto NÃO tentamos capturar um "resultado".
+    // =============================================================
+
+    try {
+      final resultado = await executarPythonEdeskBackground(
+        requestJson: requestJson,
+        enviar: true,
+        script: 'edesk_fases.py',
+      );
+
+      return EdeskSendResult(
+        confirmed: resultado.confirmed,
+        statusCode: resultado.statusCode,
+        message: resultado.message,
+        responseBody: resultado.responseBody,
+      );
+    } catch (e) {
+      debugPrint(
+        '[E-Desk] ERRO ao iniciar atualização das fases: $e',
+      );
+
+      return EdeskSendResult(
+        confirmed: false,
+        statusCode: 0,
+        message: 'Erro ao iniciar atualização das fases no E-Desk: $e',
+        responseBody: '',
+      );
+    }
+  }
 
   /// ==============================================================
   /// EXECUTAR COMENTÁRIO VIA PYTHON
@@ -1233,15 +1398,18 @@ class EdeskService {
     }
 
     // =============================================================
-    // SOLICITAÇÃO
-    //
-    // A solicitação pode estar vazia.
-    //
-    // Nesse caso o Python recebe:
-    //
-    // "solicitacao": ""
-    //
-    // e poderá localizar a solicitação a partir do ID do trabalho.
+    // CREDENCIAIS E-DESK
+    // =============================================================
+
+    final credenciais = await EdeskCredentialsService().ler();
+
+    debugPrint(
+      '[E-Desk] Credenciais automáticas para comentário: '
+      '${credenciais != null ? 'disponíveis' : 'não cadastradas'}',
+    );
+
+    // =============================================================
+    // DEBUG
     // =============================================================
 
     debugPrint(
@@ -1274,17 +1442,21 @@ class EdeskService {
     );
 
     debugPrint(
+      '[E-Desk] Credenciais: '
+      '${credenciais != null ? 'sim' : 'não'}',
+    );
+
+    debugPrint(
       '[E-Desk] ========================================',
     );
 
     // =============================================================
     // REQUEST PARA O PYTHON
     // =============================================================
+
     final requestJson = jsonEncode({
       'url': pageUri.toString(),
 
-      // Pode ser vazio.
-      // O Python deverá resolver pelo idTrabalho.
       'solicitacao': solicitacaoValue,
 
       'idTrabalho': trabalhoValue,
@@ -1296,25 +1468,34 @@ class EdeskService {
       'imagemBase64': imagemBase64,
 
       'enviar': enviar,
+
+      // ===========================================================
+      // CREDENCIAIS
+      // ===========================================================
+
+      'edeskCredenciais': credenciais == null
+          ? null
+          : {
+              'email': credenciais['email'],
+              'senha': credenciais['senha'],
+            },
     });
 
-    debugPrint(
-      '[E-Desk] JSON enviado ao Python:',
-    );
-
-    debugPrint(
-      requestJson,
-    );
+    // IMPORTANTE:
+    // NÃO imprimir requestJson.
+    // Ele contém a senha do E-Desk.
 
     // =============================================================
     // EXECUTA PYTHON
     // =============================================================
+
     try {
       final resultado = await executarPythonEdesk(
         requestJson: requestJson,
         enviar: enviar,
         script: 'edesk_comentario.py',
       );
+
       debugPrint(
         '[E-Desk] Python finalizado.',
       );

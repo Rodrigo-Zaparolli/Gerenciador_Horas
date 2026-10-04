@@ -222,35 +222,53 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   }
 
   int _getLogMinutes(TimeLog log) {
-    final duration = log.durationFormatted?.trim() ?? '';
+    try {
+      // 1. Prioriza durationFormatted
+      final duration = log.durationFormatted?.trim() ?? '';
 
-    if (duration.isNotEmpty) {
-      final parsedDuration = _timeToMinutes(duration);
+      if (duration.isNotEmpty) {
+        final parsedDuration = _timeToMinutes(duration);
 
-      if (parsedDuration > 0) {
-        return parsedDuration;
+        if (parsedDuration > 0) {
+          return parsedDuration;
+        }
+
+        // Fallback para duração decimal, caso exista
+        final decimal = double.tryParse(
+          duration.replaceAll(',', '.'),
+        );
+
+        if (decimal != null && decimal > 0) {
+          return (decimal * 60).round();
+        }
       }
-    }
 
-    if (log.hours != null) {
-      return (log.hours! * 60).round();
-    }
-
-    final start = log.startTime.trim();
-    final end = log.endTime.trim();
-
-    if (start.isNotEmpty && end.isNotEmpty) {
-      final startMinutes = _timeToMinutes(start);
-      final endMinutes = _timeToMinutes(end);
-
-      if (endMinutes >= startMinutes) {
-        return endMinutes - startMinutes;
+      // 2. Usa hours se disponível
+      if (log.hours != null && log.hours! > 0) {
+        return (log.hours! * 60).round();
       }
-    }
 
-    return 0;
+      // 3. Último fallback: calcula pelo horário inicial/final
+      final start = log.startTime.trim();
+      final end = log.endTime.trim();
+
+      if (start.isNotEmpty && end.isNotEmpty) {
+        final startMinutes = _timeToMinutes(start);
+        final endMinutes = _timeToMinutes(end);
+
+        if (endMinutes >= startMinutes) {
+          return endMinutes - startMinutes;
+        }
+      }
+
+      return 0;
+    } catch (e) {
+      debugPrint(
+        '⚠️ Erro em _getLogMinutes | TimeLog ${log.id}: $e',
+      );
+      return 0;
+    }
   }
-
   // ============================================================
   // VALORES
   // ============================================================
@@ -349,13 +367,12 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
     return Container(
       constraints: const BoxConstraints(
-        minWidth: 130,
-        maxWidth: 220,
+        minWidth: 120,
         minHeight: 72,
         maxHeight: 78,
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: 12,
+        horizontal: 10,
         vertical: 9,
       ),
       decoration: BoxDecoration(
@@ -384,7 +401,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               size: 18,
             ),
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -408,7 +425,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: CoresApp.textoPrincipal,
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -653,7 +670,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 builder: (context, constraints) {
                   final double width = constraints.maxWidth;
 
-                  if (width >= 1350) {
+                  if (width >= 1200) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -693,19 +710,24 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     children: [
                       _buildPageTitleContent(),
                       const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: stats
-                            .map(
-                              (stat) => SizedBox(
-                                width: (width - 24) / 2 > 150
-                                    ? (width - 24) / 2
-                                    : double.infinity,
-                                child: stat,
-                              ),
-                            )
-                            .toList(),
+                      LayoutBuilder(
+                        builder: (context, wrapConstraints) {
+                          final cardWidth = (wrapConstraints.maxWidth - 8) / 2;
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: stats
+                                .map(
+                                  (stat) => SizedBox(
+                                    width: cardWidth > 140
+                                        ? cardWidth
+                                        : wrapConstraints.maxWidth,
+                                    child: stat,
+                                  ),
+                                )
+                                .toList(),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12),
                       _buildHeaderSearch(),
@@ -1435,6 +1457,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       width: double.infinity,
       decoration: _cardDecoration(
         radius: TamanhosApp.raioTabela,
+      ).copyWith(
+        border: Border(
+          bottom: BorderSide(
+            color: CoresDashboard.tabelaBorda,
+            width: 1,
+          ),
+        ),
       ),
       child: Column(
         children: [
@@ -1550,103 +1579,91 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               ],
             ),
           ),
-          Expanded(
-            child: empty
-                ? Center(
-                    child: _buildEmptyState(),
-                  )
-                : Scrollbar(
+          empty
+              ? Center(
+                  child: _buildEmptyState(),
+                )
+              : Expanded(
+                  child: Scrollbar(
                     controller: _verticalController,
-                    thumbVisibility: true,
                     child: SingleChildScrollView(
                       controller: _verticalController,
                       scrollDirection: Axis.vertical,
                       child: Scrollbar(
                         controller: _horizontalController,
                         thumbVisibility: true,
-                        notificationPredicate: (notification) =>
-                            notification.depth == 1,
                         child: SingleChildScrollView(
                           controller: _horizontalController,
                           scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            showCheckboxColumn: false,
-                            columnSpacing: 18,
-                            horizontalMargin: 10,
-                            headingRowHeight: 46,
-                            dataRowMinHeight: 30,
-                            dataRowMaxHeight: 38,
-                            dividerThickness: 0.35,
-                            headingRowColor: WidgetStateProperty.all(
-                              CoresDashboard.tabelaCabecalho,
-                            ),
-                            dataRowColor: WidgetStateProperty.resolveWith(
-                              (states) {
-                                if (states.contains(
-                                  WidgetState.hovered,
-                                )) {
-                                  return CoresDashboard.tabelaHover;
-                                }
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: DataTable(
+                              showCheckboxColumn: false,
+                              columnSpacing: 18,
+                              horizontalMargin: 10,
+                              headingRowHeight: 46,
+                              dataRowMinHeight: 30,
+                              dataRowMaxHeight: 38,
+                              dividerThickness: 0.35,
+                              headingRowColor: WidgetStateProperty.all(
+                                CoresDashboard.tabelaCabecalho,
+                              ),
+                              dataRowColor: WidgetStateProperty.resolveWith(
+                                (states) {
+                                  if (states.contains(
+                                    WidgetState.hovered,
+                                  )) {
+                                    return CoresDashboard.tabelaHover;
+                                  }
 
-                                return null;
-                              },
-                            ),
-                            columns: [
-                              DataColumn(
-                                label: _buildTableHeader('ID'),
+                                  return null;
+                                },
                               ),
-                              DataColumn(
-                                label: _buildTableHeader('Nº'),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader('Cliente'),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Tipo de Serviço',
+                              columns: [
+                                DataColumn(
+                                  label: _buildTableHeader('ID'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Informações',
+                                DataColumn(
+                                  label: _buildTableHeader('Nº'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader('Status'),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Data Início / Fim',
+                                DataColumn(
+                                  label: _buildTableHeader('Cliente'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Hs Estimadas',
+                                DataColumn(
+                                  label: _buildTableHeader('Tipo de Serviço'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Líder Prj',
+                                DataColumn(
+                                  label: _buildTableHeader('Informações'),
                                 ),
-                              ),
-                              DataColumn(
-                                label: _buildTableHeader(
-                                  'Tipo HS',
+                                DataColumn(
+                                  label: _buildTableHeader('Status'),
                                 ),
+                                DataColumn(
+                                  label: _buildTableHeader('Data Início / Fim'),
+                                ),
+                                DataColumn(
+                                  label: _buildTableHeader('Hs Estimadas'),
+                                ),
+                                DataColumn(
+                                  label: _buildTableHeader('Líder Prj'),
+                                ),
+                                DataColumn(
+                                  label: _buildTableHeader('Tipo HS'),
+                                ),
+                                DataColumn(
+                                  label: _buildTableHeader('Ações'),
+                                ),
+                              ],
+                              rows: _generateRows(
+                                completedProjects,
                               ),
-                              DataColumn(
-                                label: _buildTableHeader('Ações'),
-                              ),
-                            ],
-                            rows: _generateRows(
-                              completedProjects,
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-          ),
+                ),
         ],
       ),
     );
@@ -2133,38 +2150,72 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildHoursSummaryCard(
-                        icon: Icons.timer_rounded,
-                        title: 'Total trabalhado',
-                        value: totalHours,
-                        subtitle: 'horas registradas no projeto',
-                        color: CoresApp.destaque,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildHoursSummaryCard(
-                        icon: Icons.receipt_long_rounded,
-                        title: 'Apontamentos',
-                        value: '${logs.length}',
-                        subtitle: 'lançamento(s) encontrado(s)',
-                        color: CoresApp.textoSecundario,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildHoursSummaryCard(
-                        icon: Icons.check_circle_rounded,
-                        title: 'Registrados',
-                        value: '$registeredCount',
-                        subtitle: 'apontamento(s) registrado(s)',
-                        color: CoresApp.sucesso,
-                      ),
-                    ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 600) {
+                      return Column(
+                        children: [
+                          _buildHoursSummaryCard(
+                            icon: Icons.timer_rounded,
+                            title: 'Total trabalhado',
+                            value: totalHours,
+                            subtitle: 'horas registradas no projeto',
+                            color: CoresApp.destaque,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildHoursSummaryCard(
+                            icon: Icons.receipt_long_rounded,
+                            title: 'Apontamentos',
+                            value: '${logs.length}',
+                            subtitle: 'lançamento(s) encontrado(s)',
+                            color: CoresApp.textoSecundario,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildHoursSummaryCard(
+                            icon: Icons.check_circle_rounded,
+                            title: 'Registrados',
+                            value: '$registeredCount',
+                            subtitle: 'apontamento(s) registrado(s)',
+                            color: CoresApp.sucesso,
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: _buildHoursSummaryCard(
+                            icon: Icons.timer_rounded,
+                            title: 'Total trabalhado',
+                            value: totalHours,
+                            subtitle: 'horas registradas no projeto',
+                            color: CoresApp.destaque,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildHoursSummaryCard(
+                            icon: Icons.receipt_long_rounded,
+                            title: 'Apontamentos',
+                            value: '${logs.length}',
+                            subtitle: 'lançamento(s) encontrado(s)',
+                            color: CoresApp.textoSecundario,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildHoursSummaryCard(
+                            icon: Icons.check_circle_rounded,
+                            title: 'Registrados',
+                            value: '$registeredCount',
+                            subtitle: 'apontamento(s) registrado(s)',
+                            color: CoresApp.sucesso,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 13),
                 if (logs.isEmpty)
@@ -2273,18 +2324,18 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
     showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
+        final screenHeight = MediaQuery.of(dialogContext).size.height;
+
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: 30,
-            vertical: 25,
+            horizontal: 20,
+            vertical: 20,
           ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 980,
-              maxHeight: 850,
-            ),
+          child: SizedBox(
+            width: 980,
+            height: screenHeight > 900 ? 850 : screenHeight - 40,
             child: Container(
               decoration: BoxDecoration(
                 color: CoresDashboard.tabelaFundo,
@@ -2303,10 +2354,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     // ==================================================
-                    // CABEÇALHO DO MODAL
+                    // CABEÇALHO
                     // ==================================================
 
                     Container(
@@ -2411,7 +2461,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           IconButton(
                             tooltip: 'Fechar',
                             onPressed: () {
-                              Navigator.of(context).pop();
+                              Navigator.of(dialogContext).pop();
                             },
                             icon: const Icon(
                               Icons.close_rounded,
@@ -2425,76 +2475,185 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
                     // ==================================================
                     // CONTEÚDO
+                    //
+                    // O ponto importante da correção:
+                    // o StreamBuilder fica dentro do conteúdo principal,
+                    // mas a rolagem fica em um único ListView.
                     // ==================================================
 
                     Expanded(
-                      child: Scrollbar(
-                        thumbVisibility: true,
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      child: StreamBuilder<List<TimeLog>>(
+                        stream: _timeLogStore.streamProjectTimeLogs(
+                          user.uid,
+                          id,
+                        ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                                  ConnectionState.waiting &&
+                              !snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: CoresApp.destaque,
+                              ),
+                            );
+                          }
+
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(25),
+                                child: Text(
+                                  'Não foi possível carregar os horários:\n'
+                                  '${snapshot.error}',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: CoresApp.erro,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          final logs = snapshot.data ?? <TimeLog>[];
+
+                          int totalMinutes = 0;
+                          int registeredCount = 0;
+
+                          for (final log in logs) {
+                            totalMinutes += _getLogMinutes(log);
+
+                            if (log.isRegistered) {
+                              registeredCount++;
+                            }
+                          }
+
+                          final totalHours = _minutesToTime(totalMinutes);
+
+                          return ListView(
+                            padding: const EdgeInsets.all(20),
                             children: [
                               // ==================================================
                               // INFORMAÇÕES PRINCIPAIS
                               // ==================================================
 
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildInfoCard(
-                                      icon: Icons.business_rounded,
-                                      title: 'Cliente',
-                                      value: client,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildInfoCard(
-                                      icon: Icons.work_outline_rounded,
-                                      title: 'Tipo de Serviço',
-                                      value: serviceType,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildInfoCard(
-                                      icon: Icons.person_outline_rounded,
-                                      title: 'Líder',
-                                      value: leader,
-                                    ),
-                                  ),
-                                ],
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  if (constraints.maxWidth < 650) {
+                                    return Column(
+                                      children: [
+                                        _buildInfoCard(
+                                          icon: Icons.business_rounded,
+                                          title: 'Cliente',
+                                          value: client,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        _buildInfoCard(
+                                          icon: Icons.work_outline_rounded,
+                                          title: 'Tipo de Serviço',
+                                          value: serviceType,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        _buildInfoCard(
+                                          icon: Icons.person_outline_rounded,
+                                          title: 'Líder',
+                                          value: leader,
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  return Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildInfoCard(
+                                          icon: Icons.business_rounded,
+                                          title: 'Cliente',
+                                          value: client,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _buildInfoCard(
+                                          icon: Icons.work_outline_rounded,
+                                          title: 'Tipo de Serviço',
+                                          value: serviceType,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _buildInfoCard(
+                                          icon: Icons.person_outline_rounded,
+                                          title: 'Líder',
+                                          value: leader,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
 
                               const SizedBox(height: 10),
 
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildInfoCard(
-                                      icon: Icons.schedule_rounded,
-                                      title: 'Horas Estimadas',
-                                      value: estimatedHours,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildInfoCard(
-                                      icon: Icons.calendar_today_rounded,
-                                      title: 'Data de Início',
-                                      value: _formatDate(startDate),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildInfoCard(
-                                      icon: Icons.event_available_rounded,
-                                      title: 'Finalizado em',
-                                      value: _formatDateTime(finalizedAt),
-                                    ),
-                                  ),
-                                ],
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  if (constraints.maxWidth < 650) {
+                                    return Column(
+                                      children: [
+                                        _buildInfoCard(
+                                          icon: Icons.schedule_rounded,
+                                          title: 'Horas Estimadas',
+                                          value: estimatedHours,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        _buildInfoCard(
+                                          icon: Icons.calendar_today_rounded,
+                                          title: 'Data de Início',
+                                          value: _formatDate(startDate),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        _buildInfoCard(
+                                          icon: Icons.event_available_rounded,
+                                          title: 'Finalizado em',
+                                          value: _formatDateTime(
+                                            finalizedAt,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  return Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildInfoCard(
+                                          icon: Icons.schedule_rounded,
+                                          title: 'Horas Estimadas',
+                                          value: estimatedHours,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _buildInfoCard(
+                                          icon: Icons.calendar_today_rounded,
+                                          title: 'Data de Início',
+                                          value: _formatDate(startDate),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _buildInfoCard(
+                                          icon: Icons.event_available_rounded,
+                                          title: 'Finalizado em',
+                                          value: _formatDateTime(
+                                            finalizedAt,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
 
                               // ==================================================
@@ -2551,9 +2710,233 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
                               const SizedBox(height: 18),
 
-                              _buildProjectHoursSection(
-                                id,
-                                user,
+                              Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: CoresApp.destaque.withOpacity(0.025),
+                                  borderRadius: BorderRadius.circular(13),
+                                  border: Border.all(
+                                    color: CoresApp.destaque.withOpacity(0.14),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(13),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 35,
+                                            height: 35,
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: CoresApp.destaque
+                                                  .withOpacity(0.10),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                9,
+                                              ),
+                                            ),
+                                            child: const Icon(
+                                              Icons.access_time_filled_rounded,
+                                              color: CoresApp.destaque,
+                                              size: 18,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 9),
+                                          const Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Horas trabalhadas',
+                                                  style: TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                                SizedBox(height: 2),
+                                                Text(
+                                                  'Apontamentos cadastrados neste projeto',
+                                                  style: TextStyle(
+                                                    color: CoresApp
+                                                        .textoSecundario,
+                                                    fontSize: 9,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: CoresApp.destaque
+                                                  .withOpacity(0.09),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                20,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${logs.length} apontamento(s)',
+                                              style: const TextStyle(
+                                                color: CoresApp.destaque,
+                                                fontSize: 8,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      LayoutBuilder(
+                                        builder: (
+                                          context,
+                                          constraints,
+                                        ) {
+                                          if (constraints.maxWidth < 600) {
+                                            return Column(
+                                              children: [
+                                                _buildHoursSummaryCard(
+                                                  icon: Icons.timer_rounded,
+                                                  title: 'Total trabalhado',
+                                                  value: totalHours,
+                                                  subtitle:
+                                                      'horas registradas no projeto',
+                                                  color: CoresApp.destaque,
+                                                ),
+                                                const SizedBox(
+                                                  height: 8,
+                                                ),
+                                                _buildHoursSummaryCard(
+                                                  icon: Icons
+                                                      .receipt_long_rounded,
+                                                  title: 'Apontamentos',
+                                                  value: '${logs.length}',
+                                                  subtitle:
+                                                      'lançamento(s) encontrado(s)',
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                ),
+                                                const SizedBox(
+                                                  height: 8,
+                                                ),
+                                                _buildHoursSummaryCard(
+                                                  icon: Icons
+                                                      .check_circle_rounded,
+                                                  title: 'Registrados',
+                                                  value: '$registeredCount',
+                                                  subtitle:
+                                                      'apontamento(s) registrado(s)',
+                                                  color: CoresApp.sucesso,
+                                                ),
+                                              ],
+                                            );
+                                          }
+
+                                          return Row(
+                                            children: [
+                                              Expanded(
+                                                child: _buildHoursSummaryCard(
+                                                  icon: Icons.timer_rounded,
+                                                  title: 'Total trabalhado',
+                                                  value: totalHours,
+                                                  subtitle:
+                                                      'horas registradas no projeto',
+                                                  color: CoresApp.destaque,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: _buildHoursSummaryCard(
+                                                  icon: Icons
+                                                      .receipt_long_rounded,
+                                                  title: 'Apontamentos',
+                                                  value: '${logs.length}',
+                                                  subtitle:
+                                                      'lançamento(s) encontrado(s)',
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: _buildHoursSummaryCard(
+                                                  icon: Icons
+                                                      .check_circle_rounded,
+                                                  title: 'Registrados',
+                                                  value: '$registeredCount',
+                                                  subtitle:
+                                                      'apontamento(s) registrado(s)',
+                                                  color: CoresApp.sucesso,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(height: 13),
+                                      if (logs.isEmpty)
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 15,
+                                            vertical: 22,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: CoresApp.textoPrincipal
+                                                .withOpacity(0.018),
+                                            borderRadius:
+                                                BorderRadius.circular(9),
+                                            border: Border.all(
+                                              color: CoresDashboard.tabelaBorda,
+                                            ),
+                                          ),
+                                          child: const Column(
+                                            children: [
+                                              Icon(
+                                                Icons.schedule_outlined,
+                                                color: CoresApp.textoSecundario,
+                                                size: 26,
+                                              ),
+                                              SizedBox(height: 8),
+                                              Text(
+                                                'Nenhum horário encontrado',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoPrincipal,
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else ...[
+                                        const Text(
+                                          'Lançamentos de horas',
+                                          style: TextStyle(
+                                            color: CoresApp.textoPrincipal,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ...logs.map(
+                                          (log) => _buildTimeLogCard(log),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
 
                               // ==================================================
@@ -2688,7 +3071,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               ],
                                             ),
                                           ),
-                                          _buildTaskStatusBadge(status),
+                                          _buildTaskStatusBadge(
+                                            status,
+                                          ),
                                         ],
                                       ),
                                     );
@@ -2722,73 +3107,150 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 9),
-                                Row(
-                                  children: [
-                                    if (excelLink.trim().isNotEmpty)
-                                      Expanded(
-                                        child: _buildResourceButton(
-                                          icon: Icons.table_view_rounded,
-                                          title: 'Arquivo Excel',
-                                          subtitle: 'Abrir arquivo/link',
-                                          onPressed: () async {
-                                            final uri = Uri.tryParse(
-                                              excelLink,
-                                            );
+                                LayoutBuilder(
+                                  builder: (
+                                    context,
+                                    constraints,
+                                  ) {
+                                    if (constraints.maxWidth < 500) {
+                                      return Column(
+                                        children: [
+                                          if (excelLink.trim().isNotEmpty)
+                                            _buildResourceButton(
+                                              icon: Icons.table_view_rounded,
+                                              title: 'Arquivo Excel',
+                                              subtitle: 'Abrir arquivo/link',
+                                              onPressed: () async {
+                                                final uri = Uri.tryParse(
+                                                  excelLink,
+                                                );
 
-                                            if (uri != null &&
-                                                await canLaunchUrl(uri)) {
-                                              await launchUrl(
-                                                uri,
-                                                mode: LaunchMode
-                                                    .externalApplication,
-                                              );
-                                            }
-                                          },
-                                        ),
-                                      ),
-                                    if (excelLink.trim().isNotEmpty &&
-                                        folderPath.trim().isNotEmpty)
-                                      const SizedBox(width: 10),
-                                    if (folderPath.trim().isNotEmpty)
-                                      Expanded(
-                                        child: _buildResourceButton(
-                                          icon: Icons.folder_rounded,
-                                          title: 'Pasta do projeto',
-                                          subtitle: 'Abrir pasta',
-                                          onPressed: () async {
-                                            Uri uri;
+                                                if (uri != null &&
+                                                    await canLaunchUrl(
+                                                      uri,
+                                                    )) {
+                                                  await launchUrl(
+                                                    uri,
+                                                    mode: LaunchMode
+                                                        .externalApplication,
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          if (excelLink.trim().isNotEmpty &&
+                                              folderPath.trim().isNotEmpty)
+                                            const SizedBox(height: 10),
+                                          if (folderPath.trim().isNotEmpty)
+                                            _buildResourceButton(
+                                              icon: Icons.folder_rounded,
+                                              title: 'Pasta do projeto',
+                                              subtitle: 'Abrir pasta',
+                                              onPressed: () async {
+                                                final Uri uri;
 
-                                            if (folderPath.startsWith(
-                                                  'http://',
-                                                ) ||
-                                                folderPath.startsWith(
-                                                  'https://',
+                                                if (folderPath.startsWith(
+                                                      'http://',
+                                                    ) ||
+                                                    folderPath.startsWith(
+                                                      'https://',
+                                                    )) {
+                                                  uri = Uri.parse(
+                                                    folderPath,
+                                                  );
+                                                } else {
+                                                  uri = Uri.file(
+                                                    folderPath,
+                                                  );
+                                                }
+
+                                                if (await canLaunchUrl(
+                                                  uri,
                                                 )) {
-                                              uri = Uri.parse(
-                                                folderPath,
-                                              );
-                                            } else {
-                                              uri = Uri.file(
-                                                folderPath,
-                                              );
-                                            }
+                                                  await launchUrl(
+                                                    uri,
+                                                    mode: LaunchMode
+                                                        .externalApplication,
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                        ],
+                                      );
+                                    }
 
-                                            if (await canLaunchUrl(uri)) {
-                                              await launchUrl(
-                                                uri,
-                                                mode: LaunchMode
-                                                    .externalApplication,
-                                              );
-                                            }
-                                          },
-                                        ),
-                                      ),
-                                  ],
+                                    return Row(
+                                      children: [
+                                        if (excelLink.trim().isNotEmpty)
+                                          Expanded(
+                                            child: _buildResourceButton(
+                                              icon: Icons.table_view_rounded,
+                                              title: 'Arquivo Excel',
+                                              subtitle: 'Abrir arquivo/link',
+                                              onPressed: () async {
+                                                final uri = Uri.tryParse(
+                                                  excelLink,
+                                                );
+
+                                                if (uri != null &&
+                                                    await canLaunchUrl(
+                                                      uri,
+                                                    )) {
+                                                  await launchUrl(
+                                                    uri,
+                                                    mode: LaunchMode
+                                                        .externalApplication,
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                        if (excelLink.trim().isNotEmpty &&
+                                            folderPath.trim().isNotEmpty)
+                                          const SizedBox(width: 10),
+                                        if (folderPath.trim().isNotEmpty)
+                                          Expanded(
+                                            child: _buildResourceButton(
+                                              icon: Icons.folder_rounded,
+                                              title: 'Pasta do projeto',
+                                              subtitle: 'Abrir pasta',
+                                              onPressed: () async {
+                                                final Uri uri;
+
+                                                if (folderPath.startsWith(
+                                                      'http://',
+                                                    ) ||
+                                                    folderPath.startsWith(
+                                                      'https://',
+                                                    )) {
+                                                  uri = Uri.parse(
+                                                    folderPath,
+                                                  );
+                                                } else {
+                                                  uri = Uri.file(
+                                                    folderPath,
+                                                  );
+                                                }
+
+                                                if (await canLaunchUrl(
+                                                  uri,
+                                                )) {
+                                                  await launchUrl(
+                                                    uri,
+                                                    mode: LaunchMode
+                                                        .externalApplication,
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ],
                             ],
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ),
 
@@ -2816,15 +3278,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                         children: [
                           TextButton.icon(
                             onPressed: () {
-                              Navigator.of(context).pop();
+                              Navigator.of(dialogContext).pop();
                             },
                             icon: const Icon(
                               Icons.close_rounded,
                               size: 15,
                             ),
-                            label: const Text(
-                              'Fechar',
-                            ),
+                            label: const Text('Fechar'),
                             style: TextButton.styleFrom(
                               foregroundColor: CoresApp.destaque,
                               textStyle: const TextStyle(
@@ -2844,7 +3304,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       },
     );
   }
-
   // ============================================================
   // CARD DE INFORMAÇÃO
   // ============================================================
@@ -3296,7 +3755,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CoresApp.fundo,
+      backgroundColor: Colors.transparent,
       appBar: Cabecalho(
         selectedIndex: widget.selectedIndex,
         onSelectTab: widget.onSelectTab,
@@ -3306,20 +3765,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       ),
       body: Stack(
         children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: AppTheme.opacidadeFundo,
-                child: Image.asset(
-                  AppTheme.caminhoFundo,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
-            ),
-          ),
           Positioned.fill(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(

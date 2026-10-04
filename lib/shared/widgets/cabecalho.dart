@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/user_cache.dart';
+import 'package:gerenciador_horas/data/services/edesk_credentials_service.dart';
 
 class Cabecalho extends StatefulWidget implements PreferredSizeWidget {
   final int selectedIndex;
@@ -33,6 +34,8 @@ class Cabecalho extends StatefulWidget implements PreferredSizeWidget {
 
 class _CabecalhoState extends State<Cabecalho> {
   final UserCache _cache = UserCache();
+
+  final EdeskCredentialsService _edeskCredentials = EdeskCredentialsService();
 
   late final TextEditingController _searchController;
 
@@ -216,6 +219,474 @@ class _CabecalhoState extends State<Cabecalho> {
   }
 
   // ============================================================
+  // CREDENCIAIS E-DESK
+  // ============================================================
+
+  Future<void> _abrirCredenciaisEdesk() async {
+    final emailController = TextEditingController();
+    final senhaController = TextEditingController();
+
+    bool mostrarSenha = false;
+    bool salvando = false;
+    bool possuiCredenciais = false;
+
+    try {
+      final dados = await _edeskCredentials.ler();
+
+      if (dados != null) {
+        emailController.text = dados['email'] ?? '';
+        senhaController.text = dados['senha'] ?? '';
+        possuiCredenciais = true;
+      }
+    } catch (e) {
+      debugPrint(
+        '[E-DESK] Erro lendo credenciais: $e',
+      );
+    }
+
+    if (!mounted) {
+      emailController.dispose();
+      senhaController.dispose();
+      return;
+    }
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: CoresApp.superficie,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: CoresApp.primaria.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.lock_outline_rounded,
+                      color: CoresApp.primaria,
+                      size: 21,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Credenciais E-Desk',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Configure o acesso que será utilizado '
+                        'automaticamente nas ações do E-Desk.',
+                        style: TextStyle(
+                          color: CoresApp.textoSecundario,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ==================================================
+                    // E-MAIL
+                    // ==================================================
+
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 13,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'E-mail do E-Desk',
+                        labelStyle: const TextStyle(
+                          color: CoresApp.textoSecundario,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.email_outlined,
+                          color: CoresApp.textoSecundario,
+                        ),
+                        filled: true,
+                        fillColor: CoresApp.superficieEscura,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.primaria,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ==================================================
+                    // SENHA
+                    // ==================================================
+
+                    TextField(
+                      controller: senhaController,
+                      obscureText: !mostrarSenha,
+                      style: const TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 13,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Senha do E-Desk',
+                        labelStyle: const TextStyle(
+                          color: CoresApp.textoSecundario,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.password_rounded,
+                          color: CoresApp.textoSecundario,
+                        ),
+                        suffixIcon: IconButton(
+                          tooltip:
+                              mostrarSenha ? 'Ocultar senha' : 'Mostrar senha',
+                          onPressed: () {
+                            setDialogState(() {
+                              mostrarSenha = !mostrarSenha;
+                            });
+                          },
+                          icon: Icon(
+                            mostrarSenha
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                            color: CoresApp.textoSecundario,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: CoresApp.superficieEscura,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.primaria,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ==================================================
+                    // AVISO
+                    // ==================================================
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.blue.withOpacity(0.18),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.security_rounded,
+                            color: Colors.blueAccent,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              'A senha não será armazenada no Firebase. '
+                              'Ela ficará armazenada localmente de forma segura '
+                              'neste computador.',
+                              style: TextStyle(
+                                color: CoresApp.textoSecundario,
+                                fontSize: 11,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    if (possuiCredenciais) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: Colors.green,
+                              size: 17,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              'Credenciais cadastradas',
+                              style: TextStyle(
+                                color: CoresApp.textoSecundario,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                // ======================================================
+                // REMOVER
+                // ======================================================
+
+                if (possuiCredenciais)
+                  TextButton.icon(
+                    onPressed: salvando
+                        ? null
+                        : () async {
+                            try {
+                              setDialogState(() {
+                                salvando = true;
+                              });
+
+                              await _edeskCredentials.apagar();
+
+                              emailController.clear();
+                              senhaController.clear();
+
+                              setDialogState(() {
+                                salvando = false;
+                                possuiCredenciais = false;
+                              });
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Credenciais do E-Desk removidas.',
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              setDialogState(() {
+                                salvando = false;
+                              });
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Erro ao remover credenciais: $e',
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 18,
+                      color: CoresApp.erro,
+                    ),
+                    label: const Text(
+                      'Remover',
+                      style: TextStyle(
+                        color: CoresApp.erro,
+                      ),
+                    ),
+                  ),
+
+                // ======================================================
+                // CANCELAR
+                // ======================================================
+
+                TextButton(
+                  onPressed: salvando
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                    ),
+                  ),
+                ),
+
+                // ======================================================
+                // SALVAR
+                // ======================================================
+
+                ElevatedButton.icon(
+                  onPressed: salvando
+                      ? null
+                      : () async {
+                          final email = emailController.text.trim();
+
+                          final senha = senhaController.text;
+
+                          if (email.isEmpty) {
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Informe o e-mail do E-Desk.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+
+                          if (senha.isEmpty) {
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Informe a senha do E-Desk.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            salvando = true;
+                          });
+
+                          try {
+                            await _edeskCredentials.salvar(
+                              email: email,
+                              senha: senha,
+                            );
+
+                            if (!dialogContext.mounted) {
+                              return;
+                            }
+
+                            Navigator.of(dialogContext).pop();
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Credenciais do E-Desk salvas com segurança.',
+                                  ),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              salvando = false;
+                            });
+
+                            if (!dialogContext.mounted) {
+                              return;
+                            }
+
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Erro ao salvar credenciais: $e',
+                                ),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CoresApp.primaria,
+                    foregroundColor: CoresApp.textoPrincipal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 11,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: salvando
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.save_rounded,
+                          size: 17,
+                        ),
+                  label: Text(
+                    salvando ? 'Salvando...' : 'Salvar',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
+    senhaController.dispose();
+  }
+
+  // ============================================================
   // LOGOUT
   // ============================================================
 
@@ -332,6 +803,11 @@ class _CabecalhoState extends State<Cabecalho> {
                     ),
                   ),
                   const SizedBox(height: 18),
+
+                  // ==================================================
+                  // USUÁRIO
+                  // ==================================================
+
                   Row(
                     children: [
                       _buildProfileAvatar(size: 52),
@@ -363,12 +839,76 @@ class _CabecalhoState extends State<Cabecalho> {
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 16),
+
                   const Divider(
                     color: CoresApp.borda,
                     height: 1,
                   ),
+
                   const SizedBox(height: 8),
+
+                  // ==================================================
+                  // CREDENCIAIS E-DESK
+                  // ==================================================
+
+                  ListTile(
+                    leading: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline_rounded,
+                        color: Colors.blueAccent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Credenciais E-Desk',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Configurar acesso automático',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 12,
+                      ),
+                    ),
+                    trailing: FutureBuilder<bool>(
+                      future: _edeskCredentials.possuiCredenciais(),
+                      builder: (context, snapshot) {
+                        if (snapshot.data == true) {
+                          return const Icon(
+                            Icons.check_circle_rounded,
+                            color: Colors.green,
+                            size: 19,
+                          );
+                        }
+
+                        return const Icon(
+                          Icons.chevron_right_rounded,
+                          color: CoresApp.textoSecundario,
+                        );
+                      },
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop('edesk');
+                    },
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // ==================================================
+                  // FOTO
+                  // ==================================================
+
                   ListTile(
                     leading: Container(
                       width: 38,
@@ -401,7 +941,13 @@ class _CabecalhoState extends State<Cabecalho> {
                       Navigator.of(context).pop('foto');
                     },
                   ),
+
                   const SizedBox(height: 4),
+
+                  // ==================================================
+                  // LOGOUT
+                  // ==================================================
+
                   ListTile(
                     leading: Container(
                       width: 38,
@@ -444,7 +990,9 @@ class _CabecalhoState extends State<Cabecalho> {
 
     if (!mounted) return;
 
-    if (escolha == 'foto') {
+    if (escolha == 'edesk') {
+      await _abrirCredenciaisEdesk();
+    } else if (escolha == 'foto') {
       await _alterarFotoPerfil();
     } else if (escolha == 'logout') {
       await _confirmarLogout();
@@ -552,7 +1100,7 @@ class _CabecalhoState extends State<Cabecalho> {
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           padding: EdgeInsets.symmetric(
-            horizontal: compact ? 9 : 11,
+            horizontal: compact ? 8 : 10,
             vertical: 7,
           ),
           decoration: BoxDecoration(
@@ -560,6 +1108,11 @@ class _CabecalhoState extends State<Cabecalho> {
                 ? CoresApp.primaria.withOpacity(0.13)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
+            border: selecionado
+                ? Border.all(
+                    color: CoresApp.primaria.withOpacity(0.18),
+                  )
+                : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -712,6 +1265,22 @@ class _CabecalhoState extends State<Cabecalho> {
     final bool isVeryCompact = width < 850;
     final bool isCompact = width < 1150;
 
+    // ============================================================
+    // DIMENSÕES RESPONSIVAS
+    // ============================================================
+
+    final double logoWidth = isVeryCompact
+        ? 96
+        : isCompact
+            ? 112
+            : 132;
+
+    final double searchWidth = isCompact ? 125 : 185;
+
+    final bool mostrarNomeUsuario = width >= 980;
+
+    final double nomeUsuarioWidth = width >= 1200 ? 145 : 82;
+
     final userName = _getUserName();
 
     return Material(
@@ -719,20 +1288,13 @@ class _CabecalhoState extends State<Cabecalho> {
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: CoresApp.fundo,
-          border: const Border(
+          color: Colors.transparent,
+          border: Border(
             bottom: BorderSide(
-              color: CoresApp.bordaSuave,
+              color: Colors.white.withOpacity(0.07),
               width: 1,
             ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
-            ),
-          ],
         ),
         child: SafeArea(
           bottom: false,
@@ -744,11 +1306,11 @@ class _CabecalhoState extends State<Cabecalho> {
 
               Padding(
                 padding: EdgeInsets.only(
-                  left: isVeryCompact ? 10 : 16,
-                  right: isVeryCompact ? 8 : 14,
+                  left: isVeryCompact ? 8 : 12,
+                  right: isVeryCompact ? 6 : 10,
                 ),
                 child: SizedBox(
-                  width: isVeryCompact ? 108 : 132,
+                  width: logoWidth,
                   height: 54,
                   child: Image.asset(
                     'assets/images/Logo_H.png',
@@ -763,7 +1325,7 @@ class _CabecalhoState extends State<Cabecalho> {
                 color: CoresApp.bordaSuave,
               ),
 
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
 
               // ==================================================
               // NAVEGAÇÃO
@@ -772,6 +1334,11 @@ class _CabecalhoState extends State<Cabecalho> {
               if (isVeryCompact)
                 IconButton(
                   tooltip: 'Navegação',
+                  padding: const EdgeInsets.all(8),
+                  constraints: const BoxConstraints(
+                    minWidth: 42,
+                    minHeight: 42,
+                  ),
                   onPressed: _abrirMenuNavegacao,
                   icon: const Icon(
                     Icons.menu_rounded,
@@ -780,97 +1347,103 @@ class _CabecalhoState extends State<Cabecalho> {
                 )
               else
                 Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: _menuItems
-                          .map(
-                            (item) => _buildTopTabItem(
-                              item,
-                              isCompact,
-                            ),
-                          )
-                          .toList(),
+                  child: ClipRect(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: _menuItems
+                            .map(
+                              (item) => _buildTopTabItem(
+                                item,
+                                isCompact,
+                              ),
+                            )
+                            .toList(),
+                      ),
                     ),
                   ),
                 ),
 
-              if (!isVeryCompact) const SizedBox(width: 8),
+              if (!isVeryCompact) const SizedBox(width: 6),
 
               // ==================================================
               // BUSCA
               // ==================================================
 
               if (!isVeryCompact)
-                SizedBox(
-                  width: isCompact ? 145 : 185,
-                  height: 38,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      widget.onSearchChanged(value);
-                      setState(() {});
-                    },
-                    style: const TextStyle(
-                      color: CoresApp.textoPrincipal,
-                      fontSize: 12.5,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Pesquisar...',
-                      hintStyle: const TextStyle(
-                        color: CoresApp.textoFraco,
-                        fontSize: 12,
+                Flexible(
+                  flex: 0,
+                  child: SizedBox(
+                    width: searchWidth,
+                    height: 38,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        widget.onSearchChanged(value);
+                        setState(() {});
+                      },
+                      style: const TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 12.5,
                       ),
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        size: 19,
-                        color: CoresApp.textoSecundario,
-                      ),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              tooltip: 'Limpar',
-                              onPressed: () {
-                                _searchController.clear();
-                                widget.onSearchChanged('');
-                                setState(() {});
-                              },
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                size: 17,
-                                color: CoresApp.textoSecundario,
-                              ),
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: CoresApp.superficieEscura,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(11),
-                        borderSide: const BorderSide(
-                          color: CoresApp.bordaSuave,
+                      decoration: InputDecoration(
+                        hintText: 'Pesquisar...',
+                        hintStyle: const TextStyle(
+                          color: CoresApp.textoFraco,
+                          fontSize: 12,
                         ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(11),
-                        borderSide: const BorderSide(
-                          color: CoresApp.bordaSuave,
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 19,
+                          color: CoresApp.textoSecundario,
                         ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(11),
-                        borderSide: const BorderSide(
-                          color: CoresApp.primaria,
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                tooltip: 'Limpar',
+                                padding: EdgeInsets.zero,
+                                onPressed: () {
+                                  _searchController.clear();
+                                  widget.onSearchChanged('');
+                                  setState(() {});
+                                },
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 17,
+                                  color: CoresApp.textoSecundario,
+                                ),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: CoresApp.superficieEscura,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.bordaSuave,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                            color: CoresApp.primaria,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
 
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
 
               Container(
                 width: 1,
@@ -882,7 +1455,7 @@ class _CabecalhoState extends State<Cabecalho> {
               // PERFIL
               // ==================================================
 
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
 
               if (isVeryCompact)
                 InkWell(
@@ -919,8 +1492,8 @@ class _CabecalhoState extends State<Cabecalho> {
                   onTap: _abrirMenuUsuario,
                   child: Container(
                     height: 46,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompact ? 5 : 7,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
@@ -935,7 +1508,9 @@ class _CabecalhoState extends State<Cabecalho> {
                       children: [
                         Stack(
                           children: [
-                            _buildProfileAvatar(size: 36),
+                            _buildProfileAvatar(
+                              size: isCompact ? 34 : 36,
+                            ),
                             Positioned(
                               right: 0,
                               bottom: 0,
@@ -954,23 +1529,28 @@ class _CabecalhoState extends State<Cabecalho> {
                             ),
                           ],
                         ),
-                        const SizedBox(width: 9),
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: isCompact ? 105 : 145,
+                        if (mostrarNomeUsuario) ...[
+                          SizedBox(
+                            width: width >= 1200 ? 9 : 6,
                           ),
-                          child: Text(
-                            userName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: CoresApp.textoPrincipal,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: nomeUsuarioWidth,
+                              minWidth: 0,
+                            ),
+                            child: Text(
+                              userName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: CoresApp.textoPrincipal,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
+                          const SizedBox(width: 3),
+                        ],
                         const Icon(
                           Icons.keyboard_arrow_down_rounded,
                           color: CoresApp.textoSecundario,
@@ -981,7 +1561,7 @@ class _CabecalhoState extends State<Cabecalho> {
                   ),
                 ),
 
-              const SizedBox(width: 14),
+              const SizedBox(width: 10),
             ],
           ),
         ),

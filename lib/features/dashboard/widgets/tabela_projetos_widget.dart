@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core/firebase_core.dart' hide FirebaseService;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +19,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasteboard/pasteboard.dart';
 import 'dart:typed_data';
+import 'package:gerenciador_horas/data/services/edesk_service.dart';
 
 class HoraInputFormatter extends TextInputFormatter {
   @override
@@ -1141,6 +1142,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
     final linksScrollController = ScrollController();
 
+    bool atualizandoFasesEdesk = false;
+
     // ============================================================
     // ETAPAS TEMPORÁRIAS
     // ============================================================
@@ -1213,6 +1216,17 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // =============================================================
+            // CARREGA AS CONFIGURAÇÕES DO FIREBASE AO ABRIR O MODAL
+            // =============================================================
+            //
+            // As etiquetas padrão existem apenas como fallback para usuários
+            // que ainda não possuem configuração salva.
+            //
+            // Se já existe configuração no Firebase, ela passa a ser a
+            // fonte definitiva.
+            // =============================================================
+
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(
@@ -1423,25 +1437,30 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
                               const SizedBox(height: 12),
 
-                              // ========================================
-                              // OBSERVAÇÃO
-                              // ========================================
+// ========================================
+// OBSERVAÇÃO
+// ========================================
 
                               Align(
                                 alignment: Alignment.centerLeft,
-                                child: SizedBox(
-                                  width: 500,
-                                  child: TextField(
-                                    controller: observacaoController,
-                                    style: TextStyle(
-                                      color: CoresApp.textoPrincipal,
-                                      fontSize: 13,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 500,
+                                  ),
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: TextField(
+                                      controller: observacaoController,
+                                      style: TextStyle(
+                                        color: CoresApp.textoPrincipal,
+                                        fontSize: 13,
+                                      ),
+                                      decoration: _dialogInputDecoration(
+                                        label: 'Informações Úteis / Descritivo',
+                                        icon: Icons.description_rounded,
+                                      ),
+                                      maxLines: 2,
                                     ),
-                                    decoration: _dialogInputDecoration(
-                                      label: 'Informações Úteis / Descritivo',
-                                      icon: Icons.description_rounded,
-                                    ),
-                                    maxLines: 2,
                                   ),
                                 ),
                               ),
@@ -1464,34 +1483,139 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                       decoration: _dialogInputDecoration(
                                         label: 'Pasta de Documentos',
                                         icon: Icons.folder_rounded,
-                                        suffix: IconButton(
-                                          icon: Icon(
-                                            Icons.search_rounded,
-                                            color: CoresApp.destaque,
-                                            size: 18,
-                                          ),
-                                          tooltip: 'Selecionar Pasta',
-                                          onPressed: () async {
-                                            try {
-                                              final selectedDirectory =
-                                                  await FilePicker.platform
-                                                      .getDirectoryPath(
-                                                dialogTitle:
-                                                    'Selecione a Pasta do Projeto',
-                                              );
+                                        suffix: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: Icon(
+                                                Icons.create_new_folder_rounded,
+                                                color: CoresApp.destaque,
+                                                size: 19,
+                                              ),
+                                              tooltip: 'Criar Pasta do Projeto',
+                                              onPressed: () async {
+                                                try {
+                                                  final pastaBase =
+                                                      await FilePicker.platform
+                                                          .getDirectoryPath(
+                                                    dialogTitle:
+                                                        'Escolha onde criar a pasta do projeto',
+                                                  );
 
-                                              if (selectedDirectory != null) {
-                                                setDialogState(() {
-                                                  folderController.text =
-                                                      selectedDirectory;
-                                                });
-                                              }
-                                            } catch (e) {
-                                              debugPrint(
-                                                'Erro ao abrir seletor de pastas: $e',
-                                              );
-                                            }
-                                          },
+                                                  if (pastaBase == null) return;
+
+                                                  final idProjeto =
+                                                      idController.text.trim();
+                                                  final cliente =
+                                                      clientController.text
+                                                          .trim();
+
+                                                  if (idProjeto.isEmpty ||
+                                                      cliente.isEmpty) {
+                                                    if (dialogContext.mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                            'Informe o ID e o Cliente antes de criar a pasta.',
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                    return;
+                                                  }
+
+                                                  String limparNomePasta(
+                                                    String valor,
+                                                  ) {
+                                                    return valor
+                                                        .replaceAll(
+                                                          RegExp(
+                                                              r'[<>:"/\\|?*]'),
+                                                          '-',
+                                                        )
+                                                        .replaceAll(
+                                                          RegExp(r'\s+'),
+                                                          ' ',
+                                                        )
+                                                        .trim();
+                                                  }
+
+                                                  final nomePasta =
+                                                      limparNomePasta(
+                                                    '$idProjeto - $cliente',
+                                                  );
+                                                  final separador =
+                                                      Platform.pathSeparator;
+                                                  final caminhoPasta =
+                                                      '$pastaBase$separador$nomePasta';
+
+                                                  final pastaProjeto =
+                                                      Directory(caminhoPasta);
+                                                  if (!await pastaProjeto
+                                                      .exists()) {
+                                                    await pastaProjeto.create(
+                                                      recursive: true,
+                                                    );
+                                                  }
+
+                                                  if (!dialogContext.mounted)
+                                                    return;
+                                                  setDialogState(() {
+                                                    folderController.text =
+                                                        caminhoPasta;
+                                                  });
+                                                } catch (e) {
+                                                  debugPrint(
+                                                    'Erro ao criar pasta do projeto: $e',
+                                                  );
+                                                  if (dialogContext.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          'Não foi possível criar a pasta: $e',
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                            IconButton(
+                                              icon: Icon(
+                                                Icons.search_rounded,
+                                                color: CoresApp.destaque,
+                                                size: 18,
+                                              ),
+                                              tooltip: 'Selecionar Pasta',
+                                              onPressed: () async {
+                                                try {
+                                                  final selectedDirectory =
+                                                      await FilePicker.platform
+                                                          .getDirectoryPath(
+                                                    dialogTitle:
+                                                        'Selecione a Pasta do Projeto',
+                                                  );
+
+                                                  if (selectedDirectory !=
+                                                          null &&
+                                                      dialogContext.mounted) {
+                                                    setDialogState(() {
+                                                      folderController.text =
+                                                          selectedDirectory;
+                                                    });
+                                                  }
+                                                } catch (e) {
+                                                  debugPrint(
+                                                    'Erro ao abrir seletor de pastas: $e',
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
@@ -1549,36 +1673,346 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
                               const SizedBox(height: 20),
 
-                              // ========================================
-                              // TÍTULO ETAPAS + NOVA ETAPA
-                              // ========================================
+// ========================================
+// TÍTULO ETAPAS + AÇÕES
+// ========================================
 
                               Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Trabalhos Internos do Serviço',
-                                        style: TextStyle(
-                                          color: CoresApp.textoPrincipal,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Trabalhos Internos do Serviço',
+                                          style: TextStyle(
+                                            color: CoresApp.textoPrincipal,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Atualize as datas, nomes, horas e o tipo de hora de cada etapa.',
-                                        style: TextStyle(
-                                          color: CoresApp.textoSecundario,
-                                          fontSize: 11,
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Atualize as datas, nomes, horas e o tipo de hora de cada etapa.',
+                                          style: TextStyle(
+                                            color: CoresApp.textoSecundario,
+                                            fontSize: 11,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
+
+                                  const SizedBox(width: 12),
+
+                                  // ======================================
+// ATUALIZAR FASES E-DESK
+// ======================================
+
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: atualizandoFasesEdesk
+                                          ? Colors.blue.withOpacity(0.08)
+                                          : Colors.blue.withOpacity(0.12),
+                                      foregroundColor: Colors.blueAccent,
+                                      disabledForegroundColor:
+                                          Colors.blueAccent.withOpacity(0.75),
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        side: BorderSide(
+                                          color: Colors.blueAccent.withOpacity(
+                                            atualizandoFasesEdesk ? 0.25 : 0.45,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                    // ============================================================
+                                    // BOTÃO DESABILITADO ENQUANTO A AUTOMAÇÃO ESTÁ EXECUTANDO
+                                    // ============================================================
+
+                                    onPressed: atualizandoFasesEdesk
+                                        ? null
+                                        : () async {
+                                            // ============================================
+                                            // VALIDAÇÕES
+                                            // ============================================
+
+                                            final id = idController.text.trim();
+                                            final cliente =
+                                                clientController.text.trim();
+
+                                            if (id.isEmpty) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: const Text(
+                                                    'Informe o ID da solicitação antes de atualizar o E-Desk.',
+                                                  ),
+                                                  backgroundColor:
+                                                      CoresApp.erro,
+                                                ),
+                                              );
+                                              return;
+                                            }
+
+                                            if (cliente.isEmpty) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: const Text(
+                                                    'Informe o cliente antes de atualizar o E-Desk.',
+                                                  ),
+                                                  backgroundColor:
+                                                      CoresApp.erro,
+                                                ),
+                                              );
+                                              return;
+                                            }
+
+                                            if (tempSubTasks.isEmpty) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: const Text(
+                                                    'Este projeto não possui etapas para enviar ao E-Desk.',
+                                                  ),
+                                                  backgroundColor:
+                                                      CoresApp.erro,
+                                                ),
+                                              );
+                                              return;
+                                            }
+
+                                            // ============================================
+                                            // MONTA AS FASES
+                                            // ============================================
+
+                                            final List<Map<String, String>>
+                                                fases = [];
+
+                                            for (final sub in tempSubTasks) {
+                                              final nome = sub.stage.trim();
+
+                                              if (nome.isEmpty) {
+                                                continue;
+                                              }
+
+                                              fases.add({
+                                                'nome': nome,
+                                                'dataInicial': _formatDate(
+                                                  sub.startDate,
+                                                ),
+                                                'dataFinal': sub.planEnd != null
+                                                    ? _formatDate(
+                                                        sub.planEnd!,
+                                                      )
+                                                    : '',
+                                              });
+                                            }
+
+                                            if (fases.isEmpty) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: const Text(
+                                                    'Nenhuma fase válida foi encontrada.',
+                                                  ),
+                                                  backgroundColor:
+                                                      CoresApp.erro,
+                                                ),
+                                              );
+                                              return;
+                                            }
+
+                                            // ============================================
+                                            // LOG
+                                            // ============================================
+
+                                            debugPrint('');
+                                            debugPrint(
+                                              '========== ATUALIZAÇÃO FASES E-DESK ==========',
+                                            );
+                                            debugPrint(
+                                              '[E-DESK] Solicitação: $id',
+                                            );
+                                            debugPrint(
+                                              '[E-DESK] Cliente: $cliente',
+                                            );
+                                            debugPrint(
+                                              '[E-DESK] Quantidade de fases: ${fases.length}',
+                                            );
+
+                                            for (final fase in fases) {
+                                              debugPrint(
+                                                '[E-DESK] '
+                                                '${fase['nome']} | '
+                                                'Inicial=${fase['dataInicial']} | '
+                                                'Final=${fase['dataFinal']}',
+                                              );
+                                            }
+
+                                            debugPrint(
+                                              '================================================',
+                                            );
+
+                                            // ============================================
+                                            // MOSTRA O SPINNER IMEDIATAMENTE
+                                            // ============================================
+
+                                            setDialogState(() {
+                                              atualizandoFasesEdesk = true;
+                                            });
+
+                                            try {
+                                              final resultado =
+                                                  await EdeskService()
+                                                      .atualizarFasesViaPython(
+                                                id: id,
+                                                cliente: cliente,
+                                                fases: fases,
+
+                                                // ==================================================
+                                                // QUANDO O PYTHON REALMENTE TERMINAR
+                                                // ==================================================
+
+                                                onConcluido:
+                                                    (sucesso, mensagem) {
+                                                  if (!dialogContext.mounted) {
+                                                    return;
+                                                  }
+
+                                                  setDialogState(() {
+                                                    atualizandoFasesEdesk =
+                                                        false;
+                                                  });
+
+                                                  ScaffoldMessenger.of(
+                                                          dialogContext)
+                                                      .showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        mensagem,
+                                                      ),
+                                                      backgroundColor: sucesso
+                                                          ? CoresApp.sucesso
+                                                          : CoresApp.erro,
+                                                      duration: const Duration(
+                                                        seconds: 5,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              );
+
+                                              debugPrint(
+                                                '[E-DESK] Resultado inicial: '
+                                                'confirmed=${resultado.confirmed} | '
+                                                'status=${resultado.statusCode} | '
+                                                'message=${resultado.message}',
+                                              );
+
+                                              // ==================================================
+                                              // ERRO AO INICIAR O PROCESSO
+                                              //
+                                              // Se o Python nem chegou a iniciar, o callback acima
+                                              // não será chamado.
+                                              // ==================================================
+
+                                              if (!resultado.confirmed) {
+                                                if (!dialogContext.mounted) {
+                                                  return;
+                                                }
+
+                                                setDialogState(() {
+                                                  atualizandoFasesEdesk = false;
+                                                });
+
+                                                ScaffoldMessenger.of(
+                                                        dialogContext)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      resultado.message,
+                                                    ),
+                                                    backgroundColor:
+                                                        CoresApp.erro,
+                                                    duration: const Duration(
+                                                      seconds: 5,
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              debugPrint(
+                                                '[E-DESK] Erro ao atualizar fases: $e',
+                                              );
+
+                                              if (!dialogContext.mounted) {
+                                                return;
+                                              }
+
+                                              setDialogState(() {
+                                                atualizandoFasesEdesk = false;
+                                              });
+
+                                              ScaffoldMessenger.of(
+                                                      dialogContext)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Erro ao atualizar fases no E-Desk: $e',
+                                                  ),
+                                                  backgroundColor:
+                                                      CoresApp.erro,
+                                                  duration: const Duration(
+                                                    seconds: 5,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+
+                                    // ============================================================
+                                    // ÍCONE
+                                    // ============================================================
+
+                                    icon: atualizandoFasesEdesk
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.blueAccent,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.sync_rounded,
+                                            size: 18,
+                                          ),
+
+                                    // ============================================================
+                                    // TEXTO
+                                    // ============================================================
+
+                                    label: Text(
+                                      atualizandoFasesEdesk
+                                          ? 'Atualizando...'
+                                          : 'Atualizar Fases E-Desk',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
 
                                   // ======================================
                                   // NOVA ETAPA
@@ -1660,7 +2094,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                           novaEtapa,
                                         );
 
-                                        subHoursControllers.add(ctrl);
+                                        subHoursControllers.add(
+                                          ctrl,
+                                        );
 
                                         estimatedHoursController.text =
                                             _calculateTotalEstimatedHours(
@@ -1671,7 +2107,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                   ),
                                 ],
                               ),
-
                               const SizedBox(height: 10),
 
                               // ========================================
@@ -3466,12 +3901,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
               color: CoresApp.destaque,
               size: TamanhosApp.iconeAcao,
             ),
-            tooltip: 'CHECKLIST',
+            tooltip: 'Checklist',
             onPressed: () => _showCheckListDialog(project),
           ),
+
           //////////////////////////////////////////////
-          /// USAR BOTÃO PARA E-desk, caso seja necessário enviar comentário para o E-desk
+          /// Enviar comentário para o E-desk
           /// ///////////////////////////////////////////
+
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: 'Enviar Comentário E-desk',
@@ -3832,12 +4269,29 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
   }
 
 ///////////////////////////////////////////////
-  /// Modal para enviar comentário para o E-Desk
-///////////////////////////////////////////////
+  /// Modal para enviar comentário para o E-Desk (Móvel e Redimensionável com Barra de Formatação)
+  ///////////////////////////////////////////////
 
   void _showComentarioEdeskDialog(ProjectModel project) {
     final comentarioController = TextEditingController();
     final ImagePicker imagePicker = ImagePicker();
+
+    // ===============================================================
+    // CONTROLE DO EDITOR DE COMENTÁRIO
+    // ===============================================================
+
+    final comentarioFocusNode = FocusNode();
+
+    // ===============================================================
+    // CONTROLE DE POSIÇÃO E TAMANHO (MOVER E REDIMENSIONAR O MODAL)
+    // ===============================================================
+    Offset offsetModal = Offset.zero;
+    double? larguraCustomizada;
+    double? alturaCustomizada;
+
+    // ===============================================================
+    // CONTROLE DO FORMULÁRIO DE COMENTÁRIO
+    // ===============================================================
 
     bool salvando = false;
     bool excluindo = false;
@@ -3845,15 +4299,451 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     String? comentarioSelecionadoId;
     String? imagemBase64;
 
+    // Todas as imagens que serão enviadas no mesmo comentário.
+    final List<String> imagensBase64 = <String>[];
+
+    // Blocos já confirmados no editor, preservando a ordem real
+    // Texto -> imagem -> texto -> imagem...
+    final List<Map<String, String>> blocosComentario = <Map<String, String>>[];
+
+    // Formatação do bloco de texto atualmente em edição.
+    String fonteComentario = 'Segoe UI';
+    double tamanhoFonteComentario = 11;
+    bool negritoComentario = false;
+    bool italicoComentario = false;
+    bool sublinhadoComentario = false;
+    bool tachadoComentario = false;
+    TextAlign alinhamentoComentario = TextAlign.left;
+    Color corFonteComentario = CoresApp.textoPrincipal;
+
+    Map<String, String> criarBlocoTexto(String texto) => {
+          'tipo': 'texto',
+          'valor': texto,
+          'fonte': fonteComentario,
+          'tamanho': tamanhoFonteComentario.toString(),
+          'negrito': negritoComentario.toString(),
+          'italico': italicoComentario.toString(),
+          'sublinhado': sublinhadoComentario.toString(),
+          'tachado': tachadoComentario.toString(),
+          'alinhamento': alinhamentoComentario.name,
+          'cor': corFonteComentario.value.toRadixString(16).padLeft(8, '0'),
+        };
+
+    TextAlign alinhamentoDoBloco(Map<String, String> bloco) {
+      switch (bloco['alinhamento']) {
+        case 'center':
+          return TextAlign.center;
+        case 'right':
+          return TextAlign.right;
+        case 'justify':
+          return TextAlign.justify;
+        default:
+          return TextAlign.left;
+      }
+    }
+
+    Color corDoBloco(Map<String, String> bloco) {
+      final valor = bloco['cor'];
+      if (valor == null || valor.isEmpty) return CoresApp.textoPrincipal;
+      final parsed = int.tryParse(valor, radix: 16);
+      return parsed == null ? CoresApp.textoPrincipal : Color(parsed);
+    }
+
+    TextStyle estiloDoBloco(Map<String, String> bloco) {
+      return TextStyle(
+        color: corDoBloco(bloco),
+        fontSize: double.tryParse(bloco['tamanho'] ?? '') ?? 11,
+        fontFamily: bloco['fonte'] ?? 'Segoe UI',
+        fontWeight:
+            bloco['negrito'] == 'true' ? FontWeight.bold : FontWeight.normal,
+        fontStyle:
+            bloco['italico'] == 'true' ? FontStyle.italic : FontStyle.normal,
+        decoration: TextDecoration.combine([
+          if (bloco['sublinhado'] == 'true') TextDecoration.underline,
+          if (bloco['tachado'] == 'true') TextDecoration.lineThrough,
+        ]),
+      );
+    }
+
+    List<Map<String, String>> blocosParaPersistir() {
+      final resultado =
+          blocosComentario.map((e) => Map<String, String>.from(e)).toList();
+      final textoAtual = comentarioController.text;
+      if (textoAtual.trim().isNotEmpty) {
+        resultado.add(criarBlocoTexto(textoAtual));
+      }
+      return resultado;
+    }
+
+    void adicionarImagemAoEditor(String base64Imagem) {
+      final textoAtual = comentarioController.text;
+      if (textoAtual.trim().isNotEmpty) {
+        blocosComentario.add(criarBlocoTexto(textoAtual));
+      }
+      blocosComentario.add({'tipo': 'imagem', 'valor': base64Imagem});
+      comentarioController.clear();
+      imagensBase64.add(base64Imagem);
+      imagemBase64 = base64Imagem;
+    }
+
+    String montarTextoOrdenado() {
+      final buffer = StringBuffer();
+      var indiceImagem = 0;
+      for (final bloco in blocosComentario) {
+        if (bloco['tipo'] == 'texto') {
+          final valor = bloco['valor'] ?? '';
+          if (valor.isNotEmpty) {
+            buffer.write(valor);
+            if (!valor.endsWith('\n')) buffer.write('\n');
+          }
+        } else if (bloco['tipo'] == 'imagem') {
+          buffer.writeln('[[EDESK_IMAGE_$indiceImagem]]');
+          indiceImagem++;
+        }
+      }
+      final textoFinal = comentarioController.text;
+      if (textoFinal.isNotEmpty) buffer.write(textoFinal);
+      return buffer.toString().trim();
+    }
+
+    // Texto utilizado para filtrar o histórico da lateral direita.
+    String buscaHistorico = '';
+
     // ===============================================================
     // EXCEL DO PROJETO
     // ===============================================================
 
     String? imagemExcelBase64;
+
+    // Mantém todas as tabelas do Excel adicionadas ao comentário.
+    final List<String> imagensExcelBase64 = <String>[];
+    final List<String> intervalosExcelAdicionados = <String>[];
+
     bool carregandoExcel = false;
     String? erroExcel;
 
+    // ===============================================================
+    // TIPO DO COMENTÁRIO
+    // ===============================================================
+
     String tipoComentario = 'Interno';
+
+// ===============================================================
+// CONFIGURAÇÕES DOS COMENTÁRIOS E-DESK
+// Etiquetas + campos/faixas do Excel
+// ===============================================================
+
+    String etiquetaSelecionada = 'Enterprise';
+
+// Campo do Excel escolhido no botão "Usar imagem do Excel".
+    String? campoExcelSelecionado;
+
+// Configuração carregada do Firebase.
+//
+// Estrutura:
+//
+// {
+//   'Enterprise': [
+//     {
+//       'nome': 'Capa do projeto',
+//       'intervalo': 'A1:D20',
+//     },
+//   ],
+// }
+    Map<String, List<Map<String, String>>> camposExcelPorEtiqueta = {
+      'Enterprise': [
+        {
+          'nome': 'Capa do projeto',
+          'intervalo': 'A1:D20',
+        },
+        {
+          'nome': 'Cronograma',
+          'intervalo': 'A22:H60',
+        },
+        {
+          'nome': 'Recursos',
+          'intervalo': 'A62:F90',
+        },
+      ],
+      'Professional': [],
+      'Catalog': [],
+      'Consultoria': [],
+    };
+
+// Lista exibida no dropdown "ETIQUETAS DO CHAMADO".
+    List<String> etiquetasComentario = [
+      'Enterprise',
+      'Professional',
+      'Catalog',
+      'Consultoria',
+    ];
+
+    bool carregandoConfiguracoesEdesk = false;
+    bool configuracoesEdeskCarregadas = false;
+
+// ===============================================================
+// REFERÊNCIA DA CONFIGURAÇÃO NO FIREBASE
+// ===============================================================
+
+    DocumentReference<Map<String, dynamic>> configuracaoComentariosEdeskRef() {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        throw Exception('Usuário não autenticado.');
+      }
+
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('configuracoes')
+          .doc('comentarios_edesk');
+    }
+
+// ===============================================================
+// CARREGAR CONFIGURAÇÕES DO FIREBASE
+// ===============================================================
+
+    Future<void> carregarConfiguracoesComentariosEdesk(
+      BuildContext dialogContext,
+      StateSetter setDialogState,
+    ) async {
+      if (carregandoConfiguracoesEdesk) return;
+
+      setDialogState(() {
+        carregandoConfiguracoesEdesk = true;
+      });
+
+      try {
+        final snapshot = await configuracaoComentariosEdeskRef().get();
+
+        if (!dialogContext.mounted) return;
+
+        // -------------------------------------------------------------
+        // Ainda não existe configuração salva.
+        // Mantemos os valores padrão definidos acima.
+        // -------------------------------------------------------------
+
+        if (!snapshot.exists) {
+          configuracoesEdeskCarregadas = true;
+
+          if (etiquetasComentario.isNotEmpty &&
+              !etiquetasComentario.contains(etiquetaSelecionada)) {
+            etiquetaSelecionada = etiquetasComentario.first;
+          }
+
+          return;
+        }
+
+        final dados = snapshot.data();
+
+        if (dados == null) {
+          configuracoesEdeskCarregadas = true;
+          return;
+        }
+
+        // -------------------------------------------------------------
+        // CARREGA ETIQUETAS
+        // -------------------------------------------------------------
+
+        final etiquetasFirebase = dados['etiquetas'];
+
+        final novasEtiquetas = <String>[];
+
+        if (etiquetasFirebase is List) {
+          for (final item in etiquetasFirebase) {
+            final nome = item.toString().trim();
+
+            if (nome.isNotEmpty && !novasEtiquetas.contains(nome)) {
+              novasEtiquetas.add(nome);
+            }
+          }
+        }
+
+        // -------------------------------------------------------------
+        // CARREGA CAMPOS DO EXCEL
+        // -------------------------------------------------------------
+
+        final novosCampos = <String, List<Map<String, String>>>{};
+
+        final camposFirebase = dados['camposExcel'];
+
+        if (camposFirebase is Map) {
+          for (final entry in camposFirebase.entries) {
+            final etiqueta = entry.key.toString().trim();
+
+            if (etiqueta.isEmpty) continue;
+
+            final listaCampos = <Map<String, String>>[];
+
+            final valor = entry.value;
+
+            if (valor is List) {
+              for (final campo in valor) {
+                if (campo is Map) {
+                  final nome = campo['nome']?.toString().trim() ?? '';
+                  final intervalo =
+                      campo['intervalo']?.toString().trim().toUpperCase() ?? '';
+
+                  if (nome.isNotEmpty || intervalo.isNotEmpty) {
+                    listaCampos.add({
+                      'nome': nome,
+                      'intervalo': intervalo,
+                    });
+                  }
+                }
+              }
+            }
+
+            novosCampos[etiqueta] = listaCampos;
+          }
+        }
+
+        // -------------------------------------------------------------
+        // ATUALIZA O MODAL PRINCIPAL
+        // -------------------------------------------------------------
+
+        setDialogState(() {
+          // O Firebase é a fonte definitiva da configuração.
+// Inclusive uma lista vazia precisa ser respeitada.
+          etiquetasComentario = List<String>.from(novasEtiquetas);
+
+          camposExcelPorEtiqueta = {
+            for (final etiqueta in etiquetasComentario)
+              etiqueta: List<Map<String, String>>.from(
+                novosCampos[etiqueta] ?? const [],
+              ),
+          };
+
+          if (!etiquetasComentario.contains(etiquetaSelecionada)) {
+            etiquetaSelecionada =
+                etiquetasComentario.isNotEmpty ? etiquetasComentario.first : '';
+          }
+
+          campoExcelSelecionado = null;
+          configuracoesEdeskCarregadas = true;
+        });
+      } catch (e) {
+        debugPrint(
+          'Erro ao carregar configurações dos comentários E-Desk: $e',
+        );
+
+        // Se ocorrer erro no Firebase, mantemos a configuração local
+        // para não impedir a abertura do modal.
+        configuracoesEdeskCarregadas = true;
+      } finally {
+        setDialogState(() {
+          carregandoConfiguracoesEdesk = false;
+        });
+      }
+    }
+
+// ===============================================================
+// SALVAR CONFIGURAÇÕES NO FIREBASE
+// ===============================================================
+
+    Future<void> salvarConfiguracoesComentariosEdesk({
+      required List<String> etiquetas,
+      required Map<String, List<Map<String, String>>> campos,
+    }) async {
+      final etiquetasLimpas = etiquetas
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+
+      final camposFirebase = <String, dynamic>{};
+
+      for (final etiqueta in etiquetasLimpas) {
+        final lista = campos[etiqueta] ?? const [];
+
+        camposFirebase[etiqueta] = lista
+            .map(
+              (campo) => {
+                'nome': campo['nome']?.trim() ?? '',
+                'intervalo': campo['intervalo']?.trim().toUpperCase() ?? '',
+              },
+            )
+            .where(
+              (campo) =>
+                  campo['nome']!.isNotEmpty || campo['intervalo']!.isNotEmpty,
+            )
+            .toList();
+      }
+
+// Substitui completamente a configuração.
+// Assim, etiquetas e campos excluídos também são removidos do Firebase.
+      await configuracaoComentariosEdeskRef().set(
+        {
+          'etiquetas': etiquetasLimpas,
+          'camposExcel': camposFirebase,
+          'atualizadoEm': FieldValue.serverTimestamp(),
+        },
+      );
+    }
+
+// ===============================================================
+// ETIQUETA E-DESK DO PROJETO
+// ===============================================================
+
+    DocumentReference<Map<String, dynamic>> projetoEdeskRef() {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Usuário não autenticado.');
+      }
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('projects')
+          .doc(project.id.trim());
+    }
+
+    Future<void> carregarEtiquetaProjeto(
+      BuildContext dialogContext,
+      StateSetter setDialogState,
+    ) async {
+      try {
+        final snapshot = await projetoEdeskRef().get();
+        if (!dialogContext.mounted) return;
+
+        final etiquetaSalva =
+            snapshot.data()?['etiquetaComentarioEdesk']?.toString().trim() ??
+                '';
+
+        if (etiquetaSalva.isNotEmpty &&
+            etiquetasComentario.contains(etiquetaSalva)) {
+          setDialogState(() {
+            etiquetaSelecionada = etiquetaSalva;
+            campoExcelSelecionado = null;
+            imagemExcelBase64 = null;
+          });
+        }
+      } catch (e) {
+        debugPrint('Erro ao carregar etiqueta E-Desk do projeto: $e');
+      }
+    }
+
+    Future<void> salvarEtiquetaProjeto(String etiqueta) async {
+      final valor = etiqueta.trim();
+      if (valor.isEmpty) return;
+
+      await projetoEdeskRef().set(
+        {
+          'etiquetaComentarioEdesk': valor,
+          'etiquetaComentarioEdeskAtualizadaEm': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    }
+
+// ===============================================================
+// CAMPOS DO EXCEL DA ETIQUETA ATUAL
+// ===============================================================
+
+    List<Map<String, String>> camposExcelEtiquetaAtual() {
+      return camposExcelPorEtiqueta[etiquetaSelecionada] ?? const [];
+    }
+    // ===============================================================
+    // CONTROLE E-DESK
+    // ===============================================================
 
     bool testandoEdesk = false;
     bool enviandoEdesk = false;
@@ -3914,7 +4804,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         final bytes = await arquivo.readAsBytes();
 
         setDialogState(() {
-          imagemBase64 = base64Encode(bytes);
+          final novaImagem = base64Encode(bytes);
+          adicionarImagemAoEditor(novaImagem);
         });
       } catch (e) {
         if (!dialogContext.mounted) return;
@@ -3929,47 +4820,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     }
 
     // ===============================================================
-    // COLAR IMAGEM
-    // ===============================================================
-
-    Future<void> colarImagem(
-      BuildContext dialogContext,
-      StateSetter setDialogState,
-    ) async {
-      try {
-        final imageBytes = await Pasteboard.image;
-
-        if (imageBytes == null || imageBytes.isEmpty) {
-          if (!dialogContext.mounted) return;
-
-          ScaffoldMessenger.of(dialogContext).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Nenhuma imagem encontrada na área de transferência.',
-              ),
-              backgroundColor: CoresApp.erro,
-            ),
-          );
-
-          return;
-        }
-
-        setDialogState(() {
-          imagemBase64 = base64Encode(imageBytes);
-        });
-      } catch (e) {
-        if (!dialogContext.mounted) return;
-
-        ScaffoldMessenger.of(dialogContext).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao colar imagem: $e'),
-            backgroundColor: CoresApp.erro,
-          ),
-        );
-      }
-    }
-
-    // ===============================================================
     // LIMPAR FORMULÁRIO
     // ===============================================================
 
@@ -3977,14 +4827,17 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       StateSetter setDialogState,
     ) {
       comentarioController.clear();
+      comentarioFocusNode.unfocus();
 
       setDialogState(() {
         comentarioSelecionadoId = null;
-
-        // Mantém o Excel disponível.
-        // A imagem do Excel continua sendo a imagem padrão.
-        imagemBase64 = imagemExcelBase64;
-
+        imagensBase64.clear();
+        blocosComentario.clear();
+        imagensExcelBase64.clear();
+        intervalosExcelAdicionados.clear();
+        imagemBase64 = null;
+        imagemExcelBase64 = null;
+        campoExcelSelecionado = null;
         tipoComentario = 'Interno';
       });
     }
@@ -4063,26 +4916,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
       try {
         final ref = comentariosRef();
-
-        debugPrint(
-          '[Firebase] Excluindo comentário:',
-        );
-
-        debugPrint(
-          '[Firebase] Caminho: ${ref.doc(comentarioId).path}',
-        );
-
         await ref.doc(comentarioId).delete();
 
         if (comentarioSelecionadoId == comentarioId) {
           comentarioController.clear();
+          comentarioFocusNode.unfocus();
 
           setDialogState(() {
             comentarioSelecionadoId = null;
-
-            // Ao excluir, volta para o Excel.
             imagemBase64 = imagemExcelBase64;
-
             tipoComentario = 'Interno';
           });
         }
@@ -4124,33 +4966,39 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 // ===============================================================
 
     Future<void> carregarExcelProjeto(
+      BuildContext dialogContext,
       StateSetter setDialogState,
     ) async {
-      final caminho = project.excelLink?.trim();
+      // =============================================================
+      // VALIDAÇÕES
+      // =============================================================
 
-      // ---------------------------------------------------------------
-      // SEM EXCEL CONFIGURADO
-      // ---------------------------------------------------------------
+      final caminho = project.excelLink?.trim() ?? '';
 
-      if (caminho == null || caminho.isEmpty) {
+      if (caminho.isEmpty) {
         setDialogState(() {
-          imagemExcelBase64 = null;
-          erroExcel = 'Nenhum Excel configurado para este projeto.';
+          erroExcel = 'Nenhum arquivo Excel vinculado a este projeto.';
           carregandoExcel = false;
         });
 
         return;
       }
 
-      // ---------------------------------------------------------------
-      // ARQUIVO NÃO EXISTE
-      // ---------------------------------------------------------------
+      final intervalo = campoExcelSelecionado?.trim().toUpperCase() ?? '';
+
+      if (intervalo.isEmpty) {
+        setDialogState(() {
+          erroExcel = 'Selecione uma área do Excel para utilizar.';
+          carregandoExcel = false;
+        });
+
+        return;
+      }
 
       final arquivo = File(caminho);
 
-      if (!arquivo.existsSync()) {
+      if (!await arquivo.exists()) {
         setDialogState(() {
-          imagemExcelBase64 = null;
           erroExcel = 'Arquivo Excel não encontrado:\n$caminho';
           carregandoExcel = false;
         });
@@ -4167,57 +5015,100 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
       try {
         // =============================================================
-        // CAMINHOS
+        // PYTHON
+        //
+        // IMPORTANTE:
+        // O openpyxl foi confirmado neste Python 3.14.
+        // Não usamos mais a .venv antiga para o Excel Preview.
         // =============================================================
 
-        final pythonExe = Platform.isWindows
-            ? r'D:\APP\gerenciador_horas\.venv\Scripts\python.exe'
-            : 'python';
+        final localAppData = Platform.environment['LOCALAPPDATA'];
 
-        final script = Platform.isWindows
-            ? r'D:\APP\gerenciador_horas\edesk_bot\excel_preview.py'
-            : 'edesk_bot/excel_preview.py';
+        if (localAppData == null || localAppData.trim().isEmpty) {
+          throw Exception(
+            'Não foi possível localizar LOCALAPPDATA do Windows.',
+          );
+        }
+
+        final pythonExe =
+            '$localAppData\\Python\\pythoncore-3.14-64\\python.exe';
+
+        const scriptExcel =
+            r'D:\APP\gerenciador_horas\edesk_bot\excel_preview.py';
+
+        final pythonFile = File(pythonExe);
+        final scriptFile = File(scriptExcel);
+
+        // =============================================================
+        // CONFERE OS ARQUIVOS
+        // =============================================================
+
+        if (!await pythonFile.exists()) {
+          throw Exception(
+            'Python 3.14 não encontrado:\n$pythonExe',
+          );
+        }
+
+        if (!await scriptFile.exists()) {
+          throw Exception(
+            'Script excel_preview.py não encontrado:\n$scriptExcel',
+          );
+        }
 
         debugPrint('');
         debugPrint('==============================================');
-        debugPrint('[ExcelPreview] INICIANDO');
+        debugPrint('[ExcelPreview] INICIANDO PREVIEW');
         debugPrint('==============================================');
         debugPrint('[ExcelPreview] Python: $pythonExe');
-        debugPrint('[ExcelPreview] Script: $script');
+        debugPrint('[ExcelPreview] Script: $scriptExcel');
         debugPrint('[ExcelPreview] Excel: $caminho');
+        debugPrint('[ExcelPreview] Intervalo: $intervalo');
 
         // =============================================================
-        // INICIA PYTHON
+        // INICIA O PYTHON
         // =============================================================
 
         processo = await Process.start(
           pythonExe,
-          [script],
+          [
+            '-u',
+            scriptExcel,
+          ],
           runInShell: false,
         );
 
         debugPrint(
-          '[ExcelPreview] Processo iniciado: ${processo.pid}',
+          '[ExcelPreview] Processo iniciado. PID: ${processo.pid}',
         );
 
         // =============================================================
         // STDERR
-        //
-        // NÃO usamos join(), pois o Python permanece aberto.
-        // Apenas acumulamos os logs enquanto o processo estiver ativo.
         // =============================================================
 
         final stderrBuffer = StringBuffer();
 
         processo.stderr
             .transform(
-          const Utf8Decoder(
-            allowMalformed: true,
-          ),
-        )
+              const Utf8Decoder(
+                allowMalformed: true,
+              ),
+            )
+            .transform(
+              const LineSplitter(),
+            )
             .listen(
-          (dados) {
-            stderrBuffer.write(dados);
+          (linha) {
+            final texto = linha.trim();
+
+            if (texto.isEmpty) {
+              return;
+            }
+
+            stderrBuffer.writeln(texto);
+
+            debugPrint(
+              '[excel_preview.py] $texto',
+            );
           },
           onError: (erro) {
             debugPrint(
@@ -4227,10 +5118,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         );
 
         // =============================================================
-        // STDOUT
-        //
-        // O Python envia uma linha JSON quando termina o comando OPEN.
-        // Não esperamos o processo terminar.
+        // PREPARA A RESPOSTA
         // =============================================================
 
         final respostaCompleter = Completer<Map<String, dynamic>>();
@@ -4246,182 +5134,192 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             )
             .listen(
           (linha) {
-            final linhaLimpa = linha.trim();
+            final texto = linha.trim();
 
-            if (linhaLimpa.isEmpty) {
+            if (texto.isEmpty) {
               return;
             }
 
             debugPrint(
-              '[ExcelPreview] STDOUT: $linhaLimpa',
+              '[excel_preview.py stdout] $texto',
             );
 
             try {
-              final json = jsonDecode(linhaLimpa);
+              final decoded = jsonDecode(texto);
 
-              if (json is Map<String, dynamic> &&
-                  !respostaCompleter.isCompleted) {
-                respostaCompleter.complete(json);
+              if (decoded is Map) {
+                final resposta = Map<String, dynamic>.from(decoded);
+
+                if (!respostaCompleter.isCompleted) {
+                  respostaCompleter.complete(resposta);
+                }
               }
             } catch (_) {
-              // Ignora qualquer linha que não seja JSON.
+              // Ignora qualquer saída que não seja JSON.
             }
           },
           onError: (erro) {
             if (!respostaCompleter.isCompleted) {
-              respostaCompleter.completeError(erro);
+              respostaCompleter.completeError(
+                Exception(
+                  'Erro ao ler resposta do excel_preview.py: $erro',
+                ),
+              );
+            }
+          },
+          onDone: () {
+            if (!respostaCompleter.isCompleted) {
+              final erroPython = stderrBuffer.toString().trim();
+
+              if (erroPython.isNotEmpty) {
+                respostaCompleter.completeError(
+                  Exception(
+                    'excel_preview.py foi encerrado sem retornar '
+                    'uma resposta válida.\n\n$erroPython',
+                  ),
+                );
+              } else {
+                respostaCompleter.completeError(
+                  Exception(
+                    'excel_preview.py foi encerrado sem retornar '
+                    'uma resposta válida.',
+                  ),
+                );
+              }
             }
           },
         );
 
         // =============================================================
-        // ENVIA COMANDO OPEN
+        // ENVIA COMANDO PARA O PYTHON
         // =============================================================
 
         final comando = jsonEncode({
           'acao': 'open',
           'path': caminho,
+          'intervalo': intervalo,
         });
 
         debugPrint(
-          '[ExcelPreview] Enviando comando:',
+          'Excel preview -> arquivo: $caminho',
         );
 
         debugPrint(
-          comando,
+          'Excel preview -> intervalo: $intervalo',
         );
 
         processo.stdin.writeln(comando);
 
         await processo.stdin.flush();
 
-        debugPrint(
-          '[ExcelPreview] Comando enviado.',
-        );
-
         // =============================================================
-        // AGUARDA SOMENTE A RESPOSTA DO OPEN
-        //
-        // IMPORTANTE:
-        // O processo Python NÃO precisa terminar aqui.
-        // Ele fica aberto, mas já entregou a imagem.
+        // AGUARDA A RESPOSTA
         // =============================================================
 
         final resposta = await respostaCompleter.future.timeout(
-          const Duration(seconds: 60),
+          const Duration(
+            seconds: 30,
+          ),
+          onTimeout: () {
+            throw TimeoutException(
+              'O excel_preview.py não respondeu em 30 segundos.',
+            );
+          },
         );
 
-        debugPrint('');
-        debugPrint(
-          '[ExcelPreview] Resposta recebida.',
-        );
-
-        if (stderrBuffer.isNotEmpty) {
-          debugPrint('');
-          debugPrint(
-            '[ExcelPreview] STDERR:',
-          );
-          debugPrint(
-            stderrBuffer.toString(),
-          );
-        }
+        if (!dialogContext.mounted) return;
 
         // =============================================================
-        // VALIDA RESPOSTA
+        // VALIDA RETORNO
         // =============================================================
 
         if (resposta['ok'] != true) {
+          final mensagem = resposta['erro']?.toString().trim() ??
+              resposta['message']?.toString().trim() ??
+              'Erro desconhecido ao gerar a imagem do Excel.';
+
+          throw Exception(mensagem);
+        }
+
+        // =============================================================
+        // RECEBE BASE64
+        // =============================================================
+
+        final base64Recebido =
+            resposta['imagemBase64']?.toString().trim() ?? '';
+
+        if (base64Recebido.isEmpty) {
           throw Exception(
-            resposta['erro']?.toString() ??
-                'Erro desconhecido ao carregar o Excel.',
+            'O excel_preview.py não retornou a imagem '
+            'do intervalo $intervalo.',
           );
         }
 
         // =============================================================
-        // PEGA IMAGEM
-        // =============================================================
-
-        final base64 = resposta['imagemBase64']?.toString();
-
-        if (base64 == null || base64.isEmpty) {
-          throw Exception(
-            'O Excel não retornou a imagem.',
-          );
-        }
-
-        debugPrint(
-          '[ExcelPreview] Imagem recebida: '
-          '${base64.length} caracteres.',
-        );
-
-        debugPrint(
-          '[ExcelPreview] Sheet: ${resposta['sheet']}',
-        );
-
-        debugPrint(
-          '[ExcelPreview] Range: ${resposta['range']}',
-        );
-
-        // =============================================================
-        // COLOCA A IMAGEM DO EXCEL COMO IMAGEM DO COMENTÁRIO
+        // ATUALIZA O MODAL
         // =============================================================
 
         setDialogState(() {
-          imagemExcelBase64 = base64;
-
-          // A mesma imagem continua sendo utilizada
-          // pelo executarEdesk().
-          imagemBase64 = base64;
+          // A nova tabela SEMPRE é acrescentada ao comentário.
+          // Não substituímos a tabela anterior, mesmo que venha de outra
+          // etiqueta ou utilize o mesmo intervalo configurado.
+          imagemExcelBase64 = base64Recebido;
+          intervalosExcelAdicionados.add(intervalo);
+          imagensExcelBase64.add(base64Recebido);
+          adicionarImagemAoEditor(base64Recebido);
 
           erroExcel = null;
           carregandoExcel = false;
         });
 
         debugPrint(
-          '[ExcelPreview] Imagem aplicada ao comentário E-Desk.',
-        );
-      } on TimeoutException {
-        debugPrint(
-          '[ExcelPreview] TIMEOUT.',
+          '[ExcelPreview] Imagem carregada com sucesso.',
         );
 
-        try {
-          processo?.kill();
-        } catch (_) {}
+        debugPrint(
+          '[ExcelPreview] Intervalo carregado: $intervalo',
+        );
+
+        debugPrint(
+          '[ExcelPreview] Base64: ${base64Recebido.length} caracteres',
+        );
+      } on TimeoutException catch (e) {
+        if (!dialogContext.mounted) return;
+
+        debugPrint(
+          '[ExcelPreview] TIMEOUT: $e',
+        );
 
         setDialogState(() {
-          imagemExcelBase64 = null;
-          erroExcel = 'Tempo limite excedido ao abrir o Excel.';
+          erroExcel = e.message ?? 'Tempo limite excedido.';
           carregandoExcel = false;
         });
       } catch (e, stackTrace) {
+        if (!dialogContext.mounted) return;
+
         debugPrint(
           '[ExcelPreview] ERRO: $e',
         );
 
         debugPrint(
-          '[ExcelPreview] STACK:\n$stackTrace',
+          '[ExcelPreview] STACK: $stackTrace',
         );
 
         setDialogState(() {
-          imagemExcelBase64 = null;
-          erroExcel = e.toString();
+          erroExcel = e.toString().replaceFirst(
+                'Exception: ',
+                '',
+              );
+
           carregandoExcel = false;
         });
       } finally {
         // =============================================================
-        // FECHA O PYTHON / EXCEL
-        //
-        // Agora enviamos CLOSE somente depois que recebemos
-        // corretamente a imagem do comando OPEN.
+        // ENCERRA O PYTHON
         // =============================================================
 
-        try {
-          if (processo != null) {
-            debugPrint(
-              '[ExcelPreview] Enviando comando CLOSE.',
-            );
-
+        if (processo != null) {
+          try {
             processo.stdin.writeln(
               jsonEncode({
                 'acao': 'close',
@@ -4429,36 +5327,121 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             );
 
             await processo.stdin.flush();
-            await processo.stdin.close();
+          } catch (_) {
+            // Processo já pode ter sido encerrado.
           }
-        } catch (e) {
-          debugPrint(
-            '[ExcelPreview] Erro ao enviar CLOSE: $e',
-          );
-        }
 
-        // Dá um pequeno intervalo para o Python executar
-        // o fechamento normal do Excel.
-        try {
-          await processo?.exitCode.timeout(
-            const Duration(seconds: 5),
-          );
-        } catch (_) {
-          // Se não encerrou normalmente, força o encerramento.
           try {
-            processo?.kill();
-          } catch (_) {}
+            await processo.stdin.close();
+          } catch (_) {
+            // Ignora.
+          }
+
+          try {
+            processo.kill();
+          } catch (_) {
+            // Ignora.
+          }
+        }
+      }
+    }
+
+    // ===============================================================
+    // SALVAR COMENTÁRIO
+    // ===============================================================
+
+    Future<void> salvarComentario(
+      BuildContext dialogContext,
+      StateSetter setDialogState,
+    ) async {
+      final texto = montarTextoOrdenado();
+
+      if (texto.isEmpty && imagensBase64.isEmpty && imagemBase64 == null) {
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Digite um comentário ou adicione uma imagem.',
+            ),
+            backgroundColor: CoresApp.erro,
+          ),
+        );
+
+        return;
+      }
+
+      setDialogState(() {
+        salvando = true;
+      });
+
+      try {
+        final firebaseUser = FirebaseAuth.instance.currentUser;
+
+        if (firebaseUser == null) {
+          throw Exception('Usuário não autenticado no Firebase.');
         }
 
-        debugPrint(
-          '[ExcelPreview] Processo finalizado.',
+        final ref = comentariosRef();
+
+        final dados = <String, dynamic>{
+          'comentario': texto,
+          'imagemBase64': imagemBase64,
+          'imagensBase64': List<String>.from(imagensBase64),
+          'blocosComentario': blocosParaPersistir(),
+          'tipoComentario': tipoComentario,
+          'modoExecucao': 'Salvo',
+          'projetoId': project.id.trim(),
+          'usuarioId': firebaseUser.uid,
+          'usuario':
+              firebaseUser.displayName ?? firebaseUser.email ?? 'Usuário',
+        };
+
+        if (comentarioSelecionadoId == null) {
+          dados['status'] = 'Pendente';
+          dados['dataHora'] = FieldValue.serverTimestamp();
+          dados['tentativas'] = 0;
+
+          final documento = await ref.add(dados);
+
+          setDialogState(() {
+            comentarioSelecionadoId = documento.id;
+          });
+        } else {
+          dados['atualizadoEm'] = FieldValue.serverTimestamp();
+          await ref.doc(comentarioSelecionadoId).update(dados);
+        }
+
+        comentarioFocusNode.unfocus();
+
+        if (!dialogContext.mounted) return;
+
+        setDialogState(() {
+          salvando = false;
+        });
+
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
+          SnackBar(
+            content: const Text('Comentário salvo com sucesso.'),
+            backgroundColor: CoresApp.sucesso,
+          ),
+        );
+      } catch (e) {
+        if (!dialogContext.mounted) return;
+
+        setDialogState(() {
+          salvando = false;
+        });
+
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao salvar comentário: $e'),
+            backgroundColor: CoresApp.erro,
+          ),
         );
       }
     }
+
     // ===============================================================
     // TESTAR / ENVIAR PARA E-DESK
-    //
-    // ESTA PARTE É A MESMA QUE JÁ ESTAVA FUNCIONANDO.
     // ===============================================================
 
     Future<void> executarEdesk({
@@ -4466,24 +5449,22 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       required StateSetter setDialogState,
       required bool enviar,
     }) async {
-      final texto = comentarioController.text.trim();
+      final texto = montarTextoOrdenado();
 
-      debugPrint('');
-      debugPrint('================================================');
-      debugPrint('        INÍCIO EXECUÇÃO E-DESK');
-      debugPrint('================================================');
-      debugPrint('[E-DESK] Enviar: $enviar');
-      debugPrint('[E-DESK] Projeto: ${project.id}');
-      debugPrint('[E-DESK] Comentário: "$texto"');
-      debugPrint(
-        '[E-DESK] Imagem: ${imagemBase64 != null ? "SIM" : "NÃO"}',
-      );
-      debugPrint('[E-DESK] Tipo: $tipoComentario');
-      debugPrint(
-        '[E-DESK] Comentário selecionado: $comentarioSelecionadoId',
-      );
+      final imagensParaEnvio = imagensBase64.isNotEmpty
+          ? List<String>.from(imagensBase64)
+          : (imagemBase64 != null ? <String>[imagemBase64!] : <String>[]);
 
-      if (texto.isEmpty && imagemBase64 == null) {
+      // O EdeskService continua recebendo String. Quando há mais de uma
+      // imagem, enviamos a lista codificada em JSON; o Python atualizado
+      // abaixo entende os dois formatos.
+      final String? imagemPayload = imagensParaEnvio.isEmpty
+          ? null
+          : (imagensParaEnvio.length == 1
+              ? imagensParaEnvio.first
+              : jsonEncode(imagensParaEnvio));
+
+      if (texto.isEmpty && imagensParaEnvio.isEmpty) {
         if (!dialogContext.mounted) return;
 
         ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -4534,9 +5515,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         if (!dialogContext.mounted) return;
 
         ScaffoldMessenger.of(dialogContext).showSnackBar(
-          const SnackBar(
-            content: Text('URL do E-Desk inválida.'),
-          ),
+          const SnackBar(content: Text('URL do E-Desk inválida.')),
         );
 
         return;
@@ -4570,15 +5549,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         return;
       }
 
-      debugPrint('');
-      debugPrint('========== DADOS E-DESK ==========');
-      debugPrint('[E-DESK] URL: $edeskUri');
-      debugPrint('[E-DESK] Solicitação: "$solicitacao"');
-      debugPrint('[E-DESK] ID Trabalho: "$idTrabalho"');
-      debugPrint('[E-DESK] Tipo: "$tipoComentario"');
-      debugPrint('[E-DESK] Enviar: $enviar');
-      debugPrint('===================================');
-
       if (enviar) {
         setDialogState(() {
           enviandoEdesk = true;
@@ -4593,26 +5563,21 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       EdeskService? service;
 
       try {
-        // =============================================================
-        // FIREBASE
-        // =============================================================
-
         final firebaseUser = FirebaseAuth.instance.currentUser;
 
         if (firebaseUser == null) {
-          throw Exception(
-            'Usuário não autenticado no Firebase.',
-          );
+          throw Exception('Usuário não autenticado no Firebase.');
         }
 
         final ref = comentariosRef();
-
         final statusInicial = enviar ? 'Enviando' : 'Teste';
 
         if (comentarioId == null) {
           final dados = <String, dynamic>{
             'comentario': texto,
             'imagemBase64': imagemBase64,
+            'imagensBase64': List<String>.from(imagensParaEnvio),
+            'blocosComentario': blocosParaPersistir(),
             'tipoComentario': tipoComentario,
             'tipoComentarioEdesk': _tipoComentarioEdesk(tipoComentario),
             'status': statusInicial,
@@ -4626,7 +5591,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           };
 
           final documento = await ref.add(dados);
-
           comentarioId = documento.id;
 
           setDialogState(() {
@@ -4638,6 +5602,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           await documentoRef.update({
             'comentario': texto,
             'imagemBase64': imagemBase64,
+            'imagensBase64': List<String>.from(imagensParaEnvio),
+            'blocosComentario': blocosParaPersistir(),
             'tipoComentario': tipoComentario,
             'tipoComentarioEdesk': _tipoComentarioEdesk(tipoComentario),
             'status': statusInicial,
@@ -4652,10 +5618,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           });
         }
 
-        // =============================================================
-        // PYTHON / E-DESK
-        // =============================================================
-
         service = EdeskService();
 
         final resultado = await service.executarComentarioViaPython(
@@ -4664,13 +5626,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           idTrabalho: idTrabalho,
           tipoComentario: tipoComentario,
           texto: texto,
-          imagemBase64: imagemBase64,
+          imagemBase64: imagemPayload,
           enviar: enviar,
         );
-
-        // =============================================================
-        // ATUALIZA FIREBASE
-        // =============================================================
 
         if (comentarioId != null) {
           final docRef = comentariosRef().doc(comentarioId);
@@ -4713,25 +5671,21 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
         if (enviar && resultado.confirmed) {
           comentarioController.clear();
+          comentarioFocusNode.unfocus();
 
           setDialogState(() {
             comentarioSelecionadoId = null;
-
-            // Depois do envio, mantém o Excel como imagem padrão.
-            imagemBase64 = imagemExcelBase64;
-
+            imagensBase64.clear();
+            blocosComentario.clear();
+            imagensExcelBase64.clear();
+            intervalosExcelAdicionados.clear();
+            imagemBase64 = null;
+            imagemExcelBase64 = null;
+            campoExcelSelecionado = null;
             tipoComentario = 'Interno';
           });
         }
-      } catch (e, stackTrace) {
-        debugPrint(
-          '[E-DESK] ERRO: $e',
-        );
-
-        debugPrint(
-          '[E-DESK] STACK:\n$stackTrace',
-        );
-
+      } catch (e) {
         if (comentarioId != null) {
           try {
             await comentariosRef().doc(comentarioId).update({
@@ -4745,9 +5699,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         if (dialogContext.mounted) {
           ScaffoldMessenger.of(dialogContext).showSnackBar(
             SnackBar(
-              content: Text(
-                'Erro E-Desk: $e',
-              ),
+              content: Text('Erro E-Desk: $e'),
               backgroundColor: CoresApp.erro,
               duration: const Duration(seconds: 6),
             ),
@@ -4764,16 +5716,1935 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             enviandoEdesk = false;
           });
         }
-
-        debugPrint(
-          '========== FIM EXECUÇÃO E-DESK ==========',
-        );
       }
     }
 
     // ===============================================================
-    // MODAL
+    // MODAL SEPARADO — HISTÓRICO DE COMENTÁRIOS
     // ===============================================================
+
+    Future<void> abrirHistoricoComentarios(
+      BuildContext parentContext,
+      StateSetter setDialogStatePrincipal,
+    ) async {
+      String buscaHistoricoModal = '';
+      Offset offsetHistorico = Offset.zero;
+      double? larguraHistoricoCustom;
+      double? alturaHistoricoCustom;
+
+      await showDialog<void>(
+        context: parentContext,
+        barrierDismissible: true,
+        builder: (historicoContext) {
+          return StatefulBuilder(
+            builder: (context, setHistoricoState) {
+              final tamanhoTela = MediaQuery.of(historicoContext).size;
+
+              final double margem = tamanhoTela.width < 700 ? 8 : 16;
+              final double larguraPadrao = (tamanhoTela.width - (margem * 2))
+                  .clamp(320.0, 950.0)
+                  .toDouble();
+              final double alturaPadrao = (tamanhoTela.height - (margem * 2))
+                  .clamp(420.0, 850.0)
+                  .toDouble();
+
+              final double larguraFinal =
+                  larguraHistoricoCustom ?? larguraPadrao;
+              final double alturaFinal = alturaHistoricoCustom ?? alturaPadrao;
+
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: EdgeInsets.zero,
+                child: Transform.translate(
+                  offset: offsetHistorico,
+                  child: Center(
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: larguraFinal,
+                          height: alturaFinal,
+                          decoration: BoxDecoration(
+                            color: CoresTelas.fundoModal,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: CoresApp.borda),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.35),
+                                blurRadius: 30,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              GestureDetector(
+                                onPanUpdate: (details) {
+                                  setHistoricoState(() {
+                                    offsetHistorico += details.delta;
+                                  });
+                                },
+                                child: Container(
+                                  height: 76,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20),
+                                  decoration: BoxDecoration(
+                                    color: CoresTelas.fundoModal,
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(14),
+                                    ),
+                                    border: Border(
+                                      bottom: BorderSide(color: CoresApp.borda),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      MouseRegion(
+                                        cursor: SystemMouseCursors.move,
+                                        child: Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: CoresApp.destaque
+                                                .withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(9),
+                                          ),
+                                          child: Icon(
+                                            Icons.open_with_rounded,
+                                            color: CoresApp.destaque,
+                                            size: 21,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Histórico de comentários',
+                                              style: TextStyle(
+                                                color: CoresApp.textoPrincipal,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${project.id} - ${project.client}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: CoresApp.textoSecundario,
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Fechar',
+                                        onPressed: () {
+                                          Navigator.of(historicoContext).pop();
+                                        },
+                                        icon: Icon(
+                                          Icons.close_rounded,
+                                          color: CoresApp.textoSecundario,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                                child: SizedBox(
+                                  height: 42,
+                                  child: TextField(
+                                    onChanged: (value) {
+                                      setHistoricoState(() {
+                                        buscaHistoricoModal =
+                                            value.trim().toLowerCase();
+                                      });
+                                    },
+                                    style: TextStyle(
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 11,
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'Pesquisar comentários...',
+                                      hintStyle: TextStyle(
+                                        color: CoresApp.textoSecundario,
+                                        fontSize: 11,
+                                      ),
+                                      prefixIcon: Icon(
+                                        Icons.search_rounded,
+                                        color: CoresApp.textoSecundario,
+                                        size: 18,
+                                      ),
+                                      filled: true,
+                                      fillColor: CoresApp.fundoSecundario,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(
+                                          color: CoresApp.borda,
+                                        ),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(
+                                          color: CoresApp.borda,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(
+                                          color: CoresApp.destaque,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: StreamBuilder<
+                                    QuerySnapshot<Map<String, dynamic>>>(
+                                  stream: comentariosRef()
+                                      .orderBy('dataHora', descending: true)
+                                      .snapshots(),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: CoresApp.destaque,
+                                        ),
+                                      );
+                                    }
+
+                                    if (snapshot.hasError) {
+                                      return Center(
+                                        child: Text(
+                                          'Erro ao carregar comentários.',
+                                          style: TextStyle(
+                                            color: CoresApp.erro,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    final todosComentarios =
+                                        snapshot.data?.docs ?? [];
+                                    final comentarios =
+                                        todosComentarios.where((doc) {
+                                      if (buscaHistoricoModal.isEmpty)
+                                        return true;
+                                      final dados = doc.data();
+                                      final texto = dados['comentario']
+                                              ?.toString()
+                                              .toLowerCase() ??
+                                          '';
+                                      final tipo = dados['tipoComentario']
+                                              ?.toString()
+                                              .toLowerCase() ??
+                                          '';
+                                      final usuario = dados['usuario']
+                                              ?.toString()
+                                              .toLowerCase() ??
+                                          '';
+
+                                      return texto
+                                              .contains(buscaHistoricoModal) ||
+                                          tipo.contains(buscaHistoricoModal) ||
+                                          usuario.contains(buscaHistoricoModal);
+                                    }).toList();
+
+                                    if (comentarios.isEmpty) {
+                                      return Center(
+                                        child: Text(
+                                          buscaHistoricoModal.isEmpty
+                                              ? 'Nenhum comentário salvo.'
+                                              : 'Nenhum comentário encontrado.',
+                                          style: TextStyle(
+                                            color: CoresApp.textoSecundario,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    return ListView.separated(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          16, 4, 16, 16),
+                                      itemCount: comentarios.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(height: 10),
+                                      itemBuilder: (context, index) {
+                                        final doc = comentarios[index];
+                                        final dados = doc.data();
+                                        final texto =
+                                            dados['comentario']?.toString() ??
+                                                '';
+                                        final status =
+                                            dados['status']?.toString() ??
+                                                'Pendente';
+                                        final usuario =
+                                            dados['usuario']?.toString() ?? '';
+                                        final imagem =
+                                            dados['imagemBase64']?.toString();
+                                        final imagensSalvas =
+                                            (dados['imagensBase64'] as List?)
+                                                    ?.map((e) => e.toString())
+                                                    .where((e) => e.isNotEmpty)
+                                                    .toList() ??
+                                                <String>[];
+                                        final blocosSalvos =
+                                            (dados['blocosComentario'] as List?)
+                                                    ?.whereType<Map>()
+                                                    .map((e) => e.map((k, v) =>
+                                                        MapEntry(k.toString(),
+                                                            v.toString())))
+                                                    .toList() ??
+                                                <Map<String, String>>[];
+                                        final tipoSalvo =
+                                            dados['tipoComentario']?.toString();
+                                        final timestamp =
+                                            dados['dataHora'] as Timestamp?;
+                                        final dataHora = timestamp?.toDate();
+                                        final enviado = status == 'Enviado';
+                                        final erro = status == 'Erro';
+
+                                        void carregar({required bool editar}) {
+                                          comentarioController.clear();
+                                          comentarioFocusNode.unfocus();
+
+                                          setDialogStatePrincipal(() {
+                                            comentarioSelecionadoId =
+                                                editar ? doc.id : null;
+                                            blocosComentario
+                                              ..clear()
+                                              ..addAll(blocosSalvos.map((e) =>
+                                                  Map<String, String>.from(e)));
+                                            imagensBase64
+                                              ..clear()
+                                              ..addAll(imagensSalvas);
+                                            if (imagensBase64.isEmpty &&
+                                                imagem != null &&
+                                                imagem.isNotEmpty) {
+                                              imagensBase64.add(imagem);
+                                            }
+                                            imagemBase64 =
+                                                imagensBase64.isNotEmpty
+                                                    ? imagensBase64.last
+                                                    : imagem;
+                                            // Compatibilidade com comentários antigos, que não possuíam blocos.
+                                            if (blocosComentario.isEmpty &&
+                                                texto.isNotEmpty) {
+                                              comentarioController.text = texto;
+                                            }
+                                            if (tipoSalvo != null &&
+                                                [
+                                                  'Interno',
+                                                  'Externo',
+                                                  'Padrão',
+                                                  'Padrão (Interno)',
+                                                ].contains(tipoSalvo)) {
+                                              tipoComentario = tipoSalvo;
+                                            } else {
+                                              tipoComentario = 'Interno';
+                                            }
+                                          });
+
+                                          Navigator.of(historicoContext).pop();
+                                        }
+
+                                        final linhas = texto
+                                            .split('\n')
+                                            .where((l) => l.trim().isNotEmpty)
+                                            .toList();
+                                        final titulo = linhas.isNotEmpty
+                                            ? linhas.first
+                                            : 'Comentário com imagem';
+
+                                        return Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: CoresApp.fundoSecundario,
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                                color: CoresApp.borda),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  if (imagem != null &&
+                                                      imagem.isNotEmpty)
+                                                    Container(
+                                                      width: 95,
+                                                      height: 62,
+                                                      margin:
+                                                          const EdgeInsets.only(
+                                                        right: 10,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: CoresTelas
+                                                            .fundoModal,
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(7),
+                                                        border: Border.all(
+                                                          color: CoresApp.borda,
+                                                        ),
+                                                      ),
+                                                      child: ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(6),
+                                                        child: Image.memory(
+                                                          base64Decode(imagem),
+                                                          fit: BoxFit.contain,
+                                                          errorBuilder:
+                                                              (_, __, ___) =>
+                                                                  const SizedBox
+                                                                      .shrink(),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(
+                                                          titulo,
+                                                          maxLines: 2,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            color: CoresApp
+                                                                .textoPrincipal,
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                        if (dataHora !=
+                                                            null) ...[
+                                                          const SizedBox(
+                                                              height: 5),
+                                                          Text(
+                                                            _formatarDataComentario(
+                                                              dataHora,
+                                                            ),
+                                                            style: TextStyle(
+                                                              color: CoresApp
+                                                                  .textoSecundario,
+                                                              fontSize: 9,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  PopupMenuButton<String>(
+                                                    tooltip: 'Opções',
+                                                    color:
+                                                        CoresTelas.fundoModal,
+                                                    icon: Icon(
+                                                      Icons.more_vert_rounded,
+                                                      color: CoresApp
+                                                          .textoSecundario,
+                                                      size: 18,
+                                                    ),
+                                                    onSelected: (opcao) async {
+                                                      if (opcao == 'editar') {
+                                                        carregar(editar: true);
+                                                        return;
+                                                      }
+                                                      if (opcao ==
+                                                          'reutilizar') {
+                                                        carregar(editar: false);
+                                                        return;
+                                                      }
+                                                      if (opcao == 'excluir') {
+                                                        await excluirComentario(
+                                                          historicoContext,
+                                                          setHistoricoState,
+                                                          doc.id,
+                                                        );
+                                                      }
+                                                    },
+                                                    itemBuilder: (context) =>
+                                                        const [
+                                                      PopupMenuItem<String>(
+                                                        value: 'editar',
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(
+                                                              Icons
+                                                                  .edit_outlined,
+                                                              size: 17,
+                                                            ),
+                                                            SizedBox(width: 8),
+                                                            Text('Editar'),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      PopupMenuItem<String>(
+                                                        value: 'reutilizar',
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(
+                                                              Icons
+                                                                  .content_copy_outlined,
+                                                              size: 17,
+                                                            ),
+                                                            SizedBox(width: 8),
+                                                            Text('Reutilizar'),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      PopupMenuItem<String>(
+                                                        value: 'excluir',
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(
+                                                              Icons
+                                                                  .delete_outline_rounded,
+                                                              size: 17,
+                                                            ),
+                                                            SizedBox(width: 8),
+                                                            Text('Excluir'),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Wrap(
+                                                spacing: 6,
+                                                runSpacing: 5,
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 3,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: enviado
+                                                          ? CoresApp.sucesso
+                                                              .withOpacity(0.10)
+                                                          : erro
+                                                              ? CoresApp.erro
+                                                                  .withOpacity(
+                                                                      0.10)
+                                                              : CoresApp
+                                                                  .destaque
+                                                                  .withOpacity(
+                                                                      0.08),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              5),
+                                                    ),
+                                                    child: Text(
+                                                      status,
+                                                      style: TextStyle(
+                                                        color: enviado
+                                                            ? CoresApp.sucesso
+                                                            : erro
+                                                                ? CoresApp.erro
+                                                                : CoresApp
+                                                                    .destaque,
+                                                        fontSize: 8,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (tipoSalvo != null &&
+                                                      tipoSalvo.isNotEmpty)
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 7,
+                                                        vertical: 3,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        border: Border.all(
+                                                          color: CoresApp.borda,
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(5),
+                                                      ),
+                                                      child: Text(
+                                                        tipoSalvo,
+                                                        style: TextStyle(
+                                                          color: CoresApp
+                                                              .textoSecundario,
+                                                          fontSize: 8,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                              if (texto.trim().isNotEmpty) ...[
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  texto,
+                                                  maxLines: 5,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: CoresApp
+                                                        .textoSecundario,
+                                                    fontSize: 10,
+                                                    height: 1.3,
+                                                  ),
+                                                ),
+                                              ],
+                                              if (usuario.isNotEmpty) ...[
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  usuario,
+                                                  style: TextStyle(
+                                                    color: CoresApp
+                                                        .textoSecundario,
+                                                    fontSize: 8,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.resizeDownRight,
+                            child: GestureDetector(
+                              onPanUpdate: (details) {
+                                setHistoricoState(() {
+                                  final novaLargura =
+                                      larguraFinal + details.delta.dx;
+                                  final novaAltura =
+                                      alturaFinal + details.delta.dy;
+                                  larguraHistoricoCustom = novaLargura.clamp(
+                                      320.0, tamanhoTela.width);
+                                  alturaHistoricoCustom = novaAltura.clamp(
+                                      350.0, tamanhoTela.height);
+                                });
+                              },
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: CoresApp.destaque.withOpacity(0.3),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(8),
+                                    bottomRight: Radius.circular(14),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.signal_cellular_null,
+                                  size: 12,
+                                  color: CoresApp.textoPrincipal,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
+    // ===============================================================
+// MODAL — CONFIGURAÇÕES DOS COMENTÁRIOS E-DESK
+// ===============================================================
+
+    Future<void> abrirConfiguracoesComentariosEdesk(
+      BuildContext parentContext,
+      StateSetter setDialogStatePrincipal,
+    ) async {
+      // Trabalhamos com cópias para que "Cancelar" não altere
+      // as configurações atualmente utilizadas pelo modal principal.
+      final etiquetasTemp = List<String>.from(etiquetasComentario);
+
+      final camposTemp = <String, List<Map<String, String>>>{
+        for (final entry in camposExcelPorEtiqueta.entries)
+          entry.key: entry.value
+              .map(
+                (campo) => <String, String>{
+                  'nome': campo['nome'] ?? '',
+                  'intervalo': campo['intervalo'] ?? '',
+                },
+              )
+              .toList(),
+      };
+
+      // Garante uma lista de campos para todas as etiquetas.
+      for (final etiqueta in etiquetasTemp) {
+        camposTemp.putIfAbsent(
+          etiqueta,
+          () => <Map<String, String>>[],
+        );
+      }
+
+      int abaSelecionada = 0;
+
+      String etiquetaConfiguracaoSelecionada =
+          etiquetasTemp.contains(etiquetaSelecionada)
+              ? etiquetaSelecionada
+              : (etiquetasTemp.isNotEmpty ? etiquetasTemp.first : '');
+
+      bool salvandoConfiguracoes = false;
+
+      Offset offsetConfiguracoes = Offset.zero;
+
+      // ---------------------------------------------------------------
+      // ADICIONAR ETIQUETA
+      // ---------------------------------------------------------------
+
+      Future<void> adicionarEtiqueta(
+        BuildContext modalContext,
+        StateSetter setConfigState,
+      ) async {
+        final controller = TextEditingController();
+
+        final nome = await showDialog<String>(
+          context: modalContext,
+          builder: (contextNome) {
+            return AlertDialog(
+              backgroundColor: CoresTelas.fundoModal,
+              title: Text(
+                'Nova etiqueta',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Nome da etiqueta',
+                  hintStyle: TextStyle(
+                    color: CoresApp.textoSecundario,
+                  ),
+                  filled: true,
+                  fillColor: CoresTelas.fundoModal,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: CoresApp.borda,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: CoresApp.borda,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: CoresApp.destaque,
+                    ),
+                  ),
+                ),
+                onSubmitted: (value) {
+                  Navigator.of(contextNome).pop(value.trim());
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(contextNome).pop();
+                  },
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                    ),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CoresApp.destaque,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.of(contextNome).pop(
+                      controller.text.trim(),
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.add_rounded,
+                    size: 17,
+                  ),
+                  label: const Text('Adicionar'),
+                ),
+              ],
+            );
+          },
+        );
+
+        controller.dispose();
+
+        if (nome == null || nome.trim().isEmpty) return;
+
+        final nomeLimpo = nome.trim();
+
+        final jaExiste = etiquetasTemp.any(
+          (item) => item.toLowerCase() == nomeLimpo.toLowerCase(),
+        );
+
+        if (jaExiste) {
+          if (!modalContext.mounted) return;
+
+          ScaffoldMessenger.of(modalContext).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Já existe uma etiqueta com esse nome.',
+              ),
+              backgroundColor: CoresApp.erro,
+            ),
+          );
+
+          return;
+        }
+
+        setConfigState(() {
+          etiquetasTemp.add(nomeLimpo);
+
+          camposTemp[nomeLimpo] = <Map<String, String>>[];
+
+          etiquetaConfiguracaoSelecionada = nomeLimpo;
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // RENOMEAR ETIQUETA
+      // ---------------------------------------------------------------
+
+      Future<void> editarEtiqueta(
+        BuildContext modalContext,
+        StateSetter setConfigState,
+        String etiquetaAtual,
+      ) async {
+        final controller = TextEditingController(
+          text: etiquetaAtual,
+        );
+
+        final novoNome = await showDialog<String>(
+          context: modalContext,
+          builder: (contextNome) {
+            return AlertDialog(
+              backgroundColor: CoresTelas.fundoModal,
+              title: Text(
+                'Editar etiqueta',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Nome da etiqueta',
+                  labelStyle: TextStyle(
+                    color: CoresApp.textoSecundario,
+                  ),
+                  filled: true,
+                  fillColor: CoresTelas.fundoModal,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: CoresApp.borda,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: CoresApp.destaque,
+                    ),
+                  ),
+                ),
+                onSubmitted: (value) {
+                  Navigator.of(contextNome).pop(value.trim());
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(contextNome).pop();
+                  },
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CoresApp.destaque,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.of(contextNome).pop(
+                      controller.text.trim(),
+                    );
+                  },
+                  child: const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+
+        controller.dispose();
+
+        if (novoNome == null || novoNome.trim().isEmpty) return;
+
+        final nomeLimpo = novoNome.trim();
+
+        if (nomeLimpo == etiquetaAtual) return;
+
+        final jaExiste = etiquetasTemp.any(
+          (item) =>
+              item != etiquetaAtual &&
+              item.toLowerCase() == nomeLimpo.toLowerCase(),
+        );
+
+        if (jaExiste) {
+          if (!modalContext.mounted) return;
+
+          ScaffoldMessenger.of(modalContext).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Já existe uma etiqueta com esse nome.',
+              ),
+              backgroundColor: CoresApp.erro,
+            ),
+          );
+
+          return;
+        }
+
+        setConfigState(() {
+          final indice = etiquetasTemp.indexOf(etiquetaAtual);
+
+          if (indice >= 0) {
+            etiquetasTemp[indice] = nomeLimpo;
+          }
+
+          final camposAntigos =
+              camposTemp.remove(etiquetaAtual) ?? <Map<String, String>>[];
+
+          camposTemp[nomeLimpo] = camposAntigos;
+
+          if (etiquetaConfiguracaoSelecionada == etiquetaAtual) {
+            etiquetaConfiguracaoSelecionada = nomeLimpo;
+          }
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // EXCLUIR ETIQUETA
+      // ---------------------------------------------------------------
+
+      Future<void> excluirEtiqueta(
+        BuildContext modalContext,
+        StateSetter setConfigState,
+        String etiqueta,
+      ) async {
+        final confirmar = await showDialog<bool>(
+          context: modalContext,
+          builder: (confirmContext) {
+            return AlertDialog(
+              backgroundColor: CoresTelas.fundoModal,
+              title: Text(
+                'Excluir etiqueta',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Text(
+                'Deseja excluir a etiqueta "$etiqueta" e todos os campos do Excel configurados para ela?',
+                style: TextStyle(
+                  color: CoresApp.textoPrincipal,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(confirmContext).pop(false);
+                  },
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: CoresApp.textoSecundario,
+                    ),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CoresApp.erro,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.of(confirmContext).pop(true);
+                  },
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 17,
+                  ),
+                  label: const Text('Excluir'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (confirmar != true) return;
+
+        setConfigState(() {
+          etiquetasTemp.remove(etiqueta);
+          camposTemp.remove(etiqueta);
+
+          if (etiquetaConfiguracaoSelecionada == etiqueta) {
+            etiquetaConfiguracaoSelecionada =
+                etiquetasTemp.isNotEmpty ? etiquetasTemp.first : '';
+          }
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // ADICIONAR CAMPO DO EXCEL
+      // ---------------------------------------------------------------
+
+      void adicionarCampoExcel(
+        StateSetter setConfigState,
+      ) {
+        if (etiquetaConfiguracaoSelecionada.isEmpty) return;
+
+        setConfigState(() {
+          camposTemp.putIfAbsent(
+            etiquetaConfiguracaoSelecionada,
+            () => <Map<String, String>>[],
+          );
+
+          camposTemp[etiquetaConfiguracaoSelecionada]!.add({
+            'nome': '',
+            'intervalo': '',
+          });
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // SALVAR CONFIGURAÇÕES
+      // ---------------------------------------------------------------
+
+      Future<void> salvarConfiguracoes(
+        BuildContext modalContext,
+        StateSetter setConfigState,
+      ) async {
+        if (etiquetasTemp.isEmpty) {
+          ScaffoldMessenger.of(modalContext).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Cadastre pelo menos uma etiqueta.',
+              ),
+              backgroundColor: CoresApp.erro,
+            ),
+          );
+
+          return;
+        }
+
+        // Validação dos campos.
+        for (final etiqueta in etiquetasTemp) {
+          final campos = camposTemp[etiqueta] ?? const [];
+
+          for (final campo in campos) {
+            final nome = campo['nome']?.trim() ?? '';
+            final intervalo = campo['intervalo']?.trim() ?? '';
+
+            if (nome.isEmpty || intervalo.isEmpty) {
+              ScaffoldMessenger.of(modalContext).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Preencha o nome e o intervalo de todos os campos da etiqueta "$etiqueta".',
+                  ),
+                  backgroundColor: CoresApp.erro,
+                ),
+              );
+
+              return;
+            }
+          }
+        }
+
+        setConfigState(() {
+          salvandoConfiguracoes = true;
+        });
+
+        try {
+          await salvarConfiguracoesComentariosEdesk(
+            etiquetas: etiquetasTemp,
+            campos: camposTemp,
+          );
+
+          configuracoesEdeskCarregadas = true;
+
+          setDialogStatePrincipal(() {
+            etiquetasComentario = List<String>.from(etiquetasTemp);
+
+            camposExcelPorEtiqueta = {
+              for (final entry in camposTemp.entries)
+                entry.key: entry.value
+                    .map(
+                      (campo) => <String, String>{
+                        'nome': campo['nome']?.trim() ?? '',
+                        'intervalo':
+                            campo['intervalo']?.trim().toUpperCase() ?? '',
+                      },
+                    )
+                    .toList(),
+            };
+
+            if (!etiquetasComentario.contains(etiquetaSelecionada)) {
+              etiquetaSelecionada = etiquetasComentario.isNotEmpty
+                  ? etiquetasComentario.first
+                  : '';
+            }
+
+            campoExcelSelecionado = null;
+            imagemExcelBase64 = null;
+          });
+
+          if (!modalContext.mounted) return;
+
+          Navigator.of(modalContext).pop();
+
+          ScaffoldMessenger.of(parentContext).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Configurações dos comentários E-Desk salvas.',
+              ),
+              backgroundColor: CoresApp.sucesso,
+            ),
+          );
+        } catch (e) {
+          if (!modalContext.mounted) return;
+
+          setConfigState(() {
+            salvandoConfiguracoes = false;
+          });
+
+          ScaffoldMessenger.of(modalContext).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Erro ao salvar configurações: $e',
+              ),
+              backgroundColor: CoresApp.erro,
+            ),
+          );
+        }
+      }
+
+      // ===============================================================
+      // ABRE O MODAL
+      // ===============================================================
+
+      await showDialog<void>(
+        context: parentContext,
+        barrierDismissible: false,
+        builder: (configContext) {
+          return StatefulBuilder(
+            builder: (context, setConfigState) {
+              final tamanhoTela = MediaQuery.of(configContext).size;
+
+              final largura =
+                  (tamanhoTela.width - 32).clamp(320.0, 760.0).toDouble();
+
+              final altura =
+                  (tamanhoTela.height - 32).clamp(480.0, 720.0).toDouble();
+
+              final camposEtiqueta =
+                  camposTemp[etiquetaConfiguracaoSelecionada] ??
+                      <Map<String, String>>[];
+
+              // =========================================================
+              // CONTEÚDO — ETIQUETAS
+              // =========================================================
+
+              Widget construirAbaEtiquetas() {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Etiquetas do chamado',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Estas etiquetas serão exibidas no dropdown do modal de comentários E-Desk.',
+                      style: TextStyle(
+                        color: CoresApp.textoSecundario,
+                        fontSize: 10,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: etiquetasTemp.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (context, index) {
+                          final etiqueta = etiquetasTemp[index];
+
+                          return Container(
+                            height: 46,
+                            padding: const EdgeInsets.only(left: 12),
+                            decoration: BoxDecoration(
+                              color: CoresTelas.fundoModal,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: CoresApp.borda,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.drag_indicator_rounded,
+                                  size: 17,
+                                  color: CoresApp.textoSecundario,
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.sell_outlined,
+                                  size: 17,
+                                  color: CoresApp.destaque,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    etiqueta,
+                                    style: TextStyle(
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Editar etiqueta',
+                                  onPressed: () {
+                                    editarEtiqueta(
+                                      configContext,
+                                      setConfigState,
+                                      etiqueta,
+                                    );
+                                  },
+                                  icon: Icon(
+                                    Icons.edit_outlined,
+                                    size: 17,
+                                    color: CoresApp.textoSecundario,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Excluir etiqueta',
+                                  onPressed: () {
+                                    excluirEtiqueta(
+                                      configContext,
+                                      setConfigState,
+                                      etiqueta,
+                                    );
+                                  },
+                                  icon: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
+                                    color: CoresApp.erro,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 42,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          adicionarEtiqueta(
+                            configContext,
+                            setConfigState,
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: CoresApp.textoPrincipal,
+                          side: BorderSide(
+                            color: CoresApp.destaque,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.add_circle_outline_rounded,
+                          size: 17,
+                        ),
+                        label: const Text(
+                          'Adicionar etiqueta',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              // =========================================================
+              // CONTEÚDO — CAMPOS DO EXCEL
+              // =========================================================
+
+              Widget construirAbaCamposExcel() {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CoresApp.destaque.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: CoresApp.destaque.withOpacity(0.55),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 18,
+                            color: CoresApp.destaque,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Configure quais células ou áreas do Excel serão copiadas como imagem para cada etiqueta. Esses campos serão usados ao clicar em "Usar imagem do Excel".',
+                              style: TextStyle(
+                                color: CoresApp.textoSecundario,
+                                fontSize: 10,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Selecione a etiqueta para configurar',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 42,
+                      child: DropdownButtonFormField<String>(
+                        value: etiquetaConfiguracaoSelecionada.isEmpty
+                            ? null
+                            : etiquetaConfiguracaoSelecionada,
+                        isExpanded: true,
+                        dropdownColor: CoresTelas.fundoModal,
+                        decoration: InputDecoration(
+                          prefixIcon: Icon(
+                            Icons.sell_outlined,
+                            size: 17,
+                            color: CoresApp.destaque,
+                          ),
+                          filled: true,
+                          fillColor: CoresTelas.fundoModal,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                              color: CoresApp.borda,
+                            ),
+                          ),
+                        ),
+                        style: TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 11,
+                        ),
+                        items: etiquetasTemp.map((etiqueta) {
+                          return DropdownMenuItem<String>(
+                            value: etiqueta,
+                            child: Text(etiqueta),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+
+                          setConfigState(() {
+                            etiquetaConfiguracaoSelecionada = value;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Campos do Excel para esta etiqueta',
+                      style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: camposEtiqueta.isEmpty
+                          ? Center(
+                              child: Text(
+                                'Nenhum campo configurado para esta etiqueta.',
+                                style: TextStyle(
+                                  color: CoresApp.textoSecundario,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: camposEtiqueta.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 7),
+                              itemBuilder: (context, index) {
+                                final campo = camposEtiqueta[index];
+
+                                return Row(
+                                  key: ObjectKey(campo),
+                                  children: [
+                                    Icon(
+                                      Icons.drag_indicator_rounded,
+                                      color: CoresApp.textoSecundario,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      flex: 5,
+                                      child: TextFormField(
+                                        key: ObjectKey(campo),
+                                        initialValue: campo['nome'] ?? '',
+                                        style: TextStyle(
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 11,
+                                        ),
+                                        decoration: InputDecoration(
+                                          hintText: 'Ex.: Capa do projeto',
+                                          hintStyle: TextStyle(
+                                            color: CoresApp.textoSecundario,
+                                          ),
+                                          isDense: true,
+                                          filled: true,
+                                          fillColor: CoresTelas.fundoModal,
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(7),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(7),
+                                            borderSide: BorderSide(
+                                              color: CoresApp.borda,
+                                            ),
+                                          ),
+                                        ),
+                                        onChanged: (value) {
+                                          campo['nome'] = value;
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      flex: 3,
+                                      child: TextFormField(
+                                        key: ValueKey(
+                                          'intervalo-${identityHashCode(campo)}',
+                                        ),
+                                        initialValue: campo['intervalo'] ?? '',
+                                        textCapitalization:
+                                            TextCapitalization.characters,
+                                        style: TextStyle(
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: InputDecoration(
+                                          hintText: 'A1:D20',
+                                          hintStyle: TextStyle(
+                                            color: CoresApp.textoSecundario,
+                                          ),
+                                          isDense: true,
+                                          filled: true,
+                                          fillColor: CoresTelas.fundoModal,
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(7),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(7),
+                                            borderSide: BorderSide(
+                                              color: CoresApp.borda,
+                                            ),
+                                          ),
+                                        ),
+                                        onChanged: (value) {
+                                          campo['intervalo'] =
+                                              value.toUpperCase();
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      tooltip: 'Duplicar campo',
+                                      onPressed: () {
+                                        setConfigState(() {
+                                          camposEtiqueta.insert(
+                                            index + 1,
+                                            {
+                                              'nome':
+                                                  '${campo['nome'] ?? ''} cópia',
+                                              'intervalo':
+                                                  campo['intervalo'] ?? '',
+                                            },
+                                          );
+                                        });
+                                      },
+                                      icon: Icon(
+                                        Icons.copy_outlined,
+                                        size: 17,
+                                        color: CoresApp.textoSecundario,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Excluir campo',
+                                      onPressed: () {
+                                        setConfigState(() {
+                                          camposEtiqueta.removeAt(index);
+                                        });
+                                      },
+                                      icon: Icon(
+                                        Icons.delete_outline_rounded,
+                                        size: 18,
+                                        color: CoresApp.erro,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 42,
+                      child: OutlinedButton.icon(
+                        onPressed: etiquetaConfiguracaoSelecionada.isEmpty
+                            ? null
+                            : () {
+                                adicionarCampoExcel(
+                                  setConfigState,
+                                );
+                              },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: CoresApp.textoPrincipal,
+                          side: BorderSide(
+                            color: CoresApp.destaque,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.add_circle_rounded,
+                          size: 17,
+                        ),
+                        label: const Text(
+                          'Adicionar campo',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.all(16),
+                child: Transform.translate(
+                  offset: offsetConfiguracoes,
+                  child: Center(
+                    child: Container(
+                      width: largura,
+                      height: altura,
+                      decoration: BoxDecoration(
+                        color: CoresTelas.fundoModal,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: CoresApp.borda,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.40),
+                            blurRadius: 30,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          // =================================================
+                          // CABEÇALHO
+                          // =================================================
+
+                          GestureDetector(
+                            onPanUpdate: (details) {
+                              setConfigState(() {
+                                offsetConfiguracoes += details.delta;
+                              });
+                            },
+                            child: Container(
+                              height: 74,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: CoresApp.borda,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: CoresApp.sucesso.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                    child: Icon(
+                                      Icons.settings_outlined,
+                                      color: CoresApp.sucesso,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Configurações - Comentários E-Desk',
+                                          style: TextStyle(
+                                            color: CoresApp.textoPrincipal,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          'Personalize as etiquetas e os campos do Excel utilizados no modal.',
+                                          style: TextStyle(
+                                            color: CoresApp.textoSecundario,
+                                            fontSize: 9,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Fechar',
+                                    onPressed: salvandoConfiguracoes
+                                        ? null
+                                        : () {
+                                            Navigator.of(configContext).pop();
+                                          },
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      color: CoresApp.textoSecundario,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // =================================================
+                          // ABAS
+                          // =================================================
+
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              18,
+                              14,
+                              18,
+                              0,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 42,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        setConfigState(() {
+                                          abaSelecionada = 0;
+                                        });
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: abaSelecionada == 0
+                                            ? CoresApp.destaque
+                                            : CoresApp.textoPrincipal,
+                                        side: BorderSide(
+                                          color: abaSelecionada == 0
+                                              ? CoresApp.destaque
+                                              : CoresApp.borda,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.sell_outlined,
+                                        size: 17,
+                                      ),
+                                      label: const Text(
+                                        'Etiquetas do chamado',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 42,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        setConfigState(() {
+                                          abaSelecionada = 1;
+                                        });
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: abaSelecionada == 1
+                                            ? CoresApp.destaque
+                                            : CoresApp.textoPrincipal,
+                                        side: BorderSide(
+                                          color: abaSelecionada == 1
+                                              ? CoresApp.destaque
+                                              : CoresApp.borda,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.table_view_outlined,
+                                        size: 17,
+                                      ),
+                                      label: const Text(
+                                        'Campos do Excel',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // =================================================
+                          // CONTEÚDO
+                          // =================================================
+
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: abaSelecionada == 0
+                                  ? construirAbaEtiquetas()
+                                  : construirAbaCamposExcel(),
+                            ),
+                          ),
+
+                          // =================================================
+                          // RODAPÉ
+                          // =================================================
+
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                top: BorderSide(
+                                  color: CoresApp.borda,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                OutlinedButton(
+                                  onPressed: salvandoConfiguracoes
+                                      ? null
+                                      : () {
+                                          Navigator.of(configContext).pop();
+                                        },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: CoresApp.textoPrincipal,
+                                    side: BorderSide(
+                                      color: CoresApp.borda,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 13,
+                                    ),
+                                  ),
+                                  child: const Text('Cancelar'),
+                                ),
+                                const Spacer(),
+                                ElevatedButton.icon(
+                                  onPressed: salvandoConfiguracoes
+                                      ? null
+                                      : () {
+                                          salvarConfiguracoes(
+                                            configContext,
+                                            setConfigState,
+                                          );
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: CoresApp.sucesso,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 13,
+                                    ),
+                                  ),
+                                  icon: salvandoConfiguracoes
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.check_circle_outline_rounded,
+                                          size: 18,
+                                        ),
+                                  label: Text(
+                                    salvandoConfiguracoes
+                                        ? 'Salvando...'
+                                        : 'Salvar configurações',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
+// ===============================================================
+// MODAL — COMENTÁRIOS E-DESK (Móvel e Redimensionável)
+// ===============================================================
 
     showDialog(
       context: context,
@@ -4781,1257 +7652,1935 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              child: Container(
-                width: 1000,
-                constraints: const BoxConstraints(
-                  maxHeight: 760,
-                ),
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: CoresTelas.fundoModal,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: CoresApp.borda,
+            // =========================================================
+            // CARREGA CONFIGURAÇÕES SALVAS NO FIREBASE
+            // =========================================================
+            //
+            // Executa somente uma vez ao abrir o modal.
+            // Depois do carregamento, o Firebase passa a definir
+            // quais etiquetas e campos do Excel serão exibidos.
+            // =========================================================
+
+            if (!configuracoesEdeskCarregadas &&
+                !carregandoConfiguracoesEdesk) {
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (!dialogContext.mounted) return;
+
+                await carregarConfiguracoesComentariosEdesk(
+                  dialogContext,
+                  setDialogState,
+                );
+
+                if (!dialogContext.mounted) return;
+
+                await carregarEtiquetaProjeto(
+                  dialogContext,
+                  setDialogState,
+                );
+              });
+            }
+
+            final tamanhoTela = MediaQuery.of(dialogContext).size;
+
+            final bool telaMuitoPequena = tamanhoTela.width < 700;
+            final bool telaCompacta = tamanhoTela.width < 1050;
+
+            final double margemModal = telaMuitoPequena ? 8 : 16;
+
+            final double larguraDisponivel =
+                tamanhoTela.width - (margemModal * 2);
+
+            final double alturaDisponivel =
+                tamanhoTela.height - (margemModal * 2);
+
+            final double larguraPadrao =
+                larguraDisponivel > 1100 ? 1100 : larguraDisponivel;
+
+            final double alturaPadrao =
+                alturaDisponivel > 750 ? 750 : alturaDisponivel;
+
+            final double larguraFinal = larguraCustomizada ?? larguraPadrao;
+
+            final double alturaFinal = alturaCustomizada ?? alturaPadrao;
+
+            final double paddingConteudo =
+                telaMuitoPequena ? 8 : (telaCompacta ? 12 : 16);
+            final double paddingCard =
+                telaMuitoPequena ? 10 : (telaCompacta ? 12 : 16);
+
+            Widget botaoImagem({
+              required IconData icon,
+              required String texto,
+              required VoidCallback? onPressed,
+            }) {
+              return OutlinedButton.icon(
+                onPressed: onPressed,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: CoresApp.textoPrincipal,
+                  side: BorderSide(color: CoresApp.borda),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // =================================================
-                    // CABEÇALHO
-                    // =================================================
+                icon: Icon(icon, size: 16, color: CoresApp.destaque),
+                label: Text(
+                  texto,
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              );
+            }
 
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.comment_rounded,
-                          color: CoresApp.destaque,
-                          size: 23,
+            return Dialog(
+              insetPadding: EdgeInsets.zero,
+              backgroundColor: Colors.transparent,
+              child: Transform.translate(
+                offset: offsetModal,
+                child: Center(
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: larguraFinal,
+                        height: alturaFinal,
+                        constraints: BoxConstraints(
+                          maxWidth: tamanhoTela.width,
+                          maxHeight: tamanhoTela.height,
                         ),
-
-                        const SizedBox(width: 10),
-
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Comentários E-Desk',
-                                style: TextStyle(
-                                  color: CoresApp.textoPrincipal,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  Text(
-                                    'Projeto:',
-                                    style: TextStyle(
-                                      color: CoresApp.textoSecundario,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Flexible(
-                                    child: Text(
-                                      '${project.id} - ${project.client}',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-
-// ===============================================================
-// CARD — VISUALIZAÇÃO DO EXCEL DO PROJETO
-//
-// IMPORTANTE:
-// Este card utiliza exclusivamente:
-//   - imagemExcelBase64
-//   - carregandoExcel
-//   - erroExcel
-//   - carregarExcelProjeto()
-//
-// Não altera a lógica do comentário E-Desk.
-// Ao clicar no card, a imagem do Excel continua sendo
-// colocada em imagemBase64, que é a imagem utilizada
-// normalmente pelo executarEdesk().
-// ===============================================================
-
-                        Container(
-                          width: 380,
-                          height: 130,
-                          decoration: BoxDecoration(
-                            color: CoresApp.fundoSecundario,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: imagemExcelBase64 != null
-                                  ? CoresApp.destaque.withOpacity(0.45)
-                                  : CoresApp.borda,
+                        decoration: BoxDecoration(
+                          color: CoresTelas.fundoModal,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: CoresApp.borda),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.35),
+                              blurRadius: 30,
+                              offset: const Offset(0, 12),
                             ),
-                          ),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            // =================================================
+                            // CABEÇALHO (Com função de arrastar/mover o modal)
+                            // =================================================
 
-                            // =============================================================
-                            // AO CLICAR NO CARD
-                            // =============================================================
-
-                            onTap: (testandoEdesk ||
-                                    enviandoEdesk ||
-                                    carregandoExcel)
-                                ? null
-                                : () async {
-                                    if (imagemExcelBase64 == null) {
-                                      await carregarExcelProjeto(
-                                        setDialogState,
-                                      );
-                                    }
-
-                                    if (imagemExcelBase64 != null) {
-                                      setDialogState(() {
-                                        imagemBase64 = imagemExcelBase64;
-                                      });
-                                    }
-                                  },
-
-                            child: Padding(
-                              padding: const EdgeInsets.all(9),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // =========================================================
-                                  // CABEÇALHO DO CARD
-                                  // =========================================================
-
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 27,
-                                        height: 27,
+                            GestureDetector(
+                              onPanUpdate: (details) {
+                                setDialogState(() {
+                                  offsetModal += details.delta;
+                                });
+                              },
+                              child: Container(
+                                height: 70,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                decoration: BoxDecoration(
+                                  color: CoresTelas.fundoModal,
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(14)),
+                                  border: Border(
+                                    bottom: BorderSide(color: CoresApp.borda),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    MouseRegion(
+                                      cursor: SystemMouseCursors.move,
+                                      child: Container(
+                                        width: 38,
+                                        height: 38,
                                         decoration: BoxDecoration(
                                           color: CoresApp.destaque
                                               .withOpacity(0.12),
                                           borderRadius:
-                                              BorderRadius.circular(7),
+                                              BorderRadius.circular(9),
                                         ),
                                         child: Icon(
-                                          Icons.table_view_rounded,
+                                          Icons.open_with_rounded,
                                           color: CoresApp.destaque,
-                                          size: 16,
+                                          size: 19,
                                         ),
                                       ),
-
-                                      const SizedBox(width: 8),
-
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Excel do projeto',
-                                              style: TextStyle(
-                                                color: CoresApp.textoPrincipal,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Comentários E-Desk',
+                                            style: TextStyle(
+                                              color: CoresApp.textoPrincipal,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
                                             ),
-                                            const SizedBox(height: 1),
-                                            Text(
-                                              project.excelLink
-                                                          ?.trim()
-                                                          .isNotEmpty ??
-                                                      false
-                                                  ? project.excelLink!
-                                                      .split(Platform
-                                                          .pathSeparator)
-                                                      .last
-                                                  : 'Nenhum Excel configurado',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: CoresApp.textoSecundario,
-                                                fontSize: 8,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      // =====================================================
-                                      // STATUS
-                                      // =====================================================
-
-                                      if (carregandoExcel)
-                                        const SizedBox(
-                                          width: 15,
-                                          height: 15,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
                                           ),
-                                        )
-                                      else if (imagemExcelBase64 != null)
-                                        Icon(
-                                          Icons.check_circle_rounded,
-                                          color: CoresApp.sucesso,
-                                          size: 16,
-                                        )
-                                      else
-                                        Icon(
-                                          Icons.refresh_rounded,
-                                          color: CoresApp.textoSecundario,
-                                          size: 16,
+                                          const SizedBox(height: 2),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                'Projeto:',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Flexible(
+                                                child: Text(
+                                                  '${project.id} - ${project.client}',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: (salvando ||
+                                              testandoEdesk ||
+                                              enviandoEdesk ||
+                                              carregandoConfiguracoesEdesk)
+                                          ? null
+                                          : () async {
+                                              await abrirConfiguracoesComentariosEdesk(
+                                                dialogContext,
+                                                setDialogState,
+                                              );
+                                            },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor:
+                                            CoresApp.textoPrincipal,
+                                        side: BorderSide(
+                                          color: CoresApp.borda,
                                         ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 6),
-
-                                  // =========================================================
-                                  // ÁREA DA IMAGEM
-                                  // =========================================================
-
-                                  Expanded(
-                                    child: Container(
-                                      width: double.infinity,
-                                      decoration: BoxDecoration(
-                                        color: CoresTelas.fundoModal,
-                                        borderRadius: BorderRadius.circular(7),
-                                        border: Border.all(
-                                          color:
-                                              CoresApp.borda.withOpacity(0.7),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 11,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
                                       ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(7),
-                                        child: carregandoExcel
-                                            ? Center(
-                                                child: Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    const SizedBox(
-                                                      width: 18,
-                                                      height: 18,
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                        strokeWidth: 2,
+                                      icon: Icon(
+                                        Icons.settings_outlined,
+                                        size: 17,
+                                        color: CoresApp.textoSecundario,
+                                      ),
+                                      label: const Text(
+                                        'Configurações',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      tooltip: 'Fechar',
+                                      onPressed: (testandoEdesk ||
+                                              enviandoEdesk ||
+                                              salvando)
+                                          ? null
+                                          : () {
+                                              Navigator.of(dialogContext).pop();
+                                            },
+                                      icon: Icon(
+                                        Icons.close_rounded,
+                                        color: CoresApp.textoSecundario,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            // =================================================
+                            // CONTEÚDO PRINCIPAL (Flexível e Responsivo)
+                            // =================================================
+
+                            Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.all(paddingConteudo),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: EdgeInsets.all(paddingCard),
+                                  decoration: BoxDecoration(
+                                    color: CoresApp.fundoSecundario,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: CoresApp.borda),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Linha Superior: Título + Etiqueta + Histórico
+                                      LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final bool compacto =
+                                              constraints.maxWidth < 750;
+
+                                          final tituloComentario = Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                comentarioSelecionadoId == null
+                                                    ? Icons.add_comment_rounded
+                                                    : Icons.edit_note_rounded,
+                                                color: CoresApp.destaque,
+                                                size: 18,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                comentarioSelecionadoId == null
+                                                    ? 'Novo comentário'
+                                                    : 'Editar comentário',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoPrincipal,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+
+                                          final seletorEtiqueta = Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'ETIQUETAS DO CHAMADO',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              SizedBox(
+                                                width: 160,
+                                                height: 36,
+                                                child: DropdownButtonFormField<
+                                                    String>(
+                                                  value: etiquetaSelecionada,
+                                                  isExpanded: true,
+                                                  isDense: true,
+                                                  dropdownColor:
+                                                      CoresTelas.fundoModal,
+                                                  decoration: InputDecoration(
+                                                    filled: true,
+                                                    fillColor:
+                                                        CoresTelas.fundoModal,
+                                                    contentPadding:
+                                                        const EdgeInsets
+                                                            .symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 6,
+                                                    ),
+                                                    border: OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      borderSide: BorderSide(
+                                                        color: CoresApp.borda,
                                                       ),
                                                     ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      'Carregando Excel...',
-                                                      style: TextStyle(
-                                                        color: CoresApp
-                                                            .textoSecundario,
-                                                        fontSize: 8,
+                                                    enabledBorder:
+                                                        OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      borderSide: BorderSide(
+                                                        color: CoresApp.borda,
                                                       ),
+                                                    ),
+                                                    focusedBorder:
+                                                        OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      borderSide: BorderSide(
+                                                        color:
+                                                            CoresApp.destaque,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  style: TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                  items: etiquetasComentario
+                                                      .map((etiqueta) {
+                                                    return DropdownMenuItem<
+                                                        String>(
+                                                      value: etiqueta,
+                                                      child: Text(etiqueta),
+                                                    );
+                                                  }).toList(),
+                                                  onChanged: (salvando ||
+                                                          testandoEdesk ||
+                                                          enviandoEdesk)
+                                                      ? null
+                                                      : (value) async {
+                                                          if (value == null)
+                                                            return;
+
+                                                          setDialogState(() {
+                                                            etiquetaSelecionada =
+                                                                value;
+                                                            campoExcelSelecionado =
+                                                                null;
+                                                            imagemExcelBase64 =
+                                                                null;
+                                                          });
+
+                                                          try {
+                                                            await salvarEtiquetaProjeto(
+                                                              value,
+                                                            );
+                                                          } catch (e) {
+                                                            debugPrint(
+                                                              'Erro ao salvar etiqueta E-Desk do projeto: $e',
+                                                            );
+                                                          }
+                                                        },
+                                                ),
+                                              ),
+                                            ],
+                                          );
+
+                                          final botaoHistorico = SizedBox(
+                                            height: 36,
+                                            child: OutlinedButton.icon(
+                                              onPressed: (salvando ||
+                                                      testandoEdesk ||
+                                                      enviandoEdesk)
+                                                  ? null
+                                                  : () {
+                                                      abrirHistoricoComentarios(
+                                                        dialogContext,
+                                                        setDialogState,
+                                                      );
+                                                    },
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor:
+                                                    CoresApp.textoPrincipal,
+                                                side: BorderSide(
+                                                    color: CoresApp.borda),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 12),
+                                              ),
+                                              icon: Icon(
+                                                Icons.history_rounded,
+                                                color: CoresApp.textoSecundario,
+                                                size: 16,
+                                              ),
+                                              label: const Text(
+                                                'Histórico',
+                                                style: TextStyle(fontSize: 11),
+                                              ),
+                                            ),
+                                          );
+
+                                          if (compacto) {
+                                            return Wrap(
+                                              spacing: 10,
+                                              runSpacing: 10,
+                                              crossAxisAlignment:
+                                                  WrapCrossAlignment.end,
+                                              children: [
+                                                tituloComentario,
+                                                seletorEtiqueta,
+                                                botaoHistorico,
+                                              ],
+                                            );
+                                          }
+
+                                          return Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              Expanded(child: tituloComentario),
+                                              seletorEtiqueta,
+                                              const SizedBox(width: 10),
+                                              botaoHistorico,
+                                            ],
+                                          );
+                                        },
+                                      ),
+
+                                      const SizedBox(height: 10),
+
+                                      // Seção: Tipo + Imagem
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.end,
+                                        children: [
+                                          Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Tipo:',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              SizedBox(
+                                                width: 170,
+                                                height: 36,
+                                                child: DropdownButtonFormField<
+                                                    String>(
+                                                  value: tipoComentario,
+                                                  isDense: true,
+                                                  isExpanded: true,
+                                                  dropdownColor:
+                                                      CoresTelas.fundoModal,
+                                                  decoration: InputDecoration(
+                                                    filled: true,
+                                                    fillColor:
+                                                        CoresTelas.fundoModal,
+                                                    contentPadding:
+                                                        const EdgeInsets
+                                                            .symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 6,
+                                                    ),
+                                                    border: OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      borderSide: BorderSide(
+                                                        color: CoresApp.borda,
+                                                      ),
+                                                    ),
+                                                    enabledBorder:
+                                                        OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      borderSide: BorderSide(
+                                                        color: CoresApp.borda,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  style: TextStyle(
+                                                    color:
+                                                        CoresApp.textoPrincipal,
+                                                    fontSize: 11,
+                                                  ),
+                                                  items: const [
+                                                    DropdownMenuItem(
+                                                      value: 'Interno',
+                                                      child: Text('Interno'),
+                                                    ),
+                                                    DropdownMenuItem(
+                                                      value: 'Externo',
+                                                      child: Text('Externo'),
+                                                    ),
+                                                    DropdownMenuItem(
+                                                      value: 'Padrão',
+                                                      child: Text('Padrão'),
+                                                    ),
+                                                    DropdownMenuItem(
+                                                      value: 'Padrão (Interno)',
+                                                      child: Text(
+                                                          'Padrão (Interno)'),
                                                     ),
                                                   ],
+                                                  onChanged: (salvando ||
+                                                          testandoEdesk ||
+                                                          enviandoEdesk)
+                                                      ? null
+                                                      : (value) {
+                                                          if (value == null)
+                                                            return;
+                                                          setDialogState(() {
+                                                            tipoComentario =
+                                                                value;
+                                                          });
+                                                        },
                                                 ),
-                                              )
-                                            : imagemExcelBase64 != null &&
-                                                    imagemExcelBase64!
-                                                        .isNotEmpty
-                                                ? Image.memory(
-                                                    base64Decode(
-                                                      imagemExcelBase64!,
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'USAR IMAGEM',
+                                                style: TextStyle(
+                                                  color:
+                                                      CoresApp.textoSecundario,
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 8,
+                                                children: [
+                                                  PopupMenuButton<
+                                                      Map<String, String>>(
+                                                    tooltip:
+                                                        'Usar imagem do Excel',
+
+                                                    enabled: !(salvando ||
+                                                        testandoEdesk ||
+                                                        enviandoEdesk ||
+                                                        carregandoExcel),
+
+                                                    color:
+                                                        CoresTelas.fundoModal,
+                                                    elevation: 12,
+
+                                                    offset: const Offset(0, 42),
+
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                      side: BorderSide(
+                                                        color: CoresApp.borda,
+                                                      ),
                                                     ),
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    fit: BoxFit.contain,
-                                                  )
-                                                : Center(
-                                                    child: Padding(
+
+                                                    onSelected: (campo) async {
+                                                      final nome = campo['nome']
+                                                              ?.trim() ??
+                                                          '';
+                                                      final intervalo = campo[
+                                                                  'intervalo']
+                                                              ?.trim()
+                                                              .toUpperCase() ??
+                                                          '';
+
+                                                      if (intervalo.isEmpty) {
+                                                        ScaffoldMessenger.of(
+                                                                dialogContext)
+                                                            .showSnackBar(
+                                                          SnackBar(
+                                                            content: const Text(
+                                                              'Este campo não possui um intervalo do Excel configurado.',
+                                                            ),
+                                                            backgroundColor:
+                                                                CoresApp.erro,
+                                                          ),
+                                                        );
+
+                                                        return;
+                                                      }
+
+                                                      setDialogState(() {
+                                                        campoExcelSelecionado =
+                                                            intervalo;
+
+                                                        // Mantém as tabelas já adicionadas.
+                                                        // Selecionar outro campo acrescenta uma nova imagem.
+                                                      });
+
+                                                      // No próximo bloco esta função será modificada
+                                                      // para utilizar campoExcelSelecionado.
+                                                      await carregarExcelProjeto(
+                                                        dialogContext,
+                                                        setDialogState,
+                                                      );
+
+                                                      debugPrint(
+                                                        'Excel selecionado: $nome - $intervalo',
+                                                      );
+                                                    },
+
+                                                    itemBuilder: (context) {
+                                                      final campos =
+                                                          camposExcelEtiquetaAtual();
+
+                                                      // -------------------------------------------------------------
+                                                      // NENHUM CAMPO CONFIGURADO
+                                                      // -------------------------------------------------------------
+
+                                                      if (campos.isEmpty) {
+                                                        return [
+                                                          PopupMenuItem<
+                                                              Map<String,
+                                                                  String>>(
+                                                            enabled: false,
+                                                            child: SizedBox(
+                                                              width: 270,
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons
+                                                                        .info_outline_rounded,
+                                                                    size: 17,
+                                                                    color: CoresApp
+                                                                        .textoSecundario,
+                                                                  ),
+                                                                  const SizedBox(
+                                                                      width: 8),
+                                                                  Expanded(
+                                                                    child: Text(
+                                                                      'Nenhum campo do Excel configurado para "$etiquetaSelecionada".',
+                                                                      style:
+                                                                          TextStyle(
+                                                                        color: CoresApp
+                                                                            .textoSecundario,
+                                                                        fontSize:
+                                                                            10,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ];
+                                                      }
+
+                                                      // -------------------------------------------------------------
+                                                      // CAMPOS CONFIGURADOS PARA A ETIQUETA
+                                                      // -------------------------------------------------------------
+
+                                                      return campos
+                                                          .map((campo) {
+                                                        final nome =
+                                                            campo['nome']
+                                                                    ?.trim() ??
+                                                                '';
+                                                        final intervalo = campo[
+                                                                    'intervalo']
+                                                                ?.trim()
+                                                                .toUpperCase() ??
+                                                            '';
+
+                                                        return PopupMenuItem<
+                                                            Map<String,
+                                                                String>>(
+                                                          value: campo,
+                                                          child: SizedBox(
+                                                            width: 270,
+                                                            child: Row(
+                                                              children: [
+                                                                Container(
+                                                                  width: 30,
+                                                                  height: 30,
+                                                                  decoration:
+                                                                      BoxDecoration(
+                                                                    color: CoresApp
+                                                                        .destaque
+                                                                        .withOpacity(
+                                                                            0.10),
+                                                                    borderRadius:
+                                                                        BorderRadius
+                                                                            .circular(7),
+                                                                  ),
+                                                                  child: Icon(
+                                                                    Icons
+                                                                        .table_view_outlined,
+                                                                    size: 16,
+                                                                    color: CoresApp
+                                                                        .destaque,
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(
+                                                                    width: 10),
+                                                                Expanded(
+                                                                  child: Column(
+                                                                    mainAxisSize:
+                                                                        MainAxisSize
+                                                                            .min,
+                                                                    crossAxisAlignment:
+                                                                        CrossAxisAlignment
+                                                                            .start,
+                                                                    children: [
+                                                                      Text(
+                                                                        nome.isEmpty
+                                                                            ? 'Campo sem nome'
+                                                                            : nome,
+                                                                        overflow:
+                                                                            TextOverflow.ellipsis,
+                                                                        style:
+                                                                            TextStyle(
+                                                                          color:
+                                                                              CoresApp.textoPrincipal,
+                                                                          fontSize:
+                                                                              11,
+                                                                          fontWeight:
+                                                                              FontWeight.w600,
+                                                                        ),
+                                                                      ),
+                                                                      const SizedBox(
+                                                                          height:
+                                                                              2),
+                                                                      Text(
+                                                                        intervalo,
+                                                                        style:
+                                                                            TextStyle(
+                                                                          color:
+                                                                              CoresApp.textoSecundario,
+                                                                          fontSize:
+                                                                              9,
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                Icon(
+                                                                  Icons
+                                                                      .chevron_right_rounded,
+                                                                  size: 17,
+                                                                  color: CoresApp
+                                                                      .textoSecundario,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        );
+                                                      }).toList();
+                                                    },
+
+                                                    // ---------------------------------------------------------------
+                                                    // APARÊNCIA DO BOTÃO
+                                                    // ---------------------------------------------------------------
+
+                                                    child: Container(
+                                                      height: 38,
                                                       padding: const EdgeInsets
                                                           .symmetric(
-                                                        horizontal: 10,
+                                                        horizontal: 12,
                                                       ),
-                                                      child: Column(
+                                                      decoration: BoxDecoration(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                        border: Border.all(
+                                                          color: CoresApp.borda,
+                                                        ),
+                                                      ),
+                                                      child: Row(
                                                         mainAxisSize:
                                                             MainAxisSize.min,
                                                         children: [
-                                                          Icon(
-                                                            erroExcel != null
-                                                                ? Icons
-                                                                    .error_outline_rounded
-                                                                : Icons
-                                                                    .table_view_outlined,
-                                                            color: erroExcel !=
-                                                                    null
-                                                                ? CoresApp.erro
-                                                                : CoresApp
-                                                                    .textoSecundario,
-                                                            size: 20,
+                                                          if (carregandoExcel)
+                                                            SizedBox(
+                                                              width: 15,
+                                                              height: 15,
+                                                              child:
+                                                                  CircularProgressIndicator(
+                                                                strokeWidth: 2,
+                                                                color: CoresApp
+                                                                    .destaque,
+                                                              ),
+                                                            )
+                                                          else
+                                                            Icon(
+                                                              Icons
+                                                                  .table_view_outlined,
+                                                              size: 16,
+                                                              color: CoresApp
+                                                                  .destaque,
+                                                            ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Text(
+                                                            carregandoExcel
+                                                                ? 'Carregando Excel...'
+                                                                : 'Usar imagem do Excel',
+                                                            style: TextStyle(
+                                                              color: CoresApp
+                                                                  .textoPrincipal,
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                            ),
                                                           ),
                                                           const SizedBox(
-                                                              height: 4),
-                                                          Text(
-                                                            erroExcel ??
-                                                                'Clique para carregar o Excel.',
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                            maxLines: 2,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style: TextStyle(
-                                                              color: erroExcel !=
-                                                                      null
-                                                                  ? CoresApp
-                                                                      .erro
-                                                                  : CoresApp
-                                                                      .textoSecundario,
-                                                              fontSize: 8,
-                                                            ),
+                                                              width: 7),
+                                                          Icon(
+                                                            Icons
+                                                                .keyboard_arrow_down_rounded,
+                                                            size: 17,
+                                                            color: CoresApp
+                                                                .textoSecundario,
                                                           ),
                                                         ],
                                                       ),
                                                     ),
                                                   ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-
-// ===============================================================
-// FIM — CARD VISUALIZAÇÃO DO EXCEL
-// ===============================================================
-
-                        // =================================================
-                        // FECHAR
-                        // =================================================
-
-                        IconButton(
-                          tooltip: 'Fechar',
-                          icon: Icon(
-                            Icons.close_rounded,
-                            color: CoresApp.textoSecundario,
-                          ),
-                          onPressed: () {
-                            Navigator.of(dialogContext).pop();
-                          },
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 3),
-
-                    // =================================================
-                    // CONTEÚDO
-                    // =================================================
-
-                    Flexible(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // ===========================================
-                          // ESQUERDA
-                          // ===========================================
-
-                          Expanded(
-                            flex: 5,
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: CoresApp.fundoSecundario,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: CoresApp.borda,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        comentarioSelecionadoId == null
-                                            ? Icons.add_comment_rounded
-                                            : Icons.edit_note_rounded,
-                                        color: CoresApp.destaque,
-                                        size: 19,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          comentarioSelecionadoId == null
-                                              ? 'Novo comentário'
-                                              : 'Comentário selecionado',
-                                          style: TextStyle(
-                                            color: CoresApp.textoPrincipal,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 10),
-
-                                  // =================================
-                                  // TIPO
-                                  // =================================
-
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'Tipo:',
-                                        style: TextStyle(
-                                          color: CoresApp.textoSecundario,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      SizedBox(
-                                        width: 190,
-                                        child: DropdownButtonFormField<String>(
-                                          value: tipoComentario,
-                                          isDense: true,
-                                          dropdownColor: CoresTelas.fundoModal,
-                                          decoration: InputDecoration(
-                                            contentPadding:
-                                                const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 8,
-                                            ),
-                                            border: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              borderSide: BorderSide(
-                                                color: CoresApp.borda,
-                                              ),
-                                            ),
-                                          ),
-                                          style: TextStyle(
-                                            color: CoresApp.textoPrincipal,
-                                            fontSize: 12,
-                                          ),
-                                          items: const [
-                                            DropdownMenuItem(
-                                              value: 'Interno',
-                                              child: Text('Interno'),
-                                            ),
-                                            DropdownMenuItem(
-                                              value: 'Externo',
-                                              child: Text('Externo'),
-                                            ),
-                                            DropdownMenuItem(
-                                              value: 'Padrão',
-                                              child: Text('Padrão'),
-                                            ),
-                                            DropdownMenuItem(
-                                              value: 'Padrão (Interno)',
-                                              child: Text(
-                                                'Padrão (Interno)',
-                                              ),
-                                            ),
-                                          ],
-                                          onChanged: (salvando ||
-                                                  testandoEdesk ||
-                                                  enviandoEdesk)
-                                              ? null
-                                              : (value) {
-                                                  if (value == null) {
-                                                    return;
-                                                  }
-
-                                                  setDialogState(
-                                                    () {
-                                                      tipoComentario = value;
-                                                    },
-                                                  );
-                                                },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 10),
-
-                                  // =================================
-                                  // EDITOR
-                                  // =================================
-
-                                  Expanded(
-                                    child: Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: CoresTelas.fundoModal,
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: CoresApp.borda,
-                                        ),
-                                      ),
-                                      child: SingleChildScrollView(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            if (imagemBase64 != null) ...[
-                                              Center(
-                                                child: Image.memory(
-                                                  base64Decode(
-                                                    imagemBase64!,
-                                                  ),
-                                                  fit: BoxFit.contain,
-                                                  height: 180,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 12),
-                                            ],
-                                            TextField(
-                                              controller: comentarioController,
-                                              maxLines: null,
-                                              minLines: 12,
-                                              enabled: !testandoEdesk &&
-                                                  !enviandoEdesk,
-                                              style: TextStyle(
-                                                color: CoresApp.textoPrincipal,
-                                                fontSize: 13,
-                                                height: 1.35,
-                                              ),
-                                              decoration: const InputDecoration(
-                                                hintText:
-                                                    'Digite o comentário...',
-                                                border: InputBorder.none,
-                                                contentPadding: EdgeInsets.zero,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 10),
-
-                                  // =================================
-                                  // IMAGEM
-                                  // =================================
-
-                                  Row(
-                                    children: [
-                                      ElevatedButton.icon(
-                                        onPressed:
-                                            (testandoEdesk || enviandoEdesk)
-                                                ? null
-                                                : () {
-                                                    selecionarImagem(
-                                                      dialogContext,
-                                                      setDialogState,
-                                                    );
-                                                  },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              CoresTelas.fundoModal,
-                                          foregroundColor: CoresApp.destaque,
-                                          side: BorderSide(
-                                            color: CoresApp.borda,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 13,
-                                            vertical: 10,
-                                          ),
-                                        ),
-                                        icon: const Icon(
-                                          Icons.image_outlined,
-                                          size: 18,
-                                        ),
-                                        label: Text(
-                                          imagemBase64 == null
-                                              ? 'Adicionar print'
-                                              : 'Trocar print',
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton.icon(
-                                        onPressed:
-                                            (testandoEdesk || enviandoEdesk)
-                                                ? null
-                                                : () {
-                                                    colarImagem(
-                                                      dialogContext,
-                                                      setDialogState,
-                                                    );
-                                                  },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              CoresTelas.fundoModal,
-                                          foregroundColor: CoresApp.destaque,
-                                          side: BorderSide(
-                                            color: CoresApp.borda,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 13,
-                                            vertical: 10,
-                                          ),
-                                        ),
-                                        icon: const Icon(
-                                          Icons.content_paste_rounded,
-                                          size: 18,
-                                        ),
-                                        label: const Text(
-                                          'Colar imagem',
-                                        ),
-                                      ),
-                                      if (imagemBase64 != null) ...[
-                                        const SizedBox(width: 8),
-                                        TextButton.icon(
-                                          onPressed:
-                                              (testandoEdesk || enviandoEdesk)
-                                                  ? null
-                                                  : () {
-                                                      setDialogState(
-                                                        () {
-                                                          // Se for a imagem
-                                                          // do Excel, volta
-                                                          // para ela.
-                                                          if (imagemBase64 ==
-                                                              imagemExcelBase64) {
-                                                            imagemBase64 = null;
-                                                          } else {
-                                                            imagemBase64 = null;
-                                                          }
-                                                        },
-                                                      );
-                                                    },
-                                          icon: Icon(
-                                            Icons.close,
-                                            color: CoresApp.erro,
-                                            size: 16,
-                                          ),
-                                          label: Text(
-                                            'Remover',
-                                            style: TextStyle(
-                                              color: CoresApp.erro,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 10),
-
-                                  // =================================
-                                  // BOTÕES
-                                  // =================================
-
-                                  Wrap(
-                                    alignment: WrapAlignment.end,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      TextButton.icon(
-                                        onPressed: (salvando ||
-                                                testandoEdesk ||
-                                                enviandoEdesk)
-                                            ? null
-                                            : () {
-                                                limparFormulario(
-                                                  setDialogState,
-                                                );
-                                              },
-                                        icon: const Icon(
-                                          Icons.add,
-                                          size: 17,
-                                        ),
-                                        label: const Text('Novo'),
-                                      ),
-                                      OutlinedButton.icon(
-                                        onPressed: (salvando ||
-                                                testandoEdesk ||
-                                                enviandoEdesk)
-                                            ? null
-                                            : () async {
-                                                await executarEdesk(
-                                                  dialogContext: dialogContext,
-                                                  setDialogState:
-                                                      setDialogState,
-                                                  enviar: false,
-                                                );
-                                              },
-                                        icon: testandoEdesk
-                                            ? const SizedBox(
-                                                width: 17,
-                                                height: 17,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                ),
-                                              )
-                                            : const Icon(
-                                                Icons.science_outlined,
-                                                size: 17,
-                                              ),
-                                        label: Text(
-                                          testandoEdesk
-                                              ? 'Testando...'
-                                              : 'Testar E-Desk',
-                                        ),
-                                      ),
-                                      ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: CoresApp.destaque,
-                                          foregroundColor: Colors.black,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 11,
-                                          ),
-                                        ),
-                                        onPressed: (salvando ||
-                                                testandoEdesk ||
-                                                enviandoEdesk)
-                                            ? null
-                                            : () async {
-                                                await executarEdesk(
-                                                  dialogContext: dialogContext,
-                                                  setDialogState:
-                                                      setDialogState,
-                                                  enviar: true,
-                                                );
-                                              },
-                                        icon: enviandoEdesk
-                                            ? const SizedBox(
-                                                width: 17,
-                                                height: 17,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: Colors.black,
-                                                ),
-                                              )
-                                            : const Icon(
-                                                Icons.send_rounded,
-                                                size: 17,
-                                              ),
-                                        label: Text(
-                                          enviandoEdesk
-                                              ? 'Enviando...'
-                                              : 'Enviar para E-Desk',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(width: 16),
-
-                          // ===========================================
-                          // DIREITA — HISTÓRICO
-                          // ===========================================
-
-                          Expanded(
-                            flex: 5,
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: CoresApp.fundoSecundario,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: CoresApp.borda,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.history_rounded,
-                                        color: CoresApp.destaque,
-                                        size: 19,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Histórico de comentários',
-                                        style: TextStyle(
-                                          color: CoresApp.textoPrincipal,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Expanded(
-                                    child: StreamBuilder<
-                                        QuerySnapshot<Map<String, dynamic>>>(
-                                      stream: comentariosRef()
-                                          .orderBy(
-                                            'dataHora',
-                                            descending: true,
-                                          )
-                                          .snapshots(),
-                                      builder: (context, snapshot) {
-                                        if (snapshot.connectionState ==
-                                            ConnectionState.waiting) {
-                                          return const Center(
-                                            child: CircularProgressIndicator(),
-                                          );
-                                        }
-
-                                        if (snapshot.hasError) {
-                                          return Center(
-                                            child: Text(
-                                              'Erro ao carregar comentários.',
-                                              style: TextStyle(
-                                                color: CoresApp.erro,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          );
-                                        }
-
-                                        final comentarios =
-                                            snapshot.data?.docs ?? [];
-
-                                        if (comentarios.isEmpty) {
-                                          return Center(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons
-                                                      .chat_bubble_outline_rounded,
-                                                  color:
-                                                      CoresApp.textoSecundario,
-                                                  size: 34,
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  'Nenhum comentário salvo.',
-                                                  style: TextStyle(
-                                                    color: CoresApp
-                                                        .textoSecundario,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }
-
-                                        return ListView.separated(
-                                          padding: const EdgeInsets.only(
-                                            right: 3,
-                                            bottom: 4,
-                                          ),
-                                          itemCount: comentarios.length,
-                                          separatorBuilder: (_, __) =>
-                                              const SizedBox(
-                                            height: 8,
-                                          ),
-                                          itemBuilder: (context, index) {
-                                            final doc = comentarios[index];
-
-                                            final data = doc.data();
-
-                                            final texto = data['comentario']
-                                                    ?.toString() ??
-                                                '';
-
-                                            final status =
-                                                data['status']?.toString() ??
-                                                    'Pendente';
-
-                                            final usuario =
-                                                data['usuario']?.toString() ??
-                                                    '';
-
-                                            final imagem = data['imagemBase64']
-                                                ?.toString();
-
-                                            final tipoSalvo =
-                                                data['tipoComentario']
-                                                    ?.toString();
-
-                                            final timestamp =
-                                                data['dataHora'] as Timestamp?;
-
-                                            final dataHora =
-                                                timestamp?.toDate();
-
-                                            final enviado = status == 'Enviado';
-
-                                            final enviando =
-                                                status == 'Enviando';
-
-                                            final erro = status == 'Erro';
-
-                                            final selecionado =
-                                                comentarioSelecionadoId ==
-                                                    doc.id;
-
-                                            return Container(
-                                              decoration: BoxDecoration(
-                                                color: selecionado
-                                                    ? CoresApp.destaque
-                                                        .withOpacity(
-                                                        0.08,
-                                                      )
-                                                    : CoresTelas.fundoModal,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                border: Border.all(
-                                                  color: selecionado
-                                                      ? CoresApp.destaque
-                                                      : CoresApp.borda,
-                                                ),
-                                              ),
-                                              child: InkWell(
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                onTap: () {
-                                                  comentarioController.text =
-                                                      texto;
-
-                                                  setDialogState(
-                                                    () {
-                                                      comentarioSelecionadoId =
-                                                          doc.id;
-
-                                                      imagemBase64 = imagem;
-
-                                                      if (tipoSalvo != null &&
-                                                          [
-                                                            'Interno',
-                                                            'Externo',
-                                                            'Padrão',
-                                                            'Padrão (Interno)',
-                                                          ].contains(
-                                                              tipoSalvo)) {
-                                                        tipoComentario =
-                                                            tipoSalvo;
-                                                      } else {
-                                                        tipoComentario =
-                                                            'Interno';
-                                                      }
-                                                    },
-                                                  );
-                                                },
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.all(11),
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Row(
-                                                        children: [
-                                                          Icon(
-                                                            enviado
-                                                                ? Icons
-                                                                    .check_circle
-                                                                : erro
-                                                                    ? Icons
-                                                                        .error_outline
-                                                                    : enviando
-                                                                        ? Icons
-                                                                            .sync
-                                                                        : Icons
-                                                                            .schedule_rounded,
-                                                            color: enviado
-                                                                ? CoresApp
-                                                                    .sucesso
-                                                                : erro
-                                                                    ? CoresApp
-                                                                        .erro
-                                                                    : enviando
-                                                                        ? CoresApp
-                                                                            .destaque
-                                                                        : Colors
-                                                                            .orange,
-                                                            size: 15,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 6),
-                                                          Text(
-                                                            enviado
-                                                                ? 'Enviado'
-                                                                : erro
-                                                                    ? 'Erro'
-                                                                    : enviando
-                                                                        ? 'Enviando...'
-                                                                        : 'Pendente',
-                                                            style: TextStyle(
-                                                              color: enviado
-                                                                  ? CoresApp
-                                                                      .sucesso
-                                                                  : erro
-                                                                      ? CoresApp
-                                                                          .erro
-                                                                      : enviando
-                                                                          ? CoresApp
-                                                                              .destaque
-                                                                          : Colors
-                                                                              .orange,
-                                                              fontSize: 10,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          if (tipoSalvo !=
-                                                                  null &&
-                                                              tipoSalvo
-                                                                  .isNotEmpty)
-                                                            Container(
-                                                              padding:
-                                                                  const EdgeInsets
-                                                                      .symmetric(
-                                                                horizontal: 6,
-                                                                vertical: 2,
-                                                              ),
-                                                              decoration:
-                                                                  BoxDecoration(
-                                                                borderRadius:
-                                                                    BorderRadius
-                                                                        .circular(
-                                                                            5),
-                                                                border:
-                                                                    Border.all(
-                                                                  color: CoresApp
-                                                                      .borda,
-                                                                ),
-                                                              ),
-                                                              child: Text(
-                                                                tipoSalvo,
-                                                                style:
-                                                                    TextStyle(
-                                                                  color: CoresApp
-                                                                      .textoSecundario,
-                                                                  fontSize: 8,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          const Spacer(),
-                                                          if (dataHora != null)
-                                                            Text(
-                                                              _formatarDataComentario(
-                                                                dataHora,
-                                                              ),
-                                                              style: TextStyle(
-                                                                color: CoresApp
-                                                                    .textoSecundario,
-                                                                fontSize: 9,
-                                                              ),
-                                                            ),
-                                                          const SizedBox(
-                                                              width: 4),
-                                                          IconButton(
-                                                            tooltip:
-                                                                'Excluir comentário',
-                                                            visualDensity:
-                                                                VisualDensity
-                                                                    .compact,
-                                                            padding:
-                                                                EdgeInsets.zero,
-                                                            icon: excluindo
-                                                                ? const SizedBox(
-                                                                    width: 15,
-                                                                    height: 15,
-                                                                    child:
-                                                                        CircularProgressIndicator(
-                                                                      strokeWidth:
-                                                                          2,
-                                                                    ),
-                                                                  )
-                                                                : Icon(
-                                                                    Icons
-                                                                        .delete_outline_rounded,
-                                                                    color:
-                                                                        CoresApp
-                                                                            .erro,
-                                                                    size: 18,
-                                                                  ),
-                                                            onPressed: excluindo
-                                                                ? null
-                                                                : () {
-                                                                    excluirComentario(
-                                                                      dialogContext,
-                                                                      setDialogState,
-                                                                      doc.id,
-                                                                    );
-                                                                  },
-                                                          ),
-                                                        ],
+                                                  ElevatedButton.icon(
+                                                    onPressed: (salvando ||
+                                                            testandoEdesk ||
+                                                            enviandoEdesk)
+                                                        ? null
+                                                        : () {
+                                                            selecionarImagem(
+                                                              dialogContext,
+                                                              setDialogState,
+                                                            );
+                                                          },
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                      backgroundColor:
+                                                          CoresApp.destaque,
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 10,
                                                       ),
-                                                      if (erro &&
-                                                          data['erroEnvio'] !=
-                                                              null) ...[
-                                                        const SizedBox(
-                                                            height: 5),
-                                                        Text(
-                                                          data['erroEnvio']
-                                                              .toString(),
-                                                          maxLines: 3,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                      ),
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons.image_outlined,
+                                                      size: 16,
+                                                    ),
+                                                    label: const Text(
+                                                      'Buscar imagem',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 10),
+
+                                      // Descrição do comentário
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'DESCRIÇÃO DO COMENTÁRIO',
+                                            style: TextStyle(
+                                              color: CoresApp.textoSecundario,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            '${comentarioController.text.length} / 2000',
+                                            style: TextStyle(
+                                              color: CoresApp.textoSecundario,
+                                              fontSize: 9,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 5),
+
+                                      // Editor de texto com barra de formatação (Toolbar) e campo de texto
+                                      Expanded(
+                                        child: Container(
+                                          width: double.infinity,
+                                          decoration: BoxDecoration(
+                                            color: CoresTelas.fundoModal,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                                color: CoresApp.borda),
+                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: Column(
+                                            children: [
+                                              // =================================================
+                                              // BARRA DE FORMATAÇÃO RICA
+                                              // A formatação é aplicada ao bloco de texto atual.
+                                              // Ao inserir uma tabela/imagem, o bloco é consolidado
+                                              // mantendo fonte, tamanho e estilos escolhidos.
+                                              // =================================================
+                                              Container(
+                                                height: 42,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8),
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      CoresApp.fundoSecundario,
+                                                  border: Border(
+                                                      bottom: BorderSide(
+                                                          color:
+                                                              CoresApp.borda)),
+                                                ),
+                                                child: SingleChildScrollView(
+                                                  scrollDirection:
+                                                      Axis.horizontal,
+                                                  child: Row(
+                                                    children: [
+                                                      SizedBox(
+                                                        width: 135,
+                                                        child: DropdownButton<
+                                                            String>(
+                                                          value:
+                                                              fonteComentario,
+                                                          isExpanded: true,
+                                                          isDense: true,
+                                                          underline:
+                                                              const SizedBox
+                                                                  .shrink(),
+                                                          dropdownColor:
+                                                              CoresTelas
+                                                                  .fundoModal,
                                                           style: TextStyle(
-                                                            color:
-                                                                CoresApp.erro,
-                                                            fontSize: 9,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                      const SizedBox(height: 8),
-                                                      if (imagem != null &&
-                                                          imagem.isNotEmpty)
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .only(
-                                                            bottom: 10,
-                                                          ),
-                                                          child: Center(
-                                                            child: Image.memory(
-                                                              base64Decode(
-                                                                imagem,
-                                                              ),
-                                                              fit: BoxFit
-                                                                  .contain,
-                                                              height: 120,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      if (texto.isNotEmpty)
-                                                        Text(
-                                                          texto,
-                                                          maxLines: 12,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          style: TextStyle(
-                                                            color: CoresApp
-                                                                .textoPrincipal,
-                                                            fontSize: 12,
-                                                            height: 1.3,
-                                                          ),
-                                                        ),
-                                                      if (usuario.isNotEmpty)
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .only(
-                                                            top: 7,
-                                                          ),
-                                                          child: Text(
-                                                            usuario,
-                                                            style: TextStyle(
                                                               color: CoresApp
-                                                                  .textoSecundario,
-                                                              fontSize: 9,
-                                                            ),
-                                                          ),
+                                                                  .textoPrincipal,
+                                                              fontSize: 11),
+                                                          items: const [
+                                                            'Segoe UI',
+                                                            'Arial',
+                                                            'Calibri',
+                                                            'Verdana',
+                                                            'Tahoma',
+                                                            'Times New Roman',
+                                                            'Georgia',
+                                                            'Courier New'
+                                                          ]
+                                                              .map((fonte) =>
+                                                                  DropdownMenuItem(
+                                                                      value:
+                                                                          fonte,
+                                                                      child: Text(
+                                                                          fonte)))
+                                                              .toList(),
+                                                          onChanged: (v) {
+                                                            if (v == null)
+                                                              return;
+                                                            setDialogState(() =>
+                                                                fonteComentario =
+                                                                    v);
+                                                            comentarioFocusNode
+                                                                .requestFocus();
+                                                          },
                                                         ),
-                                                      if (selecionado)
-                                                        Padding(
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      SizedBox(
+                                                        width: 62,
+                                                        child: DropdownButton<
+                                                            double>(
+                                                          value:
+                                                              tamanhoFonteComentario,
+                                                          isExpanded: true,
+                                                          isDense: true,
+                                                          underline:
+                                                              const SizedBox
+                                                                  .shrink(),
+                                                          dropdownColor:
+                                                              CoresTelas
+                                                                  .fundoModal,
+                                                          style: TextStyle(
+                                                              color: CoresApp
+                                                                  .textoPrincipal,
+                                                              fontSize: 11),
+                                                          items: const [
+                                                            9.0,
+                                                            10.0,
+                                                            11.0,
+                                                            12.0,
+                                                            14.0,
+                                                            16.0,
+                                                            18.0,
+                                                            20.0,
+                                                            24.0
+                                                          ]
+                                                              .map((t) =>
+                                                                  DropdownMenuItem(
+                                                                      value: t,
+                                                                      child: Text(
+                                                                          '${t.toInt()}')))
+                                                              .toList(),
+                                                          onChanged: (v) {
+                                                            if (v == null)
+                                                              return;
+                                                            setDialogState(() =>
+                                                                tamanhoFonteComentario =
+                                                                    v);
+                                                            comentarioFocusNode
+                                                                .requestFocus();
+                                                          },
+                                                        ),
+                                                      ),
+                                                      const VerticalDivider(
+                                                          width: 12,
+                                                          indent: 8,
+                                                          endIndent: 8),
+                                                      PopupMenuButton<Color>(
+                                                        tooltip: 'Cor da fonte',
+                                                        initialValue:
+                                                            corFonteComentario,
+                                                        onSelected: (cor) {
+                                                          setDialogState(() =>
+                                                              corFonteComentario =
+                                                                  cor);
+                                                          comentarioFocusNode
+                                                              .requestFocus();
+                                                        },
+                                                        itemBuilder:
+                                                            (context) => const [
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFFF5F7FA),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFFF5F7FA),
+                                                                  nome:
+                                                                      'Branco')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFF000000),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFF000000),
+                                                                  nome:
+                                                                      'Preto')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFFE53935),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFFE53935),
+                                                                  nome:
+                                                                      'Vermelho')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFFFFB300),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFFFFB300),
+                                                                  nome:
+                                                                      'Amarelo')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFF43A047),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFF43A047),
+                                                                  nome:
+                                                                      'Verde')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFF1E88E5),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFF1E88E5),
+                                                                  nome:
+                                                                      'Azul')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFF8E24AA),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFF8E24AA),
+                                                                  nome:
+                                                                      'Roxo')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFF00ACC1),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFF00ACC1),
+                                                                  nome:
+                                                                      'Ciano')),
+                                                          PopupMenuItem(
+                                                              value: Color(
+                                                                  0xFFFF7043),
+                                                              child: _CorFonteItem(
+                                                                  cor: Color(
+                                                                      0xFFFF7043),
+                                                                  nome:
+                                                                      'Laranja')),
+                                                        ],
+                                                        child: Padding(
                                                           padding:
                                                               const EdgeInsets
-                                                                  .only(
-                                                            top: 6,
-                                                          ),
-                                                          child: Row(
+                                                                  .symmetric(
+                                                                  horizontal: 8,
+                                                                  vertical: 7),
+                                                          child: Column(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
                                                             children: [
                                                               Icon(
-                                                                Icons
-                                                                    .edit_rounded,
-                                                                color: CoresApp
-                                                                    .destaque,
-                                                                size: 12,
-                                                              ),
-                                                              const SizedBox(
-                                                                  width: 4),
-                                                              Text(
-                                                                'Carregado para edição',
-                                                                style:
-                                                                    TextStyle(
+                                                                  Icons
+                                                                      .format_color_text,
+                                                                  size: 17,
                                                                   color: CoresApp
-                                                                      .destaque,
-                                                                  fontSize: 9,
-                                                                  fontStyle:
-                                                                      FontStyle
-                                                                          .italic,
-                                                                ),
-                                                              ),
+                                                                      .textoSecundario),
+                                                              Container(
+                                                                  width: 17,
+                                                                  height: 3,
+                                                                  color:
+                                                                      corFonteComentario),
                                                             ],
                                                           ),
                                                         ),
+                                                      ),
+                                                      const VerticalDivider(
+                                                          width: 12,
+                                                          indent: 8,
+                                                          endIndent: 8),
+                                                      IconButton(
+                                                        tooltip: 'Negrito',
+                                                        icon: Icon(
+                                                            Icons.format_bold,
+                                                            size: 17,
+                                                            color: negritoComentario
+                                                                ? CoresApp
+                                                                    .destaque
+                                                                : CoresApp
+                                                                    .textoSecundario),
+                                                        onPressed: () {
+                                                          setDialogState(() =>
+                                                              negritoComentario =
+                                                                  !negritoComentario);
+                                                          comentarioFocusNode
+                                                              .requestFocus();
+                                                        },
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: 'Itálico',
+                                                        icon: Icon(
+                                                            Icons.format_italic,
+                                                            size: 17,
+                                                            color: italicoComentario
+                                                                ? CoresApp
+                                                                    .destaque
+                                                                : CoresApp
+                                                                    .textoSecundario),
+                                                        onPressed: () {
+                                                          setDialogState(() =>
+                                                              italicoComentario =
+                                                                  !italicoComentario);
+                                                          comentarioFocusNode
+                                                              .requestFocus();
+                                                        },
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: 'Sublinhado',
+                                                        icon: Icon(
+                                                            Icons
+                                                                .format_underlined,
+                                                            size: 17,
+                                                            color: sublinhadoComentario
+                                                                ? CoresApp
+                                                                    .destaque
+                                                                : CoresApp
+                                                                    .textoSecundario),
+                                                        onPressed: () {
+                                                          setDialogState(() =>
+                                                              sublinhadoComentario =
+                                                                  !sublinhadoComentario);
+                                                          comentarioFocusNode
+                                                              .requestFocus();
+                                                        },
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: 'Tachado',
+                                                        icon: Icon(
+                                                            Icons
+                                                                .format_strikethrough,
+                                                            size: 17,
+                                                            color: tachadoComentario
+                                                                ? CoresApp
+                                                                    .destaque
+                                                                : CoresApp
+                                                                    .textoSecundario),
+                                                        onPressed: () {
+                                                          setDialogState(() =>
+                                                              tachadoComentario =
+                                                                  !tachadoComentario);
+                                                          comentarioFocusNode
+                                                              .requestFocus();
+                                                        },
+                                                      ),
+                                                      const VerticalDivider(
+                                                          width: 12,
+                                                          indent: 8,
+                                                          endIndent: 8),
+                                                      IconButton(
+                                                        tooltip:
+                                                            'Lista com marcadores',
+                                                        icon: Icon(
+                                                            Icons
+                                                                .format_list_bulleted,
+                                                            size: 17,
+                                                            color: CoresApp
+                                                                .textoSecundario),
+                                                        onPressed: () {
+                                                          final linhas =
+                                                              comentarioController
+                                                                  .text
+                                                                  .split('\n');
+                                                          comentarioController
+                                                                  .text =
+                                                              linhas
+                                                                  .map((l) => l
+                                                                          .trim()
+                                                                          .isEmpty
+                                                                      ? l
+                                                                      : '• ${l.replaceFirst(RegExp(r'^[•-]\s*'), '')}')
+                                                                  .join('\n');
+                                                          comentarioController
+                                                                  .selection =
+                                                              TextSelection.collapsed(
+                                                                  offset:
+                                                                      comentarioController
+                                                                          .text
+                                                                          .length);
+                                                          setDialogState(() {});
+                                                        },
+                                                      ),
+                                                      IconButton(
+                                                        tooltip:
+                                                            'Lista numerada',
+                                                        icon: Icon(
+                                                            Icons
+                                                                .format_list_numbered,
+                                                            size: 17,
+                                                            color: CoresApp
+                                                                .textoSecundario),
+                                                        onPressed: () {
+                                                          final linhas =
+                                                              comentarioController
+                                                                  .text
+                                                                  .split('\n');
+                                                          var n = 0;
+                                                          comentarioController
+                                                                  .text =
+                                                              linhas.map((l) {
+                                                            if (l
+                                                                .trim()
+                                                                .isEmpty)
+                                                              return l;
+                                                            n++;
+                                                            return '$n. ${l.replaceFirst(RegExp(r'^\d+\.\s*'), '')}';
+                                                          }).join('\n');
+                                                          comentarioController
+                                                                  .selection =
+                                                              TextSelection.collapsed(
+                                                                  offset:
+                                                                      comentarioController
+                                                                          .text
+                                                                          .length);
+                                                          setDialogState(() {});
+                                                        },
+                                                      ),
+                                                      const VerticalDivider(
+                                                          width: 12,
+                                                          indent: 8,
+                                                          endIndent: 8),
+                                                      IconButton(
+                                                          tooltip:
+                                                              'Alinhar à esquerda',
+                                                          icon: Icon(
+                                                              Icons
+                                                                  .format_align_left,
+                                                              size: 17,
+                                                              color: alinhamentoComentario ==
+                                                                      TextAlign
+                                                                          .left
+                                                                  ? CoresApp
+                                                                      .destaque
+                                                                  : CoresApp
+                                                                      .textoSecundario),
+                                                          onPressed: () =>
+                                                              setDialogState(() =>
+                                                                  alinhamentoComentario =
+                                                                      TextAlign
+                                                                          .left)),
+                                                      IconButton(
+                                                          tooltip:
+                                                              'Centralizar',
+                                                          icon: Icon(
+                                                              Icons
+                                                                  .format_align_center,
+                                                              size: 17,
+                                                              color: alinhamentoComentario ==
+                                                                      TextAlign
+                                                                          .center
+                                                                  ? CoresApp
+                                                                      .destaque
+                                                                  : CoresApp
+                                                                      .textoSecundario),
+                                                          onPressed: () =>
+                                                              setDialogState(() =>
+                                                                  alinhamentoComentario =
+                                                                      TextAlign
+                                                                          .center)),
+                                                      IconButton(
+                                                          tooltip:
+                                                              'Alinhar à direita',
+                                                          icon: Icon(
+                                                              Icons
+                                                                  .format_align_right,
+                                                              size: 17,
+                                                              color: alinhamentoComentario ==
+                                                                      TextAlign
+                                                                          .right
+                                                                  ? CoresApp
+                                                                      .destaque
+                                                                  : CoresApp
+                                                                      .textoSecundario),
+                                                          onPressed: () =>
+                                                              setDialogState(() =>
+                                                                  alinhamentoComentario =
+                                                                      TextAlign
+                                                                          .right)),
+                                                      IconButton(
+                                                          tooltip: 'Justificar',
+                                                          icon: Icon(
+                                                              Icons
+                                                                  .format_align_justify,
+                                                              size: 17,
+                                                              color: alinhamentoComentario ==
+                                                                      TextAlign
+                                                                          .justify
+                                                                  ? CoresApp
+                                                                      .destaque
+                                                                  : CoresApp
+                                                                      .textoSecundario),
+                                                          onPressed: () =>
+                                                              setDialogState(() =>
+                                                                  alinhamentoComentario =
+                                                                      TextAlign
+                                                                          .justify)),
+                                                      const VerticalDivider(
+                                                          width: 12,
+                                                          indent: 8,
+                                                          endIndent: 8),
+                                                      IconButton(
+                                                        tooltip:
+                                                            'Inserir imagem',
+                                                        icon: Icon(
+                                                            Icons
+                                                                .image_outlined,
+                                                            size: 17,
+                                                            color: CoresApp
+                                                                .textoSecundario),
+                                                        onPressed: () =>
+                                                            selecionarImagem(
+                                                                dialogContext,
+                                                                setDialogState),
+                                                      ),
                                                     ],
                                                   ),
                                                 ),
                                               ),
+                                              Expanded(
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.all(8),
+                                                  child: ListView(
+                                                    padding: EdgeInsets.zero,
+                                                    children: [
+                                                      if (carregandoExcel)
+                                                        const Padding(
+                                                          padding: EdgeInsets
+                                                              .symmetric(
+                                                                  vertical: 8),
+                                                          child: Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              SizedBox(
+                                                                width: 18,
+                                                                height: 18,
+                                                                child: CircularProgressIndicator(
+                                                                    strokeWidth:
+                                                                        2),
+                                                              ),
+                                                              SizedBox(
+                                                                  width: 8),
+                                                              Text(
+                                                                  'Adicionando nova tabela...'),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      if (!carregandoExcel &&
+                                                          erroExcel != null)
+                                                        Text(
+                                                          erroExcel!,
+                                                          style: TextStyle(
+                                                            color:
+                                                                CoresApp.erro,
+                                                            fontSize: 10,
+                                                          ),
+                                                        ),
+                                                      if (blocosComentario
+                                                          .isNotEmpty) ...[
+                                                        ...List.generate(
+                                                          blocosComentario
+                                                              .length,
+                                                          (index) {
+                                                            final bloco =
+                                                                blocosComentario[
+                                                                    index];
+                                                            final tipo =
+                                                                bloco['tipo'] ??
+                                                                    '';
+                                                            final valor = bloco[
+                                                                    'valor'] ??
+                                                                '';
+
+                                                            if (tipo ==
+                                                                'texto') {
+                                                              return Padding(
+                                                                padding:
+                                                                    const EdgeInsets
+                                                                        .only(
+                                                                        bottom:
+                                                                            8),
+                                                                child: Align(
+                                                                  alignment:
+                                                                      Alignment
+                                                                          .centerLeft,
+                                                                  child:
+                                                                      SizedBox(
+                                                                    width: double
+                                                                        .infinity,
+                                                                    child: Text(
+                                                                      valor,
+                                                                      textAlign:
+                                                                          alinhamentoDoBloco(
+                                                                              bloco),
+                                                                      style: estiloDoBloco(
+                                                                          bloco),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              );
+                                                            }
+
+                                                            return Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      bottom:
+                                                                          8),
+                                                              child: Stack(
+                                                                children: [
+                                                                  Container(
+                                                                    constraints:
+                                                                        const BoxConstraints(
+                                                                      maxWidth:
+                                                                          760,
+                                                                      maxHeight:
+                                                                          180,
+                                                                      minHeight:
+                                                                          80,
+                                                                    ),
+                                                                    decoration:
+                                                                        BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        color: CoresApp
+                                                                            .destaque
+                                                                            .withOpacity(0.5),
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              6),
+                                                                    ),
+                                                                    child: Image
+                                                                        .memory(
+                                                                      base64Decode(
+                                                                          valor),
+                                                                      fit: BoxFit
+                                                                          .contain,
+                                                                    ),
+                                                                  ),
+                                                                  Positioned(
+                                                                    top: 4,
+                                                                    right: 4,
+                                                                    child:
+                                                                        IconButton(
+                                                                      tooltip:
+                                                                          'Remover esta tabela',
+                                                                      onPressed:
+                                                                          () {
+                                                                        setDialogState(
+                                                                            () {
+                                                                          final removida =
+                                                                              valor;
+                                                                          blocosComentario
+                                                                              .removeAt(index);
+                                                                          imagensBase64
+                                                                              .remove(removida);
+                                                                          final indiceExcel =
+                                                                              imagensExcelBase64.indexOf(removida);
+                                                                          if (indiceExcel >=
+                                                                              0) {
+                                                                            imagensExcelBase64.removeAt(indiceExcel);
+                                                                            if (indiceExcel <
+                                                                                intervalosExcelAdicionados.length) {
+                                                                              intervalosExcelAdicionados.removeAt(indiceExcel);
+                                                                            }
+                                                                          }
+                                                                          imagemBase64 = imagensBase64.isNotEmpty
+                                                                              ? imagensBase64.last
+                                                                              : null;
+                                                                          imagemExcelBase64 = imagensExcelBase64.isNotEmpty
+                                                                              ? imagensExcelBase64.last
+                                                                              : null;
+                                                                        });
+                                                                      },
+                                                                      icon:
+                                                                          const Icon(
+                                                                        Icons
+                                                                            .delete_outline,
+                                                                        size:
+                                                                            16,
+                                                                        color: Colors
+                                                                            .red,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            );
+                                                          },
+                                                        ),
+                                                      ],
+                                                      TextField(
+                                                        controller:
+                                                            comentarioController,
+                                                        focusNode:
+                                                            comentarioFocusNode,
+                                                        enabled:
+                                                            !testandoEdesk &&
+                                                                !enviandoEdesk,
+                                                        keyboardType:
+                                                            TextInputType
+                                                                .multiline,
+                                                        minLines: 5,
+                                                        maxLines: null,
+                                                        expands: false,
+                                                        maxLength: 2000,
+                                                        onChanged: (_) =>
+                                                            setDialogState(
+                                                                () {}),
+                                                        textAlign:
+                                                            alinhamentoComentario,
+                                                        style: TextStyle(
+                                                          color:
+                                                              corFonteComentario,
+                                                          fontSize:
+                                                              tamanhoFonteComentario,
+                                                          fontFamily:
+                                                              fonteComentario,
+                                                          fontWeight:
+                                                              negritoComentario
+                                                                  ? FontWeight
+                                                                      .bold
+                                                                  : FontWeight
+                                                                      .normal,
+                                                          fontStyle:
+                                                              italicoComentario
+                                                                  ? FontStyle
+                                                                      .italic
+                                                                  : FontStyle
+                                                                      .normal,
+                                                          decoration:
+                                                              TextDecoration
+                                                                  .combine([
+                                                            if (sublinhadoComentario)
+                                                              TextDecoration
+                                                                  .underline,
+                                                            if (tachadoComentario)
+                                                              TextDecoration
+                                                                  .lineThrough,
+                                                          ]),
+                                                        ),
+                                                        decoration:
+                                                            const InputDecoration(
+                                                          counterText: '',
+                                                          hintText:
+                                                              'Digite sua resposta ou atualização para o E-Desk...',
+                                                          border:
+                                                              InputBorder.none,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 10),
+                                      Divider(height: 1, color: CoresApp.borda),
+                                      const SizedBox(height: 10),
+
+                                      // Rodapé com botões de ação responsivos
+                                      LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final bool compacto =
+                                              constraints.maxWidth < 650;
+
+                                          final botoesEsquerda = Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              OutlinedButton.icon(
+                                                onPressed: (salvando ||
+                                                        testandoEdesk ||
+                                                        enviandoEdesk)
+                                                    ? null
+                                                    : () => limparFormulario(
+                                                        setDialogState),
+                                                icon: const Icon(
+                                                    Icons.note_add_outlined,
+                                                    size: 16),
+                                                label: const Text('Novo',
+                                                    style: TextStyle(
+                                                        fontSize: 11)),
+                                              ),
+                                              ElevatedButton.icon(
+                                                onPressed: (salvando ||
+                                                        testandoEdesk ||
+                                                        enviandoEdesk)
+                                                    ? null
+                                                    : () => salvarComentario(
+                                                        dialogContext,
+                                                        setDialogState),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      CoresApp.sucesso,
+                                                  foregroundColor: Colors.white,
+                                                ),
+                                                icon: salvando
+                                                    ? const SizedBox(
+                                                        width: 14,
+                                                        height: 14,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.white,
+                                                        ),
+                                                      )
+                                                    : const Icon(
+                                                        Icons
+                                                            .check_circle_rounded,
+                                                        size: 16,
+                                                      ),
+                                                label: Text(
+                                                  salvando
+                                                      ? 'Salvando...'
+                                                      : 'Salvar',
+                                                  style: const TextStyle(
+                                                      fontSize: 11),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+
+                                          final botoesDireita = Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              OutlinedButton.icon(
+                                                onPressed: (salvando ||
+                                                        testandoEdesk ||
+                                                        enviandoEdesk)
+                                                    ? null
+                                                    : () => executarEdesk(
+                                                          dialogContext:
+                                                              dialogContext,
+                                                          setDialogState:
+                                                              setDialogState,
+                                                          enviar: false,
+                                                        ),
+                                                icon: testandoEdesk
+                                                    ? const SizedBox(
+                                                        width: 14,
+                                                        height: 14,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                      )
+                                                    : const Icon(
+                                                        Icons.science_outlined,
+                                                        size: 16,
+                                                      ),
+                                                label: Text(
+                                                  testandoEdesk
+                                                      ? 'Testando...'
+                                                      : 'Testar',
+                                                  style: const TextStyle(
+                                                      fontSize: 11),
+                                                ),
+                                              ),
+                                              ElevatedButton.icon(
+                                                onPressed: (salvando ||
+                                                        testandoEdesk ||
+                                                        enviandoEdesk)
+                                                    ? null
+                                                    : () => executarEdesk(
+                                                          dialogContext:
+                                                              dialogContext,
+                                                          setDialogState:
+                                                              setDialogState,
+                                                          enviar: true,
+                                                        ),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      CoresApp.destaque,
+                                                  foregroundColor: Colors.white,
+                                                ),
+                                                icon: enviandoEdesk
+                                                    ? const SizedBox(
+                                                        width: 14,
+                                                        height: 14,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.white,
+                                                        ),
+                                                      )
+                                                    : const Icon(
+                                                        Icons.send_rounded,
+                                                        size: 16,
+                                                      ),
+                                                label: Text(
+                                                  enviandoEdesk
+                                                      ? 'Enviando...'
+                                                      : 'Enviar para E-Desk',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+
+                                          if (compacto) {
+                                            return Wrap(
+                                              spacing: 10,
+                                              runSpacing: 10,
+                                              children: [
+                                                botoesEsquerda,
+                                                botoesDireita,
+                                              ],
                                             );
-                                          },
-                                        );
-                                      },
-                                    ),
+                                          }
+
+                                          return Row(
+                                            children: [
+                                              botoesEsquerda,
+                                              const Spacer(),
+                                              botoesDireita,
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ===============================================================
+                      // ALÇA DE REDIMENSIONAMENTO NO CANTO INFERIOR DIREITO
+                      // ===============================================================
+
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.resizeDownRight,
+                          child: GestureDetector(
+                            onPanUpdate: (details) {
+                              setDialogState(() {
+                                final novaLargura =
+                                    larguraFinal + details.delta.dx;
+                                final novaAltura =
+                                    alturaFinal + details.delta.dy;
+
+                                larguraCustomizada =
+                                    novaLargura.clamp(400.0, tamanhoTela.width);
+                                alturaCustomizada =
+                                    novaAltura.clamp(350.0, tamanhoTela.height);
+                              });
+                            },
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: CoresApp.destaque.withOpacity(0.3),
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(8),
+                                  bottomRight: Radius.circular(14),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.signal_cellular_null,
+                                size: 12,
+                                color: CoresApp.textoPrincipal,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    // =================================================
-                    // RODAPÉ
-                    // =================================================
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: (testandoEdesk || enviandoEdesk)
-                              ? null
-                              : () {
-                                  Navigator.of(context).pop();
-                                },
-                          child: Text(
-                            'Fechar',
-                            style: TextStyle(
-                              color: CoresApp.textoSecundario,
-                            ),
-                          ),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -6040,6 +9589,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       },
     ).whenComplete(() {
       comentarioController.dispose();
+      comentarioFocusNode.dispose();
     });
   }
 
@@ -6071,5 +9621,31 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       default:
         return 0;
     }
+  }
+}
+
+class _CorFonteItem extends StatelessWidget {
+  final Color cor;
+  final String nome;
+
+  const _CorFonteItem({required this.cor, required this.nome});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            color: cor,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.grey.shade600),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(nome),
+      ],
+    );
   }
 }

@@ -58,3 +58,7 @@ installer/*.exe
 /logs/
 /screenshots/
 __pycache__/
+
+# Logs de compilacao locais
+/build_log.txt
+/build_windows_verbose.txt

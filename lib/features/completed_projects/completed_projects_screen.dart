@@ -5,7 +5,6 @@ import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class CompletedProjectsScreen extends StatefulWidget {
@@ -224,7 +223,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   int _getLogMinutes(TimeLog log) {
     try {
       // 1. Prioriza durationFormatted
-      final duration = log.durationFormatted?.trim() ?? '';
+      final duration = log.durationFormatted.trim();
 
       if (duration.isNotEmpty) {
         final parsedDuration = _timeToMinutes(duration);
@@ -344,7 +343,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       ),
       boxShadow: [
         BoxShadow(
-          color: CoresApp.overlay.withOpacity(0.14),
+          color: CoresApp.overlay.withValues(alpha: 0.14),
           blurRadius: 18,
           offset: const Offset(0, 6),
         ),
@@ -376,10 +375,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         vertical: 9,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.035),
+        color: color.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.16),
+          color: color.withValues(alpha: 0.16),
         ),
       ),
       child: Row(
@@ -389,10 +388,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
+              color: color.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: color.withOpacity(0.18),
+                color: color.withValues(alpha: 0.18),
               ),
             ),
             child: Icon(
@@ -435,7 +434,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: color.withOpacity(0.80),
+                    color: color.withValues(alpha: 0.80),
                     fontSize: 8,
                     fontWeight: FontWeight.w600,
                   ),
@@ -477,10 +476,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.sucesso.withOpacity(0.10),
+            color: CoresApp.sucesso.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: CoresApp.sucesso.withOpacity(0.20),
+              color: CoresApp.sucesso.withValues(alpha: 0.20),
             ),
           ),
           child: const Icon(
@@ -541,7 +540,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       decoration: InputDecoration(
         hintText: 'Buscar por ID, cliente, serviço, líder ou etapa...',
         hintStyle: TextStyle(
-          color: CoresApp.textoSecundario.withOpacity(0.45),
+          color: CoresApp.textoSecundario.withValues(alpha: 0.45),
           fontSize: 11,
         ),
         prefixIcon: const Icon(
@@ -639,7 +638,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     return Container(
       width: double.infinity,
       decoration: _cardDecoration(
-        backgroundColor: CoresDashboard.tabelaFundo.withOpacity(0.97),
+        backgroundColor: CoresDashboard.tabelaFundo.withValues(alpha: 0.97),
         radius: 15,
       ),
       child: ClipRRect(
@@ -818,12 +817,12 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               vertical: 5,
             ),
             decoration: BoxDecoration(
-              color: CoresApp.destaque.withOpacity(0.09),
+              color: CoresApp.destaque.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(
                 TamanhosApp.raioBadge,
               ),
               border: Border.all(
-                color: CoresApp.destaque.withOpacity(0.32),
+                color: CoresApp.destaque.withValues(alpha: 0.32),
                 width: TamanhosApp.espessuraBorda,
               ),
             ),
@@ -854,12 +853,12 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         vertical: 5,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.11),
+        color: color.withValues(alpha: 0.11),
         borderRadius: BorderRadius.circular(
           TamanhosApp.raioBadge,
         ),
         border: Border.all(
-          color: color.withOpacity(0.45),
+          color: color.withValues(alpha: 0.45),
           width: TamanhosApp.espessuraBorda,
         ),
       ),
@@ -898,10 +897,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         vertical: 4,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: color.withOpacity(0.45),
+          color: color.withValues(alpha: 0.45),
           width: TamanhosApp.espessuraBorda,
         ),
       ),
@@ -942,10 +941,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         vertical: 2,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.textoPrincipal.withOpacity(0.025),
+        color: CoresApp.textoPrincipal.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(9),
         border: Border.all(
-          color: CoresDashboard.tabelaBorda.withOpacity(0.65),
+          color: CoresDashboard.tabelaBorda.withValues(alpha: 0.65),
         ),
       ),
       child: Row(
@@ -1263,7 +1262,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               vertical: 4,
             ),
             decoration: BoxDecoration(
-              color: CoresApp.textoPrincipal.withOpacity(0.035),
+              color: CoresApp.textoPrincipal.withValues(alpha: 0.035),
               borderRadius: BorderRadius.circular(5),
             ),
             child: Text(
@@ -1286,7 +1285,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 project,
                 'client',
               ),
-              color: CoresApp.textoSecundario.withOpacity(0.65),
+              color: CoresApp.textoSecundario.withValues(alpha: 0.65),
             ),
           ),
         ),
@@ -1296,7 +1295,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               project,
               'serviceType',
             ),
-            color: CoresApp.textoSecundario.withOpacity(0.65),
+            color: CoresApp.textoSecundario.withValues(alpha: 0.65),
           ),
         ),
         DataCell(
@@ -1402,13 +1401,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  CoresApp.sucesso.withOpacity(0.12),
-                  CoresApp.destaque.withOpacity(0.06),
+                  CoresApp.sucesso.withValues(alpha: 0.12),
+                  CoresApp.destaque.withValues(alpha: 0.06),
                 ],
               ),
               borderRadius: BorderRadius.circular(19),
               border: Border.all(
-                color: CoresApp.sucesso.withOpacity(0.20),
+                color: CoresApp.sucesso.withValues(alpha: 0.20),
               ),
             ),
             child: Icon(
@@ -1506,10 +1505,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: CoresApp.sucesso.withOpacity(0.10),
+                    color: CoresApp.sucesso.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: CoresApp.sucesso.withOpacity(0.15),
+                      color: CoresApp.sucesso.withValues(alpha: 0.15),
                     ),
                   ),
                   child: const Icon(
@@ -1548,10 +1547,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: CoresApp.sucesso.withOpacity(0.08),
+                    color: CoresApp.sucesso.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: CoresApp.sucesso.withOpacity(0.18),
+                      color: CoresApp.sucesso.withValues(alpha: 0.18),
                     ),
                   ),
                   child: Row(
@@ -1683,10 +1682,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.055),
+        color: color.withValues(alpha: 0.055),
         borderRadius: BorderRadius.circular(11),
         border: Border.all(
-          color: color.withOpacity(0.16),
+          color: color.withValues(alpha: 0.16),
         ),
       ),
       child: Row(
@@ -1696,7 +1695,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
+              color: color.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Icon(
@@ -1763,10 +1762,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         vertical: 4,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.09),
+        color: color.withValues(alpha: 0.09),
         borderRadius: BorderRadius.circular(7),
         border: Border.all(
-          color: color.withOpacity(0.20),
+          color: color.withValues(alpha: 0.20),
         ),
       ),
       child: Row(
@@ -1829,7 +1828,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       ),
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: CoresApp.textoPrincipal.withOpacity(0.025),
+        color: CoresApp.textoPrincipal.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: CoresDashboard.tabelaBorda,
@@ -1843,10 +1842,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: CoresApp.destaque.withOpacity(0.09),
+              color: CoresApp.destaque.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(9),
               border: Border.all(
-                color: CoresApp.destaque.withOpacity(0.14),
+                color: CoresApp.destaque.withValues(alpha: 0.14),
               ),
             ),
             child: const Icon(
@@ -1917,7 +1916,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: CoresApp.textoPrincipal.withOpacity(0.025),
+                      color: CoresApp.textoPrincipal.withValues(alpha: 0.025),
                       borderRadius: BorderRadius.circular(7),
                     ),
                     child: Row(
@@ -2002,10 +2001,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               horizontal: 16,
             ),
             decoration: BoxDecoration(
-              color: CoresApp.destaque.withOpacity(0.035),
+              color: CoresApp.destaque.withValues(alpha: 0.035),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: CoresApp.destaque.withOpacity(0.13),
+                color: CoresApp.destaque.withValues(alpha: 0.13),
               ),
             ),
             child: const Center(
@@ -2026,10 +2025,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: CoresApp.erro.withOpacity(0.045),
+              color: CoresApp.erro.withValues(alpha: 0.045),
               borderRadius: BorderRadius.circular(11),
               border: Border.all(
-                color: CoresApp.erro.withOpacity(0.18),
+                color: CoresApp.erro.withValues(alpha: 0.18),
               ),
             ),
             child: Row(
@@ -2074,10 +2073,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         return Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.025),
+            color: CoresApp.destaque.withValues(alpha: 0.025),
             borderRadius: BorderRadius.circular(13),
             border: Border.all(
-              color: CoresApp.destaque.withOpacity(0.14),
+              color: CoresApp.destaque.withValues(alpha: 0.14),
             ),
           ),
           child: Padding(
@@ -2092,7 +2091,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       height: 35,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: CoresApp.destaque.withOpacity(0.10),
+                        color: CoresApp.destaque.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(9),
                       ),
                       child: const Icon(
@@ -2132,8 +2131,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: logs.isNotEmpty
-                            ? CoresApp.destaque.withOpacity(0.09)
-                            : CoresApp.textoSecundario.withOpacity(0.06),
+                            ? CoresApp.destaque.withValues(alpha: 0.09)
+                            : CoresApp.textoSecundario.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -2226,7 +2225,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       vertical: 22,
                     ),
                     decoration: BoxDecoration(
-                      color: CoresApp.textoPrincipal.withOpacity(0.018),
+                      color: CoresApp.textoPrincipal.withValues(alpha: 0.018),
                       borderRadius: BorderRadius.circular(9),
                       border: Border.all(
                         color: CoresDashboard.tabelaBorda,
@@ -2345,7 +2344,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: CoresApp.overlay.withOpacity(0.35),
+                    color: CoresApp.overlay.withValues(alpha: 0.35),
                     blurRadius: 30,
                     offset: const Offset(0, 12),
                   ),
@@ -2385,13 +2384,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  CoresApp.sucesso.withOpacity(0.14),
-                                  CoresApp.destaque.withOpacity(0.07),
+                                  CoresApp.sucesso.withValues(alpha: 0.14),
+                                  CoresApp.destaque.withValues(alpha: 0.07),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: CoresApp.sucesso.withOpacity(0.20),
+                                color: CoresApp.sucesso.withValues(alpha: 0.20),
                               ),
                             ),
                             child: const Icon(
@@ -2430,10 +2429,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: CoresApp.sucesso.withOpacity(0.08),
+                              color: CoresApp.sucesso.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: CoresApp.sucesso.withOpacity(0.16),
+                                color: CoresApp.sucesso.withValues(alpha: 0.16),
                               ),
                             ),
                             child: const Row(
@@ -2669,10 +2668,12 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                   vertical: 12,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: CoresApp.sucesso.withOpacity(0.06),
+                                  color:
+                                      CoresApp.sucesso.withValues(alpha: 0.06),
                                   borderRadius: BorderRadius.circular(11),
                                   border: Border.all(
-                                    color: CoresApp.sucesso.withOpacity(0.18),
+                                    color: CoresApp.sucesso
+                                        .withValues(alpha: 0.18),
                                   ),
                                 ),
                                 child: Row(
@@ -2713,10 +2714,12 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                               Container(
                                 width: double.infinity,
                                 decoration: BoxDecoration(
-                                  color: CoresApp.destaque.withOpacity(0.025),
+                                  color: CoresApp.destaque
+                                      .withValues(alpha: 0.025),
                                   borderRadius: BorderRadius.circular(13),
                                   border: Border.all(
-                                    color: CoresApp.destaque.withOpacity(0.14),
+                                    color: CoresApp.destaque
+                                        .withValues(alpha: 0.14),
                                   ),
                                 ),
                                 child: Padding(
@@ -2733,7 +2736,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
                                               color: CoresApp.destaque
-                                                  .withOpacity(0.10),
+                                                  .withValues(alpha: 0.10),
                                               borderRadius:
                                                   BorderRadius.circular(
                                                 9,
@@ -2779,7 +2782,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: CoresApp.destaque
-                                                  .withOpacity(0.09),
+                                                  .withValues(alpha: 0.09),
                                               borderRadius:
                                                   BorderRadius.circular(
                                                 20,
@@ -2893,7 +2896,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: CoresApp.textoPrincipal
-                                                .withOpacity(0.018),
+                                                .withValues(alpha: 0.018),
                                             borderRadius:
                                                 BorderRadius.circular(9),
                                             border: Border.all(
@@ -2968,8 +2971,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                         vertical: 3,
                                       ),
                                       decoration: BoxDecoration(
-                                        color:
-                                            CoresApp.destaque.withOpacity(0.08),
+                                        color: CoresApp.destaque
+                                            .withValues(alpha: 0.08),
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
@@ -3016,7 +3019,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: CoresApp.textoPrincipal
-                                            .withOpacity(0.025),
+                                            .withValues(alpha: 0.025),
                                         borderRadius: BorderRadius.circular(9),
                                         border: Border.all(
                                           color: CoresDashboard.tabelaBorda,
@@ -3030,7 +3033,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
                                               color: CoresApp.sucesso
-                                                  .withOpacity(0.08),
+                                                  .withValues(alpha: 0.08),
                                               borderRadius:
                                                   BorderRadius.circular(7),
                                             ),
@@ -3316,7 +3319,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: CoresApp.textoPrincipal.withOpacity(0.025),
+        color: CoresApp.textoPrincipal.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(9),
         border: Border.all(
           color: CoresDashboard.tabelaBorda,
@@ -3329,7 +3332,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             height: 32,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: CoresApp.destaque.withOpacity(0.08),
+              color: CoresApp.destaque.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -3388,10 +3391,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       child: Container(
         padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
-          color: CoresApp.destaque.withOpacity(0.045),
+          color: CoresApp.destaque.withValues(alpha: 0.045),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: CoresApp.destaque.withOpacity(0.15),
+            color: CoresApp.destaque.withValues(alpha: 0.15),
           ),
         ),
         child: Row(
@@ -3401,7 +3404,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               height: 34,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: CoresApp.destaque.withOpacity(0.10),
+                color: CoresApp.destaque.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -3475,7 +3478,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: CoresApp.destaqueVerde.withOpacity(0.10),
+                  color: CoresApp.destaqueVerde.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: const Icon(
@@ -3617,7 +3620,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: CoresApp.erro.withOpacity(0.10),
+                  color: CoresApp.erro.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: const Icon(
@@ -3804,11 +3807,11 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           color: CoresDashboard.tabelaFundo,
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(
-                            color: CoresApp.erro.withOpacity(0.30),
+                            color: CoresApp.erro.withValues(alpha: 0.30),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: CoresApp.overlay.withOpacity(0.18),
+                              color: CoresApp.overlay.withValues(alpha: 0.18),
                               blurRadius: 18,
                               offset: const Offset(0, 7),
                             ),
@@ -3822,7 +3825,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                               height: 56,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: CoresApp.erro.withOpacity(0.08),
+                                color: CoresApp.erro.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: const Icon(
@@ -3887,7 +3890,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     }
 
                     if (latestFinalized == null ||
-                        date.isAfter(latestFinalized!)) {
+                        date.isAfter(latestFinalized)) {
                       latestFinalized = date;
                     }
                   }

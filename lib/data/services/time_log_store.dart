@@ -10,6 +10,8 @@ class TimeLogStore extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   List<TimeLog> _logs = [];
+  int _listeningGeneration = 0;
+  bool _disposed = false;
 
   List<TimeLog> get logs => List.unmodifiable(_logs);
 
@@ -23,6 +25,8 @@ class TimeLogStore extends ChangeNotifier {
   // ============================================================
 
   String _getProjectIdFromLog(TimeLog log) {
+    final projectId = log.projectId?.trim() ?? '';
+    if (projectId.isNotEmpty) return projectId;
     final targetId = log.targetId.trim();
 
     if (targetId.isEmpty) {
@@ -386,6 +390,7 @@ class TimeLogStore extends ChangeNotifier {
 
     final log = TimeLog(
       id: doc.id,
+      projectId: projectId,
       targetId: targetId.isNotEmpty ? targetId : projectId,
       hours: hours,
       description: description,
@@ -462,7 +467,10 @@ class TimeLogStore extends ChangeNotifier {
   Future<void> startListeningToProjects(
     List<String> projectIds,
   ) async {
-    await stopListening();
+    final stopping = stopListening();
+    final generation = _listeningGeneration;
+    await stopping;
+    if (_disposed || generation != _listeningGeneration) return;
 
     final userId = _userId;
 
@@ -477,6 +485,9 @@ class TimeLogStore extends ChangeNotifier {
         projectIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
 
     final completedProjectIds = await _getCompletedProjectIds();
+    if (_disposed || generation != _listeningGeneration || userId != _userId) {
+      return;
+    }
 
     ids.addAll(completedProjectIds);
 
@@ -496,6 +507,7 @@ class TimeLogStore extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
+          if (_disposed || generation != _listeningGeneration) return;
           _replaceProjectLogs(
             projectId: id,
             snapshot: snapshot,
@@ -710,10 +722,10 @@ class TimeLogStore extends ChangeNotifier {
         ? log.id.trim()
         : DateTime.now().microsecondsSinceEpoch.toString();
 
-    final double? resolvedHours = log.hours ??
-        _durationToHours(
-          log.durationFormatted,
-        );
+    final double? resolvedHours = _resolveHours(
+      rawHours: log.hours,
+      durationFormatted: log.durationFormatted,
+    );
 
     final docRef = _firestore
         .collection('users')
@@ -808,6 +820,7 @@ class TimeLogStore extends ChangeNotifier {
       (item) => item.id == targetLogId,
     );
 
+    log.id = targetLogId;
     if (index != -1) {
       _logs[index].isRegistered = true;
     } else {
@@ -930,10 +943,10 @@ class TimeLogStore extends ChangeNotifier {
       );
     }
 
-    final double? resolvedHours = log.hours ??
-        _durationToHours(
-          log.durationFormatted,
-        );
+    final double? resolvedHours = _resolveHours(
+      rawHours: log.hours,
+      durationFormatted: log.durationFormatted,
+    );
 
     await _firestore
         .collection('users')
@@ -1058,15 +1071,18 @@ class TimeLogStore extends ChangeNotifier {
   // ============================================================
 
   Future<void> stopListening() async {
-    for (final subscription in _subscriptions.values) {
+    _listeningGeneration++;
+    final subscriptions = _subscriptions.values.toList();
+    _subscriptions.clear();
+    for (final subscription in subscriptions) {
       await subscription.cancel();
     }
-
-    _subscriptions.clear();
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _listeningGeneration++;
     for (final subscription in _subscriptions.values) {
       subscription.cancel();
     }

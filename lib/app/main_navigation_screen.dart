@@ -49,6 +49,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _loadWorkFormats();
   }
 
+  @override
+  void dispose() {
+    _timeLogStore.dispose();
+    super.dispose();
+  }
+
   // ============================================================
   // CARREGAR USUÁRIO
   // ============================================================
@@ -137,8 +143,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
         Positioned.fill(
           child: Container(
-            color: Colors.black.withOpacity(
-              AppTheme.opacidadeFundo,
+            color: Colors.black.withValues(
+              alpha: AppTheme.opacidadeFundo,
             ),
           ),
         ),
@@ -286,7 +292,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     // ==========================================================
 
     return _buildGlobalBackground(
-      child: screens[safeIndex],
+      child: IndexedStack(
+        index: safeIndex == 0 ? 0 : 1,
+        children: [
+          screens[0],
+          safeIndex == 0 ? const SizedBox.shrink() : screens[safeIndex],
+        ],
+      ),
     );
   }
 }

@@ -87,12 +87,11 @@ class CentralAlertasWidget extends StatelessWidget {
     );
 
     return Container(
-      height: 150,
       decoration: BoxDecoration(
         color: const Color(0xFF161622),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
         ),
       ),
       child: Column(
@@ -114,7 +113,7 @@ class CentralAlertasWidget extends StatelessWidget {
               ),
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                 ),
               ),
             ),
@@ -143,9 +142,10 @@ class CentralAlertasWidget extends StatelessWidget {
           // ============================================================
           // LISTA DE ALERTAS
           // ============================================================
-          Expanded(
-            child: alertItems.isEmpty
-                ? const Center(
+          alertItems.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
                     child: Text(
                       'Nenhum projeto ou etapa com prazo crítico no momento. Tudo em ordem!',
                       style: TextStyle(
@@ -153,208 +153,188 @@ class CentralAlertasWidget extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
-                  )
-                : ScrollConfiguration(
-                    behavior: const _SemScrollbarBehavior(),
-                    child: ListView.builder(
-                      primary: false,
-                      shrinkWrap: true,
-                      physics: const ClampingScrollPhysics(),
-                      itemCount: alertItems.length,
-                      itemBuilder: (context, index) {
-                        final item = alertItems[index];
+                  ),
+                )
+              : ListView.builder(
+                  primary: false,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: alertItems.length,
+                  itemBuilder: (context, index) {
+                    final item = alertItems[index];
 
-                        // Vermelho se já passou do prazo.
-                        // Laranja se ainda está dentro do prazo crítico.
-                        final bool isAtrasado = item.differenceDays < 0;
+                    // Vermelho se já passou do prazo.
+                    // Laranja se ainda está dentro do prazo crítico.
+                    final bool isAtrasado = item.differenceDays < 0;
 
-                        final Color rowBgColor = index % 2 == 0
-                            ? const Color(0xFF12121B)
-                            : const Color(0xFF161622);
+                    final Color rowBgColor = index % 2 == 0
+                        ? const Color(0xFF12121B)
+                        : const Color(0xFF161622);
 
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 3,
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: rowBgColor,
+                        border: Border(
+                          bottom: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.04),
                           ),
-                          decoration: BoxDecoration(
-                            color: rowBgColor,
-                            border: Border(
-                              bottom: BorderSide(
-                                color: Colors.white.withOpacity(0.04),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // ==================================================
+                          // ID
+                          // ==================================================
+                          SizedBox(
+                            width: 70,
+                            child: Text(
+                              item.id,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
                               ),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              // ==================================================
-                              // ID
-                              // ==================================================
-                              SizedBox(
-                                width: 70,
-                                child: Text(
-                                  item.id,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
 
-                              // ==================================================
-                              // Nº
-                              // ==================================================
-                              SizedBox(
-                                width: 40,
-                                child: Text(
-                                  item.id2,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                ),
+                          // ==================================================
+                          // Nº
+                          // ==================================================
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              item.id2,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
                               ),
-
-                              // ==================================================
-                              // CLIENTE
-                              // ==================================================
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  item.client,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-
-                              // ==================================================
-                              // TIPO DE SERVIÇO
-                              // ==================================================
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  item.serviceType,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-
-                              // ==================================================
-                              // ETAPA
-                              // ==================================================
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  item.stage,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-
-                              // ==================================================
-                              // DATA INICIAL
-                              // ==================================================
-                              SizedBox(
-                                width: 90,
-                                child: Text(
-                                  formatDateShort(item.planStart),
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
-
-                              // ==================================================
-                              // DATA FINAL
-                              // ==================================================
-                              Container(
-                                width: 90,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 2,
-                                  horizontal: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isAtrasado
-                                      ? const Color(0xFFB71C1C)
-                                      : const Color(0xFFF57F17),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  formatDateShort(item.planEnd),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-
-                              const SizedBox(width: 12),
-
-                              // ==================================================
-                              // STATUS
-                              // ==================================================
-                              Container(
-                                width: 70,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 2,
-                                  horizontal: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isAtrasado
-                                      ? const Color(0xFF880E4F)
-                                      : const Color(0xFFEF6C00),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  isAtrasado ? 'Atrasado' : 'Ativo',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-          ),
+
+                          // ==================================================
+                          // CLIENTE
+                          // ==================================================
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              item.client,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          // ==================================================
+                          // TIPO DE SERVIÇO
+                          // ==================================================
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              item.serviceType,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          // ==================================================
+                          // ETAPA
+                          // ==================================================
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              item.stage,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          // ==================================================
+                          // DATA INICIAL
+                          // ==================================================
+                          SizedBox(
+                            width: 90,
+                            child: Text(
+                              formatDateShort(item.planStart),
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+
+                          // ==================================================
+                          // DATA FINAL
+                          // ==================================================
+                          Container(
+                            width: 90,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 2,
+                              horizontal: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isAtrasado
+                                  ? const Color(0xFFB71C1C)
+                                  : const Color(0xFFF57F17),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              formatDateShort(item.planEnd),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          // ==================================================
+                          // STATUS
+                          // ==================================================
+                          Container(
+                            width: 70,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 2,
+                              horizontal: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isAtrasado
+                                  ? const Color(0xFF880E4F)
+                                  : const Color(0xFFEF6C00),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isAtrasado ? 'Atrasado' : 'Ativo',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ],
       ),
     );
-  }
-}
-
-// ============================================================
-// COMPORTAMENTO DE SCROLL SEM SCROLLBAR
-// ============================================================
-
-class _SemScrollbarBehavior extends MaterialScrollBehavior {
-  const _SemScrollbarBehavior();
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
   }
 }
 

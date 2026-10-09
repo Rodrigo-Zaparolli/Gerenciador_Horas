@@ -147,7 +147,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                 height: 30,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -513,13 +513,13 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  CoresApp.primaria.withOpacity(0.08),
-                  CoresApp.fundoSecundario.withOpacity(0.35),
+                  CoresApp.primaria.withValues(alpha: 0.08),
+                  CoresApp.fundoSecundario.withValues(alpha: 0.35),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: CoresApp.primaria.withOpacity(0.14),
+                color: CoresApp.primaria.withValues(alpha: 0.14),
               ),
             ),
             child: Column(
@@ -533,7 +533,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                       height: 42,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: CoresApp.primaria.withOpacity(0.12),
+                        color: CoresApp.primaria.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                       child: Text(
@@ -678,7 +678,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                 height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: CoresApp.erro.withOpacity(0.10),
+                  color: CoresApp.erro.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: const Icon(
@@ -1005,8 +1005,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(
-                            0.45,
+                          color: Colors.black.withValues(
+                            alpha: 0.45,
                           ),
                           blurRadius: 40,
                           offset: const Offset(0, 18),
@@ -1054,11 +1054,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        CoresApp.primaria.withOpacity(
-                                          0.055,
+                                        CoresApp.primaria.withValues(
+                                          alpha: 0.055,
                                         ),
-                                        CoresApp.fundoSecundario.withOpacity(
-                                          0.22,
+                                        CoresApp.fundoSecundario.withValues(
+                                          alpha: 0.22,
                                         ),
                                       ],
                                       begin: Alignment.topLeft,
@@ -1068,8 +1068,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                       16,
                                     ),
                                     border: Border.all(
-                                      color: CoresApp.primaria.withOpacity(
-                                        0.12,
+                                      color: CoresApp.primaria.withValues(
+                                        alpha: 0.12,
                                       ),
                                     ),
                                   ),
@@ -1155,8 +1155,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                     small ? 13 : 16,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: CoresApp.fundoSecundario.withOpacity(
-                                      0.38,
+                                    color: CoresApp.fundoSecundario.withValues(
+                                      alpha: 0.38,
                                     ),
                                     borderRadius: BorderRadius.circular(
                                       16,
@@ -1177,8 +1177,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
                                               color:
-                                                  CoresApp.primaria.withOpacity(
-                                                0.10,
+                                                  CoresApp.primaria.withValues(
+                                                alpha: 0.10,
                                               ),
                                               borderRadius:
                                                   BorderRadius.circular(
@@ -1392,7 +1392,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
         gradient: LinearGradient(
           colors: [
             CoresDashboard.cabecalhoTabela,
-            CoresApp.primaria.withOpacity(0.045),
+            CoresApp.primaria.withValues(alpha: 0.045),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1417,13 +1417,13 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  CoresApp.primaria.withOpacity(0.18),
-                  CoresApp.primaria.withOpacity(0.06),
+                  CoresApp.primaria.withValues(alpha: 0.18),
+                  CoresApp.primaria.withValues(alpha: 0.06),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: CoresApp.primaria.withOpacity(0.22),
+                color: CoresApp.primaria.withValues(alpha: 0.22),
               ),
             ),
             child: Icon(
@@ -1541,8 +1541,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    CoresApp.primaria.withOpacity(0.10),
-                    CoresApp.primaria.withOpacity(0.035),
+                    CoresApp.primaria.withValues(alpha: 0.10),
+                    CoresApp.primaria.withValues(alpha: 0.035),
                   ],
                 ),
                 shape: BoxShape.circle,
@@ -1638,7 +1638,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             vertical: 9,
           ),
           decoration: BoxDecoration(
-            color: CoresApp.fundoSecundario.withOpacity(0.24),
+            color: CoresApp.fundoSecundario.withValues(alpha: 0.24),
             borderRadius: BorderRadius.circular(13),
             border: Border.all(
               color: CoresApp.bordaSuave,
@@ -1655,13 +1655,13 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          CoresApp.primaria.withOpacity(0.18),
-                          CoresApp.primaria.withOpacity(0.06),
+                          CoresApp.primaria.withValues(alpha: 0.18),
+                          CoresApp.primaria.withValues(alpha: 0.06),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(11),
                       border: Border.all(
-                        color: CoresApp.primaria.withOpacity(0.22),
+                        color: CoresApp.primaria.withValues(alpha: 0.22),
                       ),
                     ),
                     child: Text(
@@ -1842,7 +1842,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           vertical: 13,
         ),
         elevation: 2,
-        shadowColor: CoresApp.primaria.withOpacity(0.25),
+        shadowColor: CoresApp.primaria.withValues(alpha: 0.25),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(11),
         ),
@@ -1933,10 +1933,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
     return Container(
       padding: const EdgeInsets.all(9),
       decoration: BoxDecoration(
-        color: CoresApp.primaria.withOpacity(0.12),
+        color: CoresApp.primaria.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: CoresApp.primaria.withOpacity(0.20),
+          color: CoresApp.primaria.withValues(alpha: 0.20),
         ),
       ),
       child: Icon(
@@ -1959,7 +1959,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.primaria.withOpacity(0.10),
+            color: CoresApp.primaria.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(9),
           ),
           child: Icon(
@@ -2006,10 +2006,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
         vertical: 7,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.primaria.withOpacity(0.09),
+        color: CoresApp.primaria.withValues(alpha: 0.09),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: CoresApp.primaria.withOpacity(0.20),
+          color: CoresApp.primaria.withValues(alpha: 0.20),
         ),
       ),
       child: Row(
@@ -2121,7 +2121,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
         gradient: LinearGradient(
           colors: [
             CoresDashboard.card,
-            CoresApp.fundoSecundario.withOpacity(0.30),
+            CoresApp.fundoSecundario.withValues(alpha: 0.30),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -2132,7 +2132,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
+            color: Colors.black.withValues(alpha: 0.10),
             blurRadius: 15,
             offset: const Offset(0, 6),
           ),
@@ -2147,13 +2147,13 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  CoresApp.primaria.withOpacity(0.16),
-                  CoresApp.primaria.withOpacity(0.05),
+                  CoresApp.primaria.withValues(alpha: 0.16),
+                  CoresApp.primaria.withValues(alpha: 0.05),
                 ],
               ),
               borderRadius: BorderRadius.circular(13),
               border: Border.all(
-                color: CoresApp.primaria.withOpacity(0.16),
+                color: CoresApp.primaria.withValues(alpha: 0.16),
               ),
             ),
             child: Icon(
@@ -2216,7 +2216,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            CoresApp.primaria.withOpacity(0.14),
+            CoresApp.primaria.withValues(alpha: 0.14),
             CoresDashboard.card,
             CoresDashboard.card,
           ],
@@ -2225,7 +2225,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: CoresApp.primaria.withOpacity(0.16),
+          color: CoresApp.primaria.withValues(alpha: 0.16),
         ),
       ),
       child: Row(
@@ -2237,8 +2237,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  CoresApp.primaria.withOpacity(0.18),
-                  CoresApp.primaria.withOpacity(0.06),
+                  CoresApp.primaria.withValues(alpha: 0.18),
+                  CoresApp.primaria.withValues(alpha: 0.06),
                 ],
               ),
               borderRadius: BorderRadius.circular(13),
@@ -2294,10 +2294,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                 vertical: 8,
               ),
               decoration: BoxDecoration(
-                color: CoresApp.primaria.withOpacity(0.09),
+                color: CoresApp.primaria.withValues(alpha: 0.09),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: CoresApp.primaria.withOpacity(0.18),
+                  color: CoresApp.primaria.withValues(alpha: 0.18),
                 ),
               ),
               child: Row(
@@ -2340,15 +2340,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                CoresApp.primaria.withOpacity(0.20),
-                CoresApp.primaria.withOpacity(0.05),
+                CoresApp.primaria.withValues(alpha: 0.20),
+                CoresApp.primaria.withValues(alpha: 0.05),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
-              color: CoresApp.primaria.withOpacity(0.22),
+              color: CoresApp.primaria.withValues(alpha: 0.22),
             ),
           ),
           child: const Icon(
@@ -2408,9 +2408,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           style: OutlinedButton.styleFrom(
             foregroundColor: CoresApp.textoPrincipal,
             side: BorderSide(
-              color: CoresApp.borda.withOpacity(0.9),
+              color: CoresApp.borda.withValues(alpha: 0.9),
             ),
-            backgroundColor: CoresApp.fundoSecundario.withOpacity(0.25),
+            backgroundColor: CoresApp.fundoSecundario.withValues(alpha: 0.25),
             padding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 11,
@@ -2446,9 +2446,9 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
           style: OutlinedButton.styleFrom(
             foregroundColor: CoresApp.textoPrincipal,
             side: BorderSide(
-              color: CoresApp.borda.withOpacity(0.9),
+              color: CoresApp.borda.withValues(alpha: 0.9),
             ),
-            backgroundColor: CoresApp.fundoSecundario.withOpacity(0.25),
+            backgroundColor: CoresApp.fundoSecundario.withValues(alpha: 0.25),
             padding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 11,
@@ -2489,7 +2489,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
               vertical: 12,
             ),
             elevation: 3,
-            shadowColor: CoresApp.primaria.withOpacity(0.25),
+            shadowColor: CoresApp.primaria.withValues(alpha: 0.25),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(11),
             ),
@@ -2542,7 +2542,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             gradient: LinearGradient(
               colors: [
                 CoresDashboard.card,
-                CoresApp.fundoSecundario.withOpacity(0.16),
+                CoresApp.fundoSecundario.withValues(alpha: 0.16),
               ],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
@@ -2553,7 +2553,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.07),
+                color: Colors.black.withValues(alpha: 0.07),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
@@ -2572,15 +2572,15 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      CoresApp.primaria.withOpacity(0.16),
-                      CoresApp.primaria.withOpacity(0.045),
+                      CoresApp.primaria.withValues(alpha: 0.16),
+                      CoresApp.primaria.withValues(alpha: 0.045),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(11),
                   border: Border.all(
-                    color: CoresApp.primaria.withOpacity(0.15),
+                    color: CoresApp.primaria.withValues(alpha: 0.15),
                   ),
                 ),
                 child: const Icon(
@@ -2668,10 +2668,10 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: CoresApp.primaria.withOpacity(0.08),
+                  color: CoresApp.primaria.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(9),
                   border: Border.all(
-                    color: CoresApp.primaria.withOpacity(0.14),
+                    color: CoresApp.primaria.withValues(alpha: 0.14),
                   ),
                 ),
                 child: Column(
@@ -2752,8 +2752,8 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(9),
           hoverColor: isDanger
-              ? CoresApp.erro.withOpacity(0.08)
-              : CoresApp.primaria.withOpacity(0.08),
+              ? CoresApp.erro.withValues(alpha: 0.08)
+              : CoresApp.primaria.withValues(alpha: 0.08),
           onTap: onPressed,
           child: Padding(
             padding: const EdgeInsets.all(7),
@@ -2789,13 +2789,13 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  CoresApp.primaria.withOpacity(0.12),
-                  CoresApp.primaria.withOpacity(0.035),
+                  CoresApp.primaria.withValues(alpha: 0.12),
+                  CoresApp.primaria.withValues(alpha: 0.035),
                 ],
               ),
               shape: BoxShape.circle,
               border: Border.all(
-                color: CoresApp.primaria.withOpacity(0.15),
+                color: CoresApp.primaria.withValues(alpha: 0.15),
               ),
             ),
             child: Icon(
@@ -2922,7 +2922,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     gradient: LinearGradient(
                       colors: [
                         CoresDashboard.card,
-                        CoresApp.primaria.withOpacity(0.035),
+                        CoresApp.primaria.withValues(alpha: 0.035),
                         CoresDashboard.card,
                       ],
                       begin: Alignment.topLeft,
@@ -2934,7 +2934,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       ),
@@ -3062,7 +3062,7 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.13),
+                        color: Colors.black.withValues(alpha: 0.13),
                         blurRadius: 20,
                         offset: const Offset(0, 7),
                       ),
@@ -3090,11 +3090,11 @@ class _WorkFormatsScreenState extends State<WorkFormatsScreen> {
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    CoresApp.primaria.withOpacity(
-                                      0.15,
+                                    CoresApp.primaria.withValues(
+                                      alpha: 0.15,
                                     ),
-                                    CoresApp.primaria.withOpacity(
-                                      0.04,
+                                    CoresApp.primaria.withValues(
+                                      alpha: 0.04,
                                     ),
                                   ],
                                 ),

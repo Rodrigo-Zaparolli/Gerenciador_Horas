@@ -286,7 +286,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: CoresApp.borda.withOpacity(0.5),
+          color: CoresApp.borda.withValues(alpha: 0.5),
         ),
       ),
     );
@@ -346,7 +346,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.22),
+            color: Colors.black.withValues(alpha: 0.22),
             blurRadius: 35,
             spreadRadius: 0,
             offset: const Offset(0, 15),
@@ -518,7 +518,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.primaria,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: CoresApp.primaria.withOpacity(0.45),
+                disabledBackgroundColor:
+                    CoresApp.primaria.withValues(alpha: 0.45),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -679,7 +680,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   height: 420,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: CoresApp.primaria.withOpacity(0.06),
+                    color: CoresApp.primaria.withValues(alpha: 0.06),
                   ),
                 ),
               ),
@@ -692,7 +693,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   height: 480,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: CoresApp.destaque.withOpacity(0.035),
+                    color: CoresApp.destaque.withValues(alpha: 0.035),
                   ),
                 ),
               ),

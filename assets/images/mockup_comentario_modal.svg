@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101a2a"/>
+      <stop offset="1" stop-color="#080e18"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#22c3a6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity=".42"/>
+    </filter>
+    <style>
+      .ui { font-family: "Segoe UI", Arial, sans-serif; }
+      .muted { fill: #91a0b5; }
+      .text { fill: #e9eff8; }
+      .small { font-size: 12px; }
+      .tiny { font-size: 10px; }
+      .label { font-size: 11px; font-weight: 700; letter-spacing: 1.1px; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="900" fill="url(#bg)"/>
+  <circle cx="170" cy="120" r="210" fill="#18345c" opacity=".14"/>
+  <circle cx="1320" cy="800" r="250" fill="#0e766e" opacity=".10"/>
+
+  <g class="ui" filter="url(#shadow)">
+    <rect x="72" y="48" width="1296" height="804" rx="20" fill="#111b2a" stroke="#29384c"/>
+    <path d="M92 48h1256a20 20 0 0 1 20 20v4H72v-4a20 20 0 0 1 20-20z" fill="url(#accent)"/>
+
+    <!-- Header -->
+    <circle cx="112" cy="104" r="22" fill="#203654"/>
+    <path d="M103 98h18M103 104h14M103 110h10" stroke="#74a9ff" stroke-width="2" stroke-linecap="round"/>
+    <text x="148" y="99" class="text" font-size="20" font-weight="700">Novo comentário</text>
+    <text x="148" y="120" class="muted small">E-Desk · Projeto Atlas</text>
+    <rect x="1100" y="87" width="112" height="28" rx="14" fill="#172b27" stroke="#28594c"/>
+    <circle cx="1117" cy="101" r="4" fill="#35c69a"/>
+    <text x="1128" y="105" fill="#a7e8cf" font-size="11">Conectado</text>
+    <circle cx="1324" cy="102" r="17" fill="#1b293b"/>
+    <path d="m1319 97 10 10m0-10-10 10" stroke="#aab6c7" stroke-width="1.7" stroke-linecap="round"/>
+    <line x1="96" y1="145" x2="1344" y2="145" stroke="#29384c"/>
+
+    <!-- Type, tag and description template -->
+    <text x="104" y="179" class="muted label">TIPO</text>
+    <rect x="104" y="192" width="166" height="40" rx="9" fill="#172436" stroke="#34465e"/>
+    <text x="120" y="217" class="text" font-size="13">Comentário externo</text>
+    <path d="m247 208 5 5 5-5" fill="none" stroke="#91a0b5" stroke-width="1.5"/>
+    <text x="288" y="179" class="muted label">ETIQUETA DO CHAMADO</text>
+    <rect x="288" y="192" width="202" height="40" rx="9" fill="#172436" stroke="#34465e"/>
+    <text x="304" y="217" class="text" font-size="13">Enterprise</text>
+    <path d="m467 208 5 5 5-5" fill="none" stroke="#91a0b5" stroke-width="1.5"/>
+    <rect x="498" y="192" width="40" height="40" rx="9" fill="#172436" stroke="#34465e"/>
+    <path d="M510 207h16m-14-3 2-2h8l2 2m-12 4v9m8-9v9m-11 0h14m-13-11 1-3m10 3-1-3" fill="none" stroke="#aab9cc" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="558" y="179" class="muted label">MODELO DO DESCRITIVO</text>
+    <rect x="558" y="192" width="320" height="40" rx="9" fill="#172436" stroke="#34465e"/>
+    <rect x="574" y="202" width="20" height="20" rx="5" fill="#193b5d"/>
+    <path d="M580 207h8m-8 4h8m-8 4h5" stroke="#80b5ff" stroke-width="1.3" stroke-linecap="round"/>
+    <text x="604" y="217" class="text" font-size="13">Enterprise / Professional</text>
+    <path d="m853 208 5 5 5-5" fill="none" stroke="#91a0b5" stroke-width="1.5"/>
+    <text x="498" y="248" class="muted tiny">Configurar etiquetas</text>
+
+    <!-- Editor title and counter -->
+    <text x="104" y="272" class="muted label">DESCRIÇÃO DO COMENTÁRIO</text>
+    <text x="884" y="272" class="muted small" text-anchor="end">486 / 2000 caracteres</text>
+
+    <!-- Main editor -->
+    <rect x="104" y="289" width="800" height="424" rx="12" fill="#0e1724" stroke="#33445a"/>
+    <rect x="105" y="290" width="798" height="50" rx="11" fill="#172436"/>
+    <path d="M105 329h798" stroke="#33445a"/>
+    <rect x="116" y="300" width="112" height="30" rx="6" fill="#1b2b40"/>
+    <text x="128" y="319" class="text small">Segoe UI</text>
+    <path d="m210 311 4 4 4-4" fill="none" stroke="#91a0b5" stroke-width="1.3"/>
+    <rect x="236" y="300" width="52" height="30" rx="6" fill="#1b2b40"/>
+    <text x="252" y="319" class="text small">11</text>
+    <path d="m271 311 4 4 4-4" fill="none" stroke="#91a0b5" stroke-width="1.3"/>
+    <line x1="300" y1="305" x2="300" y2="325" stroke="#405169"/>
+    <text x="318" y="321" fill="#e9eff8" font-size="16" font-weight="700">B</text>
+    <text x="348" y="321" fill="#e9eff8" font-size="16" font-style="italic">I</text>
+    <text x="375" y="321" fill="#e9eff8" font-size="16" text-decoration="underline">U</text>
+    <text x="406" y="321" fill="#e9eff8" font-size="15" text-decoration="line-through">S</text>
+    <line x1="435" y1="305" x2="435" y2="325" stroke="#405169"/>
+    <path d="M453 307h17m-17 5h17m-17 5h17m-17 5h17" stroke="#a9b8ca" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M482 307h17m-13 5h13m-17 5h17m-13 5h13" stroke="#a9b8ca" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="512" y1="305" x2="512" y2="325" stroke="#405169"/>
+    <path d="M530 308h17m-17 5h12m-17 5h17m-17 5h12" stroke="#a9b8ca" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="566" y="307" width="16" height="13" rx="2" fill="#59a5ff"/>
+    <path d="M597 307h17m-17 5h17m-17 5h17m-17 5h17" stroke="#a9b8ca" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="633" y="300" width="30" height="30" rx="6" fill="#1b2b40"/>
+    <path d="M641 308h14m-14 6h14m-14 6h9" stroke="#a9b8ca" stroke-width="1.4" stroke-linecap="round"/>
+    <rect x="671" y="300" width="30" height="30" rx="6" fill="#1b2b40"/>
+    <path d="M679 308h14m-14 6h14m-14 6h9" stroke="#a9b8ca" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="711" y1="305" x2="711" y2="325" stroke="#405169"/>
+    <rect x="727" y="300" width="30" height="30" rx="6" fill="#1b2b40"/>
+    <rect x="735" y="307" width="14" height="14" rx="2" fill="none" stroke="#a9b8ca" stroke-width="1.4"/>
+    <path d="m737 319 4-5 3 3 2-2 3 4" fill="none" stroke="#a9b8ca" stroke-width="1.2"/>
+    <rect x="765" y="300" width="30" height="30" rx="6" fill="#1b2b40"/>
+    <circle cx="780" cy="315" r="7" fill="#f2bf45"/>
+    <rect x="803" y="300" width="30" height="30" rx="6" fill="#1b2b40"/>
+    <circle cx="818" cy="315" r="7" fill="#ef5d65"/>
+    <rect x="841" y="300" width="30" height="30" rx="6" fill="#1b2b40"/>
+    <circle cx="856" cy="315" r="7" fill="#39c98d"/>
+
+    <!-- The selected description template is inserted immediately after the existing Excel preview image. -->
+    <text x="132" y="360" fill="#91a0b5" font-size="10" font-weight="700" letter-spacing=".8">IMAGEM DA PLANILHA · PRÉVIA GERADA DO EXCEL</text>
+    <rect x="132" y="370" width="625" height="104" rx="6" fill="#f4f7fb" stroke="#70839a"/>
+    <rect x="132" y="370" width="625" height="18" rx="6" fill="#263e5c"/>
+    <rect x="132" y="382" width="625" height="6" fill="#263e5c"/>
+    <text x="143" y="383" fill="#e8f0fb" font-size="8" font-weight="700">RESUMO DO PROJETO · ENTERPRISE</text>
+    <rect x="143" y="395" width="268" height="10" rx="2" fill="#dbe5f0"/>
+    <rect x="143" y="410" width="268" height="50" rx="3" fill="#fff" stroke="#d4dde8"/>
+    <path d="M143 423h268M143 435h268M143 447h268M196 410v50M250 410v50M304 410v50M357 410v50" stroke="#d4dde8" stroke-width="1"/>
+    <rect x="422" y="395" width="323" height="65" rx="3" fill="#fff" stroke="#d4dde8"/>
+    <path d="M438 448h290M438 432h290M438 416h290M453 401v47M493 401v47M533 401v47M573 401v47M613 401v47M653 401v47M693 401v47" stroke="#e2e8ef" stroke-width=".8"/>
+    <path d="m451 442 42-17 40 8 42-22 39 12 47-18 50 8" fill="none" stroke="#3996e8" stroke-width="2"/>
+    <circle cx="493" cy="425" r="2.5" fill="#3996e8"/>
+    <circle cx="575" cy="411" r="2.5" fill="#3996e8"/>
+    <circle cx="614" cy="423" r="2.5" fill="#3996e8"/>
+    <circle cx="661" cy="405" r="2.5" fill="#3996e8"/>
+    <text x="132" y="497" fill="#91a0b5" font-size="10" font-weight="700" letter-spacing=".8">MODELO INSERIDO ABAIXO DA IMAGEM</text>
+    <text x="132" y="521" fill="#e9eff8" font-size="15" font-weight="700">Atualização do projeto</text>
+    <text x="132" y="545" fill="#c7d2e1" font-size="12">Olá, equipe. Segue o resumo das atividades e dos próximos passos.</text>
+    <text x="132" y="568" fill="#80b5ff" font-size="12" font-weight="700">Situação do Projeto:</text>
+    <rect x="265" y="555" width="96" height="18" rx="3" fill="#38c58b"/>
+    <text x="132" y="594" fill="#c7d2e1" font-size="11">• Atividade principal concluída dentro do prazo.</text>
+    <text x="132" y="615" fill="#c7d2e1" font-size="11">• Próxima etapa inicia na segunda-feira.</text>
+    <text x="132" y="645" fill="#91a0b5" font-size="10">O modelo entra no documento após a imagem; você pode editar o texto antes de enviar.</text>
+
+    <!-- Right history -->
+    <rect x="928" y="289" width="408" height="424" rx="12" fill="#121e2d" stroke="#293b51"/>
+    <text x="954" y="320" class="text" font-size="15" font-weight="700">Histórico do projeto</text>
+    <rect x="954" y="336" width="356" height="36" rx="8" fill="#0d1723" stroke="#2c3d52"/>
+    <circle cx="973" cy="354" r="6" fill="none" stroke="#8293a9" stroke-width="1.5"/>
+    <path d="m977 358 4 4" stroke="#8293a9" stroke-width="1.5" stroke-linecap="round"/>
+    <text x="989" y="358" class="muted small">Buscar comentários...</text>
+
+    <rect x="948" y="388" width="368" height="90" rx="9" fill="#19283a" stroke="#38516c"/>
+    <rect x="948" y="388" width="3" height="90" rx="1.5" fill="#55a0ff"/>
+    <circle cx="974" cy="414" r="14" fill="#2d4562"/>
+    <text x="970" y="418" fill="#d9e8fb" font-size="10" font-weight="700">RA</text>
+    <text x="999" y="411" class="text small" font-weight="600">Rafael Almeida</text>
+    <text x="1296" y="411" class="muted tiny" text-anchor="end">Hoje, 14:32</text>
+    <text x="999" y="433" fill="#b7c4d4" class="small">Atualização semanal do projeto</text>
+    <rect x="999" y="446" width="50" height="18" rx="9" fill="#173b35"/>
+    <text x="1024" y="459" fill="#83dec1" class="tiny" text-anchor="middle">Enviado</text>
+
+    <rect x="948" y="490" width="368" height="82" rx="9" fill="#142131" stroke="#293b51"/>
+    <circle cx="974" cy="516" r="14" fill="#483d5e"/>
+    <text x="970" y="520" fill="#e8ddff" font-size="10" font-weight="700">MC</text>
+    <text x="999" y="513" class="text small" font-weight="600">Mariana Costa</text>
+    <text x="1296" y="513" class="muted tiny" text-anchor="end">Ontem, 17:08</text>
+    <text x="999" y="535" fill="#b7c4d4" class="small">Revisão do cronograma concluída</text>
+    <rect x="999" y="546" width="50" height="18" rx="9" fill="#173b35"/>
+    <text x="1024" y="559" fill="#83dec1" class="tiny" text-anchor="middle">Enviado</text>
+
+    <rect x="948" y="584" width="368" height="82" rx="9" fill="#142131" stroke="#293b51"/>
+    <circle cx="974" cy="610" r="14" fill="#5a4235"/>
+    <text x="970" y="614" fill="#ffe1cc" font-size="10" font-weight="700">LS</text>
+    <text x="999" y="607" class="text small" font-weight="600">Lucas Santos</text>
+    <text x="1296" y="607" class="muted tiny" text-anchor="end">06 out, 11:45</text>
+    <text x="999" y="629" fill="#b7c4d4" class="small">Aguardando retorno do cliente</text>
+    <rect x="999" y="640" width="62" height="18" rx="9" fill="#40371e"/>
+    <text x="1030" y="653" fill="#e7ca70" class="tiny" text-anchor="middle">Pendente</text>
+    <text x="954" y="694" fill="#77adff" font-size="11" font-weight="600">Ver histórico completo</text>
+    <path d="m1082 690 5 4-5 4" fill="none" stroke="#77adff" stroke-width="1.3"/>
+
+    <!-- Attachments -->
+    <text x="104" y="753" class="muted label">ANEXOS</text>
+    <rect x="104" y="766" width="164" height="50" rx="9" fill="#142235" stroke="#30445d"/>
+    <rect x="118" y="779" width="24" height="24" rx="6" fill="#203958"/>
+    <path d="M124 796v-10h12v10m-10-3 3-3 2 2 2-2 2 3" fill="none" stroke="#80b5ff" stroke-width="1.2"/>
+    <text x="151" y="787" class="text tiny" font-weight="600">Imagem</text>
+    <text x="151" y="801" class="muted tiny">1 arquivo</text>
+    <rect x="280" y="766" width="190" height="50" rx="9" fill="#142235" stroke="#30445d"/>
+    <rect x="294" y="779" width="24" height="24" rx="6" fill="#203958"/>
+    <path d="M300 785h12v12h-12zM303 782v12" fill="none" stroke="#80b5ff" stroke-width="1.1"/>
+    <text x="327" y="787" class="text tiny" font-weight="600">Tabela do Excel</text>
+    <text x="327" y="801" class="muted tiny">Selecionar intervalo</text>
+    <!-- Footer actions -->
+    <line x1="96" y1="828" x2="1344" y2="828" stroke="#29384c"/>
+    <text x="104" y="844" class="muted tiny">O teste preenche o formulário no E-Desk sem salvar.</text>
+    <rect x="870" y="838" width="122" height="34" rx="8" fill="#1a293a" stroke="#3a4b61"/>
+    <text x="931" y="860" class="text small" text-anchor="middle">Cancelar</text>
+    <rect x="1002" y="838" width="145" height="34" rx="8" fill="#163451" stroke="#326391"/>
+    <path d="M1020 855h12m-6-6v12" stroke="#9dccff" stroke-width="1.4" stroke-linecap="round"/>
+    <text x="1085" y="860" fill="#b9dcff" class="small" text-anchor="middle">Testar sem salvar</text>
+    <rect x="1157" y="838" width="153" height="34" rx="8" fill="url(#accent)"/>
+    <path d="m1176 855 4 4 8-9" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="1245" y="860" fill="#fff" class="small" font-weight="700" text-anchor="middle">Enviar comentário</text>
+  </g>
+</svg>

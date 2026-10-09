@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
 class SolicitacoesScreen extends StatefulWidget {
@@ -670,7 +669,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
               decoration: InputDecoration(
                 hintText: 'Digite o valor',
                 hintStyle: TextStyle(
-                  color: CoresApp.textoSecundario.withOpacity(0.7),
+                  color: CoresApp.textoSecundario.withValues(alpha: 0.7),
                 ),
                 filled: true,
                 fillColor: CoresDashboard.tabelaFundo,
@@ -864,7 +863,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -922,7 +921,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -1195,8 +1194,9 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: isHighlight
-                            ? CoresDashboard.atrasado.withOpacity(0.15)
-                            : CoresDashboard.statusAndamento.withOpacity(0.15),
+                            ? CoresDashboard.atrasado.withValues(alpha: 0.15)
+                            : CoresDashboard.statusAndamento
+                                .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(
                           TamanhosApp.raioBadge,
                         ),
@@ -1630,8 +1630,9 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: isHighlight
-                            ? CoresDashboard.atrasado.withOpacity(0.15)
-                            : CoresDashboard.statusAndamento.withOpacity(0.15),
+                            ? CoresDashboard.atrasado.withValues(alpha: 0.15)
+                            : CoresDashboard.statusAndamento
+                                .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(
                           TamanhosApp.raioBadge,
                         ),

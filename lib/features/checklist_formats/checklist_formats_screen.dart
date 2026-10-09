@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
@@ -104,7 +103,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -355,7 +354,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: CoresApp.destaque.withOpacity(0.10),
+                    color: CoresApp.destaque.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -539,7 +538,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: CoresApp.erro.withOpacity(0.10),
+                  color: CoresApp.erro.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -564,10 +563,10 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
           content: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: CoresApp.erro.withOpacity(0.045),
+              color: CoresApp.erro.withValues(alpha: 0.045),
               borderRadius: BorderRadius.circular(11),
               border: Border.all(
-                color: CoresApp.erro.withOpacity(0.12),
+                color: CoresApp.erro.withValues(alpha: 0.12),
               ),
             ),
             child: Text(
@@ -650,7 +649,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
         fontSize: 11.5,
       ),
       hintStyle: TextStyle(
-        color: CoresApp.textoSecundario.withOpacity(0.42),
+        color: CoresApp.textoSecundario.withValues(alpha: 0.42),
         fontSize: 11.5,
       ),
       contentPadding: const EdgeInsets.symmetric(
@@ -797,7 +796,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                           width: 38,
                           height: 38,
                           decoration: BoxDecoration(
-                            color: CoresApp.destaque.withOpacity(0.10),
+                            color: CoresApp.destaque.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(
@@ -967,8 +966,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: CoresApp.destaque.withOpacity(
-                        0.10,
+                      color: CoresApp.destaque.withValues(
+                        alpha: 0.10,
                       ),
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -1122,7 +1121,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: CoresApp.destaque.withOpacity(0.08),
+                              color: CoresApp.destaque.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(
                                 20,
                               ),
@@ -1148,10 +1147,10 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: CoresApp.destaque.withOpacity(0.035),
+                          color: CoresApp.destaque.withValues(alpha: 0.035),
                           borderRadius: BorderRadius.circular(13),
                           border: Border.all(
-                            color: CoresApp.destaque.withOpacity(0.10),
+                            color: CoresApp.destaque.withValues(alpha: 0.10),
                           ),
                         ),
                         child: Row(
@@ -1392,7 +1391,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
           height: 30,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.08),
+            color: CoresApp.destaque.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -1418,7 +1417,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: CoresApp.textoSecundario.withOpacity(0.70),
+                  color: CoresApp.textoSecundario.withValues(alpha: 0.70),
                   fontSize: 9.5,
                 ),
               ),
@@ -1443,7 +1442,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onEdit,
-        hoverColor: CoresApp.destaque.withOpacity(0.035),
+        hoverColor: CoresApp.destaque.withValues(alpha: 0.035),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: 12,
@@ -1456,10 +1455,10 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                 height: 32,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: CoresApp.destaque.withOpacity(0.08),
+                  color: CoresApp.destaque.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(9),
                   border: Border.all(
-                    color: CoresApp.destaque.withOpacity(0.10),
+                    color: CoresApp.destaque.withValues(alpha: 0.10),
                   ),
                 ),
                 child: Text(
@@ -1491,7 +1490,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     Text(
                       'Etapa ${index + 1}',
                       style: TextStyle(
-                        color: CoresApp.textoSecundario.withOpacity(0.55),
+                        color: CoresApp.textoSecundario.withValues(alpha: 0.55),
                         fontSize: 9,
                       ),
                     ),
@@ -1554,12 +1553,12 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: CoresApp.destaque.withOpacity(0.07),
+                color: CoresApp.destaque.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Icon(
                 Icons.playlist_add_check_outlined,
-                color: CoresApp.destaque.withOpacity(0.65),
+                color: CoresApp.destaque.withValues(alpha: 0.65),
                 size: 24,
               ),
             ),
@@ -1577,7 +1576,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               'Adicione as etapas acima para montar seu checklist.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: CoresApp.textoSecundario.withOpacity(0.65),
+                color: CoresApp.textoSecundario.withValues(alpha: 0.65),
                 fontSize: 10,
               ),
             ),
@@ -1612,7 +1611,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.10),
+              color: Colors.black.withValues(alpha: 0.10),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -1625,10 +1624,10 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               height: 38,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: CoresApp.destaque.withOpacity(0.09),
+                color: CoresApp.destaque.withValues(alpha: 0.09),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: CoresApp.destaque.withOpacity(0.14),
+                  color: CoresApp.destaque.withValues(alpha: 0.14),
                 ),
               ),
               child: Icon(
@@ -1671,7 +1670,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: CoresApp.textoSecundario.withOpacity(0.75),
+                      color: CoresApp.textoSecundario.withValues(alpha: 0.75),
                       fontSize: 8.5,
                     ),
                   ),
@@ -1697,10 +1696,10 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.10),
+            color: CoresApp.destaque.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(13),
             border: Border.all(
-              color: CoresApp.destaque.withOpacity(0.18),
+              color: CoresApp.destaque.withValues(alpha: 0.18),
             ),
           ),
           child: const Icon(
@@ -1740,7 +1739,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: CoresApp.textoSecundario.withOpacity(0.80),
+                  color: CoresApp.textoSecundario.withValues(alpha: 0.80),
                   fontSize: 10,
                 ),
               ),
@@ -1843,7 +1842,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               vertical: 11,
             ),
             elevation: 2,
-            shadowColor: CoresApp.destaque.withOpacity(0.20),
+            shadowColor: CoresApp.destaque.withValues(alpha: 0.20),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(9),
             ),
@@ -1883,7 +1882,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
       decoration: InputDecoration(
         hintText: 'Buscar por ID ou nome do modelo...',
         hintStyle: TextStyle(
-          color: CoresApp.textoSecundario.withOpacity(0.45),
+          color: CoresApp.textoSecundario.withValues(alpha: 0.45),
           fontSize: 12,
         ),
         prefixIcon: const Icon(
@@ -2019,8 +2018,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
         onTap: () => _openFormatDetailDialog(
           format: item,
         ),
-        hoverColor: CoresApp.destaque.withOpacity(
-          0.035,
+        hoverColor: CoresApp.destaque.withValues(
+          alpha: 0.035,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
@@ -2066,8 +2065,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                         height: 30,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: CoresApp.destaque.withOpacity(
-                            0.08,
+                          color: CoresApp.destaque.withValues(
+                            alpha: 0.08,
                           ),
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -2091,8 +2090,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                         height: 34,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: CoresApp.destaque.withOpacity(
-                            0.07,
+                          color: CoresApp.destaque.withValues(
+                            alpha: 0.07,
                           ),
                           borderRadius: BorderRadius.circular(9),
                         ),
@@ -2128,8 +2127,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: CoresApp.textoSecundario.withOpacity(
-                                  0.62,
+                                color: CoresApp.textoSecundario.withValues(
+                                  alpha: 0.62,
                                 ),
                                 fontSize: 9.5,
                               ),
@@ -2218,8 +2217,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
             height: 58,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: CoresApp.destaque.withOpacity(
-                0.08,
+              color: CoresApp.destaque.withValues(
+                alpha: 0.08,
               ),
               borderRadius: BorderRadius.circular(16),
             ),
@@ -2227,7 +2226,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
               hasSearch
                   ? Icons.search_off_rounded
                   : Icons.playlist_add_check_rounded,
-              color: CoresApp.destaque.withOpacity(0.75),
+              color: CoresApp.destaque.withValues(alpha: 0.75),
               size: 27,
             ),
           ),
@@ -2247,7 +2246,7 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                 : 'Crie seu primeiro modelo de checklist para começar.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: CoresApp.textoSecundario.withOpacity(0.72),
+              color: CoresApp.textoSecundario.withValues(alpha: 0.72),
               fontSize: 10.5,
             ),
           ),
@@ -2341,8 +2340,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(
-                          0.12,
+                        color: Colors.black.withValues(
+                          alpha: 0.12,
                         ),
                         blurRadius: 18,
                         offset: const Offset(
@@ -2475,8 +2474,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(
-                          0.11,
+                        color: Colors.black.withValues(
+                          alpha: 0.11,
                         ),
                         blurRadius: 18,
                         offset: const Offset(
@@ -2506,7 +2505,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                               height: 32,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: CoresApp.destaque.withOpacity(0.08),
+                                color:
+                                    CoresApp.destaque.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(9),
                               ),
                               child: const Icon(
@@ -2549,7 +2549,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: CoresApp.destaque.withOpacity(0.08),
+                                color:
+                                    CoresApp.destaque.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -2663,7 +2664,8 @@ class _ChecklistFormatsScreenState extends State<ChecklistFormatsScreen> {
                       child: Text(
                         'Os modelos podem ser reutilizados ao criar novos projetos e suas etapas ficam salvas no Firebase.',
                         style: TextStyle(
-                          color: CoresApp.textoSecundario.withOpacity(0.62),
+                          color:
+                              CoresApp.textoSecundario.withValues(alpha: 0.62),
                           fontSize: 9.5,
                         ),
                       ),

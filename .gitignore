@@ -46,3 +46,15 @@ app.*.map.json
 
 # Instaladores gerados pelo Inno Setup
 installer/*.exe
+
+# Distribuições e dados locais da integração E-Desk
+/dist/
+/installer/Output/
+/python/
+/edesk_bot/perfil/
+/edesk_bot/logs/
+/edesk_bot/screenshots/
+/edesk_bot/grid_debug.html
+/logs/
+/screenshots/
+__pycache__/

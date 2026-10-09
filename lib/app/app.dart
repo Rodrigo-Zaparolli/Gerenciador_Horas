@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-
+import 'package:gerenciador_horas/data/services/update_service.dart';
 import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/features/auth/screens/login_screen.dart';
 
@@ -24,19 +24,6 @@ class GerenciadorHorasApp extends StatelessWidget {
       // ==========================================================
       // LOCALIZAÇÃO
       // ==========================================================
-      //
-      // IMPORTANTE:
-      //
-      // O DatePicker, TimePicker e outros componentes Material
-      // precisam de MaterialLocalizations.
-      //
-      // Sem essa configuração, ao abrir o DatePicker o Flutter
-      // pode gerar:
-      //
-      // "No MaterialLocalizations found"
-      //
-      // e apresentar a tela vermelha.
-      // ==========================================================
 
       locale: const Locale('pt', 'BR'),
 
@@ -58,67 +45,117 @@ class GerenciadorHorasApp extends StatelessWidget {
       theme: AppTheme.dark,
 
       // ==========================================================
-      // CONTROLE AUTOMÁTICO DE AUTENTICAÇÃO
+      // TELA INICIAL
+      // ==========================================================
+      //
+      // O UpdateChecker executa a verificação de atualização
+      // apenas uma vez após a interface estar carregada.
       // ==========================================================
 
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          // ======================================================
-          // AGUARDANDO FIREBASE
-          // ======================================================
+      home: const _UpdateChecker(),
+    );
+  }
+}
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
-            );
-          }
+// ================================================================
+// VERIFICAÇÃO AUTOMÁTICA DE ATUALIZAÇÃO
+// ================================================================
 
-          // ======================================================
-          // ERRO
-          // ======================================================
+class _UpdateChecker extends StatefulWidget {
+  const _UpdateChecker();
 
-          if (snapshot.hasError) {
-            return Scaffold(
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'Erro ao verificar autenticação:\n\n'
-                    '${snapshot.error}',
-                    textAlign: TextAlign.center,
-                  ),
+  @override
+  State<_UpdateChecker> createState() => _UpdateCheckerState();
+}
+
+class _UpdateCheckerState extends State<_UpdateChecker> {
+  bool _verificacaoExecutada = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Executa somente depois que o primeiro frame do MaterialApp
+    // estiver completamente montado.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _verificarAtualizacao();
+    });
+  }
+
+  Future<void> _verificarAtualizacao() async {
+    // Evita executar a verificação mais de uma vez.
+    if (_verificacaoExecutada) {
+      return;
+    }
+
+    _verificacaoExecutada = true;
+
+    if (!mounted) {
+      return;
+    }
+
+    await verificarAtualizacaoAutomatica(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // ========================================================
+        // AGUARDANDO FIREBASE
+        // ========================================================
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        // ========================================================
+        // ERRO
+        // ========================================================
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Erro ao verificar autenticação:\n\n'
+                  '${snapshot.error}',
+                  textAlign: TextAlign.center,
                 ),
               ),
-            );
-          }
-
-          // ======================================================
-          // USUÁRIO LOGADO
-          // ======================================================
-
-          if (snapshot.hasData && snapshot.data != null) {
-            return const MainNavigationScreen();
-          }
-
-          // ======================================================
-          // USUÁRIO NÃO LOGADO
-          // ======================================================
-
-          return LoginScreen(
-            onLoginSuccess: () {
-              // ==================================================
-              // NÃO É NECESSÁRIO NAVEGAR MANUALMENTE.
-              //
-              // O FirebaseAuth.authStateChanges() detectará
-              // automaticamente o login e reconstruirá esta tela.
-              // ==================================================
-            },
+            ),
           );
-        },
-      ),
+        }
+
+        // ========================================================
+        // USUÁRIO LOGADO
+        // ========================================================
+
+        if (snapshot.hasData && snapshot.data != null) {
+          return MainNavigationScreen(key: ValueKey(snapshot.data!.uid));
+        }
+
+        // ========================================================
+        // USUÁRIO NÃO LOGADO
+        // ========================================================
+
+        return LoginScreen(
+          onLoginSuccess: () {
+            // ====================================================
+            // NÃO É NECESSÁRIO NAVEGAR MANUALMENTE.
+            //
+            // O FirebaseAuth.authStateChanges() detectará
+            // automaticamente o login e reconstruirá esta tela.
+            // ====================================================
+          },
+        );
+      },
     );
   }
 }

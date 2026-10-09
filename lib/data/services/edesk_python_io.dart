@@ -1,60 +1,117 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
-
 import 'dart:convert';
-
 import 'dart:io';
 
 /// ================================================================
-
 /// PROCESSO ATUAL DA SINCRONIZAÇÃO DE FASES
-
 /// ================================================================
 
 Process? _edeskFasesProcessoAtual;
 
 Completer<EdeskPythonResult>? _edeskFasesCompleterAtual;
 
+Process? _edeskComentarioTesteProcessoAtual;
+
 /// ================================================================
-
 /// AMBIENTE PORTÁTIL DA INTEGRAÇÃO E-DESK
-
 ///
-
 /// Procura os arquivos primeiro ao lado do executável instalado:
-
-///   <app>\python\Scripts\python.exe
-
-///   <app>\edesk_bot\\<script>
-
 ///
-
+///   `<app>\python\python.exe`
+///   `<app>\python\Scripts\python.exe`
+///   `<app>\python\ms-playwright`
+///   `<app>\edesk_bot\<script>`
+///
 /// Durante o desenvolvimento também aceita:
-
-///   <projeto>\\.venv\Scripts\python.exe
-
-///   <projeto>\edesk_bot\\<script>
-
 ///
-
+///   `<projeto>\.venv\Scripts\python.exe`
+///   `<projeto>\python\python.exe`
+///   `<projeto>\python\ms-playwright`
+///   `<projeto>\edesk_bot\<script>`
+///
 /// Assim a integração não depende de caminhos absolutos da máquina
-
 /// de desenvolvimento.
-
 /// ================================================================
 
 class _EdeskRuntime {
   final String pythonExe;
-
   final String scriptPath;
-
   final String workingDirectory;
+
+  /// Pasta onde estão os navegadores portáteis do Playwright.
+  ///
+  /// Exemplo:
+  ///
+  /// `<app>\python\ms-playwright`
+  final String? playwrightBrowsersPath;
 
   const _EdeskRuntime({
     required this.pythonExe,
     required this.scriptPath,
     required this.workingDirectory,
+    this.playwrightBrowsersPath,
   });
 }
+
+/// ================================================================
+/// LOCALIZA O PLAYWRIGHT PORTÁTIL
+/// ================================================================
+///
+/// Procura:
+///
+///   `<root>\python\ms-playwright`
+///
+/// Se a pasta não existir, retorna null.
+///
+/// Isso permite continuar usando o Playwright instalado normalmente
+/// durante desenvolvimento, mas prioriza o navegador portátil quando
+/// ele estiver disponível.
+/// ================================================================
+
+Future<String?> _resolverPlaywrightBrowsersPath(String root) async {
+  final path = '$root${Platform.pathSeparator}'
+      'python${Platform.pathSeparator}'
+      'ms-playwright';
+
+  final directory = Directory(path);
+
+  if (await directory.exists()) {
+    return directory.path;
+  }
+
+  return null;
+}
+
+/// ================================================================
+/// MONTA AS VARIÁVEIS DE AMBIENTE DO PYTHON
+/// ================================================================
+///
+/// Além das variáveis já utilizadas pela integração, configura
+/// PLAYWRIGHT_BROWSERS_PATH quando o Chromium portátil estiver
+/// disponível.
+/// ================================================================
+
+Map<String, String> _criarAmbientePython(_EdeskRuntime runtime) {
+  final environment = <String, String>{
+    ...Platform.environment,
+    'PYTHONIOENCODING': 'utf-8',
+    'PYTHONUTF8': '1',
+  };
+
+  final playwrightBrowsersPath = runtime.playwrightBrowsersPath;
+
+  if (playwrightBrowsersPath != null &&
+      playwrightBrowsersPath.trim().isNotEmpty) {
+    environment['PLAYWRIGHT_BROWSERS_PATH'] = playwrightBrowsersPath;
+  }
+
+  return environment;
+}
+
+/// ================================================================
+/// RESOLVE O AMBIENTE DA INTEGRAÇÃO
+/// ================================================================
 
 Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
   // ================================================================
@@ -135,11 +192,12 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
   adicionarRoot(currentDirectory);
 
   // ---------------------------------------------------------------
-  // 3. Pasta pai do executável
+  // 3. Pastas pai do executável
   //
-  // Útil quando estamos executando algo dentro de:
+  // Útil durante desenvolvimento:
+  //
   // build\windows\x64\runner\Debug
-  // ou estruturas semelhantes.
+  // build\windows\x64\runner\Release
   // ---------------------------------------------------------------
 
   var pastaExecutavel = Directory(executableDirectory);
@@ -177,9 +235,10 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
   // ---------------------------------------------------------------
   // 5. Caminho conhecido do ambiente de desenvolvimento
   //
-  // Esse fallback garante o funcionamento no projeto atual.
-  // Não interfere na versão instalada/portátil porque ele é
-  // consultado somente se necessário.
+  // Mantido para preservar o comportamento atual do projeto.
+  //
+  // A instalação distribuída não depende desse caminho porque
+  // primeiro procura o ambiente ao lado do executável.
   // ---------------------------------------------------------------
 
   adicionarRoot(
@@ -190,35 +249,36 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
   // LOG DAS RAÍZES
   // ================================================================
 
-  print('');
-  print(
+  debugPrint('');
+
+  debugPrint(
     '[E-Desk][Runtime] ========================================',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] Procurando ambiente para: $script',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] Executável Flutter: '
     '${Platform.resolvedExecutable}',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] Directory.current: $currentDirectory',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] Raízes encontradas:',
   );
 
   for (final root in roots) {
-    print(
+    debugPrint(
       '[E-Desk][Runtime] - $root',
     );
   }
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] ========================================',
   );
 
@@ -236,7 +296,7 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
       continue;
     }
 
-    print(
+    debugPrint(
       '[E-Desk][Runtime] Script encontrado: $scriptPath',
     );
 
@@ -246,7 +306,21 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
 
     final pythonCandidates = <String>[
       // ------------------------------------------------------------
-      // Distribuição portátil do aplicativo
+      // Distribuição Python direta/portátil.
+      //
+      // Esta é a estrutura que estamos preparando para o instalador:
+      //
+      // <app>\python\python.exe
+      // ------------------------------------------------------------
+
+      '$root${Platform.pathSeparator}'
+          'python${Platform.pathSeparator}'
+          'python.exe',
+
+      // ------------------------------------------------------------
+      // Estrutura alternativa:
+      //
+      // <app>\python\Scripts\python.exe
       // ------------------------------------------------------------
 
       '$root${Platform.pathSeparator}'
@@ -255,15 +329,7 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
           'python.exe',
 
       // ------------------------------------------------------------
-      // Distribuição Python direta
-      // ------------------------------------------------------------
-
-      '$root${Platform.pathSeparator}'
-          'python${Platform.pathSeparator}'
-          'python.exe',
-
-      // ------------------------------------------------------------
-      // Ambiente virtual de desenvolvimento
+      // Ambiente virtual de desenvolvimento.
       // ------------------------------------------------------------
 
       '$root${Platform.pathSeparator}'
@@ -277,15 +343,29 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
         continue;
       }
 
-      print(
+      final playwrightBrowsersPath =
+          await _resolverPlaywrightBrowsersPath(root);
+
+      debugPrint(
         '[E-Desk][Runtime] Python encontrado: $pythonExe',
       );
 
-      print(
+      debugPrint(
         '[E-Desk][Runtime] WorkingDirectory: $root',
       );
 
-      print(
+      if (playwrightBrowsersPath != null) {
+        debugPrint(
+          '[E-Desk][Runtime] Playwright portátil: '
+          '$playwrightBrowsersPath',
+        );
+      } else {
+        debugPrint(
+          '[E-Desk][Runtime] Playwright portátil não encontrado.',
+        );
+      }
+
+      debugPrint(
         '[E-Desk][Runtime] Ambiente E-Desk encontrado.',
       );
 
@@ -293,10 +373,11 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
         pythonExe: pythonExe,
         scriptPath: scriptPath,
         workingDirectory: root,
+        playwrightBrowsersPath: playwrightBrowsersPath,
       );
     }
 
-    print(
+    debugPrint(
       '[E-Desk][Runtime] Script encontrado, '
       'mas Python não encontrado em: $root',
     );
@@ -306,20 +387,21 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
   // NÃO ENCONTROU
   // ================================================================
 
-  print('');
-  print(
+  debugPrint('');
+
+  debugPrint(
     '[E-Desk][Runtime] ========================================',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] AMBIENTE NÃO ENCONTRADO',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] Script solicitado: $script',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Runtime] ========================================',
   );
 
@@ -327,40 +409,40 @@ Future<_EdeskRuntime?> _resolverEdeskRuntime(String script) async {
 }
 
 /// ================================================================
-
 /// EXECUTA PYTHON E-DESK
-
 ///
-
 /// Mantém o comportamento atual:
-
-/// - inicia o Python
-
-/// - captura stdout/stderr
-
-/// - aguarda o término
-
-/// - retorna o resultado final
-
 ///
-
+/// - inicia o Python
+/// - captura stdout/stderr
+/// - aguarda o término nos envios; no teste de comentário, retorna quando
+///   o preenchimento é confirmado e deixa o Chromium aberto
+/// - retorna o resultado final
+/// - configura o Chromium portátil quando disponível
+///
 /// Usado pelas integrações que precisam do resultado do Python.
-
 /// ================================================================
 
 Future<EdeskPythonResult> executarPythonEdesk({
   required String requestJson,
   required bool enviar,
 
-  // Mantém main.py como padrão para não quebrar
-
-  // a integração atual de comentários.
-
+  // Mantém o script atual de comentários como padrão.
   String script = 'edesk_comentario.py',
 }) async {
   Directory? tempDirectory;
+  final manterNavegadorDoTeste = !enviar && script == 'edesk_comentario.py';
 
   try {
+    if (manterNavegadorDoTeste && _edeskComentarioTesteProcessoAtual != null) {
+      return const EdeskPythonResult(
+        confirmed: false,
+        statusCode: 409,
+        message: 'Feche o Chromium do teste anterior antes de iniciar outro.',
+        responseBody: '',
+      );
+    }
+
     final runtime = await _resolverEdeskRuntime(script);
 
     if (runtime == null) {
@@ -380,9 +462,7 @@ Future<EdeskPythonResult> executarPythonEdesk({
     final workingDirectory = runtime.workingDirectory;
 
     // ============================================================
-
     // ARQUIVO TEMPORÁRIO DO REQUEST
-
     // ============================================================
 
     tempDirectory = await Directory.systemTemp.createTemp(
@@ -398,32 +478,37 @@ Future<EdeskPythonResult> executarPythonEdesk({
       encoding: utf8,
     );
 
-    print('');
+    debugPrint('');
 
-    print(
+    debugPrint(
       '[E-Desk] ============================================',
     );
 
-    print('[E-Desk] Executando Python.');
+    debugPrint('[E-Desk] Executando Python.');
 
-    print(
+    debugPrint(
       '[E-Desk] Modo: ${enviar ? 'ENVIO' : 'TESTE'}',
     );
 
-    print('[E-Desk] Python: $pythonExe');
+    debugPrint('[E-Desk] Python: $pythonExe');
 
-    print('[E-Desk] Script: $scriptPath');
+    debugPrint('[E-Desk] Script: $scriptPath');
 
-    print('[E-Desk] Request: ${requestFile.path}');
+    debugPrint('[E-Desk] Request: ${requestFile.path}');
 
-    print(
+    if (runtime.playwrightBrowsersPath != null) {
+      debugPrint(
+        '[E-Desk] PLAYWRIGHT_BROWSERS_PATH: '
+        '${runtime.playwrightBrowsersPath}',
+      );
+    }
+
+    debugPrint(
       '[E-Desk] ============================================',
     );
 
     // ============================================================
-
     // INICIA PYTHON
-
     // ============================================================
 
     final processo = await Process.start(
@@ -436,24 +521,30 @@ Future<EdeskPythonResult> executarPythonEdesk({
       ],
       workingDirectory: workingDirectory,
       runInShell: false,
-      environment: {
-        ...Platform.environment,
-        'PYTHONIOENCODING': 'utf-8',
-        'PYTHONUTF8': '1',
-      },
+      environment: _criarAmbientePython(runtime),
     );
 
-    print(
+    debugPrint(
       '[E-Desk] Python iniciado. PID=${processo.pid}',
     );
 
+    if (manterNavegadorDoTeste) {
+      _edeskComentarioTesteProcessoAtual = processo;
+      unawaited(
+        processo.exitCode.then((_) {
+          if (identical(_edeskComentarioTesteProcessoAtual, processo)) {
+            _edeskComentarioTesteProcessoAtual = null;
+          }
+        }),
+      );
+    }
+
     // ============================================================
-
     // CAPTURA STDOUT EM TEMPO REAL
-
     // ============================================================
 
     final stdoutBuffer = StringBuffer();
+    final testePreparado = Completer<void>();
 
     processo.stdout
         .transform(utf8.decoder)
@@ -462,25 +553,29 @@ Future<EdeskPythonResult> executarPythonEdesk({
       (linha) {
         stdoutBuffer.writeln(linha);
 
+        if (manterNavegadorDoTeste &&
+            linha.trim() == '[E-Desk][Python] EDESK_TEST_READY' &&
+            !testePreparado.isCompleted) {
+          testePreparado.complete();
+        }
+
         final linhaLimpa = linha.trimRight();
 
         if (linhaLimpa.isNotEmpty) {
-          print(
+          debugPrint(
             '[E-Desk][Python] $linhaLimpa',
           );
         }
       },
       onError: (Object erro) {
-        print(
+        debugPrint(
           '[E-Desk][Python][ERRO STDOUT] $erro',
         );
       },
     );
 
     // ============================================================
-
     // CAPTURA STDERR EM TEMPO REAL
-
     // ============================================================
 
     final stderrBuffer = StringBuffer();
@@ -495,48 +590,58 @@ Future<EdeskPythonResult> executarPythonEdesk({
         final linhaLimpa = linha.trimRight();
 
         if (linhaLimpa.isNotEmpty) {
-          print(
+          debugPrint(
             '[E-Desk][Python][ERRO] $linhaLimpa',
           );
         }
       },
       onError: (Object erro) {
-        print(
+        debugPrint(
           '[E-Desk][Python][ERRO STREAM] $erro',
         );
       },
     );
 
     // ============================================================
-
     // AGUARDA SOMENTE O PROCESSO PYTHON
-
     //
-
     // IMPORTANTE:
-
-    // Não aguardamos stdout/stderr com asFuture().
-
     //
-
+    // Não aguardamos stdout/stderr com asFuture().
+    //
     // Com Playwright/navegador no Windows, os streams podem
-
     // permanecer abertos mesmo depois de o processo Python ter
-
     // terminado. Isso fazia o Future ficar preso e o modal
-
     // permanecia em "Enviando horas...".
-
     // ============================================================
 
-    print(
+    debugPrint(
       '[E-Desk] Aguardando encerramento do Python...',
     );
+
+    if (manterNavegadorDoTeste) {
+      final preparado = await Future.any<bool>([
+        testePreparado.future.then((_) => true),
+        processo.exitCode.then((_) => false),
+      ]);
+
+      if (preparado) {
+        debugPrint(
+          '[E-Desk] Teste preenchido; o Chromium permanecerá aberto.',
+        );
+
+        return const EdeskPythonResult(
+          confirmed: true,
+          statusCode: 200,
+          message: 'Teste preenchido. Nada foi salvo no E-Desk.',
+          responseBody: '',
+        );
+      }
+    }
 
     final exitCode = await processo.exitCode;
 
     // Pequeno intervalo para permitir que as últimas linhas
-
     // do stdout/stderr sejam recebidas pelos listeners.
 
     await Future<void>.delayed(
@@ -547,75 +652,81 @@ Future<EdeskPythonResult> executarPythonEdesk({
 
     final stderr = stderrBuffer.toString();
 
-    print('');
+    debugPrint('');
 
-    print(
+    debugPrint(
       '[E-Desk] Python finalizado. exitCode=$exitCode',
     );
 
     // ============================================================
-
     // PYTHON RETORNOU ERRO
-
     // ============================================================
 
     if (exitCode != 0) {
       final diagnostico =
           stderr.trim().isNotEmpty ? stderr.trim() : stdout.trim();
+      final linhasDiagnostico = diagnostico
+          .split(RegExp(r'\r?\n'))
+          .where((linha) => linha.trim().isNotEmpty)
+          .toList();
+      final resumoDiagnostico = linhasDiagnostico.length > 12
+          ? linhasDiagnostico.skip(linhasDiagnostico.length - 12).join('\n')
+          : linhasDiagnostico.join('\n');
 
-      print('');
+      debugPrint('');
 
-      print(
+      debugPrint(
         '[E-Desk] ============================================',
       );
 
-      print(
+      debugPrint(
         '[E-Desk] PYTHON RETORNOU ERRO',
       );
 
-      print(
+      debugPrint(
         '[E-Desk] ExitCode: $exitCode',
       );
 
-      print(
+      debugPrint(
         '[E-Desk] Diagnóstico:',
       );
 
-      print(diagnostico);
+      debugPrint(diagnostico);
 
-      print(
+      debugPrint(
         '[E-Desk] ============================================',
       );
 
       return EdeskPythonResult(
         confirmed: false,
         statusCode: exitCode,
-        message: 'O Python retornou erro.',
+        message: resumoDiagnostico.isEmpty
+            ? 'O Python retornou erro (código $exitCode).'
+            : 'O Python retornou erro (código $exitCode):\n'
+                '$resumoDiagnostico',
         responseBody: diagnostico,
       );
     }
 
     // ============================================================
-
     // SUCESSO
-
     // ============================================================
 
-    print('');
+    debugPrint('');
 
-    print(
+    debugPrint(
       '[E-Desk] ============================================',
     );
 
-    print(
+    debugPrint(
       '[E-Desk] OPERAÇÃO CONCLUÍDA COM SUCESSO',
     );
 
-    print(
+    debugPrint(
       '[E-Desk] O Flutter recebeu o término do Python.',
     );
 
-    print(
+    debugPrint(
       '[E-Desk] ============================================',
     );
 
@@ -628,23 +739,23 @@ Future<EdeskPythonResult> executarPythonEdesk({
       responseBody: stdout,
     );
   } catch (e, stackTrace) {
-    print('');
+    debugPrint('');
 
-    print(
+    debugPrint(
       '[E-Desk] ============================================',
     );
 
-    print(
+    debugPrint(
       '[E-Desk] ERRO AO EXECUTAR PYTHON',
     );
 
-    print(
+    debugPrint(
       '[E-Desk] $e',
     );
 
-    print(stackTrace);
+    debugPrint(stackTrace.toString());
 
-    print(
+    debugPrint(
       '[E-Desk] ============================================',
     );
 
@@ -656,9 +767,7 @@ Future<EdeskPythonResult> executarPythonEdesk({
     );
   } finally {
     // ============================================================
-
     // LIMPA REQUEST TEMPORÁRIO
-
     // ============================================================
 
     try {
@@ -672,23 +781,15 @@ Future<EdeskPythonResult> executarPythonEdesk({
 }
 
 /// ================================================================
-
 /// CANCELAR PYTHON E-DESK
-
 ///
-
 /// Encerra:
-
-/// - Python
-
-/// - Playwright
-
-/// - navegador filho criado pelo Playwright
-
 ///
-
+/// - Python
+/// - Playwright
+/// - navegador filho criado pelo Playwright
+///
 /// No Windows usamos TASKKILL /T /F para encerrar toda a árvore.
-
 /// ================================================================
 
 Future<bool> cancelarPythonEdeskBackground() async {
@@ -697,28 +798,28 @@ Future<bool> cancelarPythonEdeskBackground() async {
   final completer = _edeskFasesCompleterAtual;
 
   if (processo == null) {
-    print(
+    debugPrint(
       '[E-Desk][Background] Nenhuma sincronização ativa.',
     );
 
     return false;
   }
 
-  print('');
+  debugPrint('');
 
-  print(
+  debugPrint(
     '[E-Desk][Background] ========================================',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Background] INTERROMPENDO SINCRONIZAÇÃO',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Background] PID=${processo.pid}',
   );
 
-  print(
+  debugPrint(
     '[E-Desk][Background] ========================================',
   );
 
@@ -727,13 +828,9 @@ Future<bool> cancelarPythonEdeskBackground() async {
   try {
     if (Platform.isWindows) {
       // ==========================================================
-
       // FINALIZA TODA A ÁRVORE DE PROCESSOS
-
       //
-
       // Inclui o navegador iniciado pelo Playwright.
-
       // ==========================================================
 
       final resultado = await Process.run(
@@ -749,18 +846,18 @@ Future<bool> cancelarPythonEdeskBackground() async {
 
       interrompido = resultado.exitCode == 0;
 
-      print(
+      debugPrint(
         '[E-Desk][Background] taskkill exitCode=${resultado.exitCode}',
       );
 
       if (resultado.stdout.toString().trim().isNotEmpty) {
-        print(
+        debugPrint(
           '[E-Desk][Background] ${resultado.stdout}',
         );
       }
 
       if (resultado.stderr.toString().trim().isNotEmpty) {
-        print(
+        debugPrint(
           '[E-Desk][Background][ERRO] ${resultado.stderr}',
         );
       }
@@ -768,14 +865,12 @@ Future<bool> cancelarPythonEdeskBackground() async {
       interrompido = processo.kill();
     }
   } catch (e) {
-    print(
+    debugPrint(
       '[E-Desk][Background] Erro ao interromper processo: $e',
     );
 
     // ==========================================================
-
     // FALLBACK
-
     // ==========================================================
 
     try {
@@ -786,9 +881,7 @@ Future<bool> cancelarPythonEdeskBackground() async {
   }
 
   // =============================================================
-
   // LIBERA O AWAIT DO FLUTTER IMEDIATAMENTE
-
   // =============================================================
 
   if (interrompido && completer != null && !completer.isCompleted) {
@@ -803,11 +896,11 @@ Future<bool> cancelarPythonEdeskBackground() async {
   }
 
   if (interrompido) {
-    print(
+    debugPrint(
       '[E-Desk][Background] Sincronização interrompida.',
     );
   } else {
-    print(
+    debugPrint(
       '[E-Desk][Background] Não foi possível interromper o processo.',
     );
   }
@@ -816,19 +909,13 @@ Future<bool> cancelarPythonEdeskBackground() async {
 }
 
 /// ================================================================
-
 /// EXECUTA PYTHON E-DESK EM SEGUNDO PLANO
-
 ///
-
 /// - Aguarda o marcador de conclusão.
-
 /// - Não depende do exitCode para concluir a tela.
-
 /// - Permite cancelamento.
-
 /// - O navegador pode permanecer aberto após uma conclusão normal.
-
+/// - Usa o Chromium portátil quando disponível.
 /// ================================================================
 
 Future<EdeskPythonResult> executarPythonEdeskBackground({
@@ -840,9 +927,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
 
   try {
     // =============================================================
-
     // EVITA DUAS SINCRONIZAÇÕES SIMULTÂNEAS
-
     // =============================================================
 
     if (_edeskFasesProcessoAtual != null) {
@@ -873,9 +958,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
     final workingDirectory = runtime.workingDirectory;
 
     // =============================================================
-
     // ARQUIVO TEMPORÁRIO
-
     // =============================================================
 
     tempDirectory = await Directory.systemTemp.createTemp(
@@ -891,32 +974,41 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
       encoding: utf8,
     );
 
-    print('');
+    debugPrint('');
 
-    print(
+    debugPrint(
       '[E-Desk][Background] ========================================',
     );
 
-    print(
+    debugPrint(
       '[E-Desk][Background] Iniciando Python.',
     );
 
-    print(
+    debugPrint(
       '[E-Desk][Background] Modo: ${enviar ? 'ENVIO' : 'TESTE'}',
     );
 
-    print(
+    debugPrint(
+      '[E-Desk][Background] Python: $pythonExe',
+    );
+
+    debugPrint(
       '[E-Desk][Background] Script: $scriptPath',
     );
 
-    print(
+    if (runtime.playwrightBrowsersPath != null) {
+      debugPrint(
+        '[E-Desk][Background] PLAYWRIGHT_BROWSERS_PATH: '
+        '${runtime.playwrightBrowsersPath}',
+      );
+    }
+
+    debugPrint(
       '[E-Desk][Background] ========================================',
     );
 
     // =============================================================
-
     // INICIA PYTHON
-
     // =============================================================
 
     final processo = await Process.start(
@@ -929,29 +1021,21 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
       ],
       workingDirectory: workingDirectory,
       runInShell: false,
-      environment: {
-        ...Platform.environment,
-        'PYTHONIOENCODING': 'utf-8',
-        'PYTHONUTF8': '1',
-      },
+      environment: _criarAmbientePython(runtime),
     );
 
     // =============================================================
-
     // REGISTRA O PROCESSO ATUAL
-
     // =============================================================
 
     _edeskFasesProcessoAtual = processo;
 
-    print(
+    debugPrint(
       '[E-Desk][Background] Python iniciado. PID=${processo.pid}',
     );
 
     // =============================================================
-
     // COMPLETER
-
     // =============================================================
 
     final completer = Completer<EdeskPythonResult>();
@@ -971,9 +1055,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
     }
 
     // =============================================================
-
     // STDOUT
-
     // =============================================================
 
     processo.stdout
@@ -990,15 +1072,13 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
         final linhaLimpa = linha.trim();
 
         if (linhaLimpa.isNotEmpty) {
-          print(
+          debugPrint(
             '[E-Desk][Python] $linhaLimpa',
           );
         }
 
         // ========================================================
-
         // CONCLUSÃO REAL
-
         // ========================================================
 
         if (linhaLimpa.contains(
@@ -1017,9 +1097,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
         }
 
         // ========================================================
-
         // ERRO REAL
-
         // ========================================================
 
         if (linhaLimpa.contains(
@@ -1048,9 +1126,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
     );
 
     // =============================================================
-
     // STDERR
-
     // =============================================================
 
     processo.stderr
@@ -1067,38 +1143,29 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
         final linhaLimpa = linha.trim();
 
         if (linhaLimpa.isNotEmpty) {
-          print(
+          debugPrint(
             '[E-Desk][Python][ERRO] $linhaLimpa',
           );
         }
       },
       onError: (Object erro) {
-        print(
+        debugPrint(
           '[E-Desk][Python][ERRO STREAM] $erro',
         );
       },
     );
 
     // =============================================================
-
     // MONITORA O ENCERRAMENTO DO PROCESSO
-
     //
-
     // NÃO é o que decide uma conclusão normal.
-
     //
-
     // Serve para:
-
+    //
     // - detectar fechamento inesperado;
-
     // - limpar arquivos;
-
     // - liberar referências;
-
     // - desbloquear caso o Python termine sem marcador.
-
     // =============================================================
 
     processo.exitCode.then(
@@ -1107,32 +1174,30 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
 
         final stderr = stderrBuffer.toString().trim();
 
-        print('');
+        debugPrint('');
 
-        print(
+        debugPrint(
           '[E-Desk][Background] ========================================',
         );
 
-        print(
+        debugPrint(
           '[E-Desk][Background] Python encerrado.',
         );
 
-        print(
+        debugPrint(
           '[E-Desk][Background] PID=${processo.pid}',
         );
 
-        print(
+        debugPrint(
           '[E-Desk][Background] ExitCode=$exitCode',
         );
 
-        print(
+        debugPrint(
           '[E-Desk][Background] ========================================',
         );
 
         // =========================================================
-
         // SE AINDA NÃO TERMINOU O FUTURE
-
         // =========================================================
 
         if (!completer.isCompleted) {
@@ -1164,9 +1229,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
         }
 
         // =========================================================
-
         // LIMPA REFERÊNCIAS DO PROCESSO
-
         // =========================================================
 
         if (identical(
@@ -1184,26 +1247,24 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
         }
 
         // =========================================================
-
         // REMOVE REQUEST TEMPORÁRIO
-
         // =========================================================
 
         try {
-          if (tempDirectory != null && await tempDirectory!.exists()) {
-            await tempDirectory!.delete(
+          if (tempDirectory != null && await tempDirectory.exists()) {
+            await tempDirectory.delete(
               recursive: true,
             );
           }
         } catch (e) {
-          print(
+          debugPrint(
             '[E-Desk][Background] '
             'Erro ao remover arquivo temporário: $e',
           );
         }
       },
       onError: (Object erro) {
-        print(
+        debugPrint(
           '[E-Desk][Background] '
           'Erro monitorando processo: $erro',
         );
@@ -1222,21 +1283,13 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
     );
 
     // =============================================================
-
     // AGUARDA:
-
     //
-
     // 1. conclusão do Python;
-
     // 2. erro;
-
     // 3. cancelamento pelo usuário.
-
     //
-
     // A interface Flutter continua responsiva.
-
     // =============================================================
 
     return completer.future;
@@ -1251,8 +1304,8 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
     _edeskFasesCompleterAtual = null;
 
     try {
-      if (tempDirectory != null && await tempDirectory!.exists()) {
-        await tempDirectory!.delete(
+      if (tempDirectory != null && await tempDirectory.exists()) {
+        await tempDirectory.delete(
           recursive: true,
         );
       }
@@ -1268,9 +1321,7 @@ Future<EdeskPythonResult> executarPythonEdeskBackground({
 }
 
 /// ================================================================
-
 /// RESULTADO DA EXECUÇÃO PYTHON
-
 /// ================================================================
 
 class EdeskPythonResult {

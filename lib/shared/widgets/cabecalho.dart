@@ -189,9 +189,9 @@ class _CabecalhoState extends State<Cabecalho> {
   }
 
   String _getUserName() {
-    final cacheName = _cache.userName?.trim();
+    final cacheName = _cache.userName.trim();
 
-    if (cacheName != null && cacheName.isNotEmpty) {
+    if (cacheName.isNotEmpty) {
       return cacheName;
     }
 
@@ -267,7 +267,7 @@ class _CabecalhoState extends State<Cabecalho> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: CoresApp.primaria.withOpacity(0.12),
+                      color: CoresApp.primaria.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
@@ -421,10 +421,10 @@ class _CabecalhoState extends State<Cabecalho> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.08),
+                        color: Colors.blue.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.blue.withOpacity(0.18),
+                          color: Colors.blue.withValues(alpha: 0.18),
                         ),
                       ),
                       child: Row(
@@ -495,6 +495,7 @@ class _CabecalhoState extends State<Cabecalho> {
                               });
 
                               await _edeskCredentials.apagar();
+                              if (!context.mounted) return;
 
                               emailController.clear();
                               senhaController.clear();
@@ -504,7 +505,7 @@ class _CabecalhoState extends State<Cabecalho> {
                                 possuiCredenciais = false;
                               });
 
-                              if (mounted) {
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text(
@@ -515,11 +516,12 @@ class _CabecalhoState extends State<Cabecalho> {
                                 );
                               }
                             } catch (e) {
+                              if (!context.mounted) return;
                               setDialogState(() {
                                 salvando = false;
                               });
 
-                              if (mounted) {
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
@@ -617,7 +619,7 @@ class _CabecalhoState extends State<Cabecalho> {
                             Navigator.of(dialogContext).pop();
 
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              ScaffoldMessenger.of(this.context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
                                     'Credenciais do E-Desk salvas com segurança.',
@@ -627,13 +629,12 @@ class _CabecalhoState extends State<Cabecalho> {
                               );
                             }
                           } catch (e) {
-                            setDialogState(() {
-                              salvando = false;
-                            });
-
                             if (!dialogContext.mounted) {
                               return;
                             }
+                            setDialogState(() {
+                              salvando = false;
+                            });
 
                             ScaffoldMessenger.of(dialogContext).showSnackBar(
                               SnackBar(
@@ -780,7 +781,7 @@ class _CabecalhoState extends State<Cabecalho> {
               top: Radius.circular(22),
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
             ),
           ),
           child: SafeArea(
@@ -858,7 +859,7 @@ class _CabecalhoState extends State<Cabecalho> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.10),
+                        color: Colors.blue.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -914,7 +915,7 @@ class _CabecalhoState extends State<Cabecalho> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: CoresApp.primaria.withOpacity(0.12),
+                        color: CoresApp.primaria.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -953,7 +954,7 @@ class _CabecalhoState extends State<Cabecalho> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: CoresApp.erro.withOpacity(0.10),
+                        color: CoresApp.erro.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -1025,7 +1026,7 @@ class _CabecalhoState extends State<Cabecalho> {
                 fit: BoxFit.cover,
               )
             : Container(
-                color: CoresApp.primaria.withOpacity(0.18),
+                color: CoresApp.primaria.withValues(alpha: 0.18),
                 child: Icon(
                   Icons.person_outline_rounded,
                   color: CoresApp.primaria,
@@ -1105,12 +1106,12 @@ class _CabecalhoState extends State<Cabecalho> {
           ),
           decoration: BoxDecoration(
             color: selecionado
-                ? CoresApp.primaria.withOpacity(0.13)
+                ? CoresApp.primaria.withValues(alpha: 0.13)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: selecionado
                 ? Border.all(
-                    color: CoresApp.primaria.withOpacity(0.18),
+                    color: CoresApp.primaria.withValues(alpha: 0.18),
                   )
                 : null,
           ),
@@ -1211,7 +1212,7 @@ class _CabecalhoState extends State<Cabecalho> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         tileColor: selecionado
-                            ? CoresApp.primaria.withOpacity(0.12)
+                            ? CoresApp.primaria.withValues(alpha: 0.12)
                             : Colors.transparent,
                         leading: Icon(
                           item.icon,
@@ -1291,7 +1292,7 @@ class _CabecalhoState extends State<Cabecalho> {
           color: Colors.transparent,
           border: Border(
             bottom: BorderSide(
-              color: Colors.white.withOpacity(0.07),
+              color: Colors.white.withValues(alpha: 0.07),
               width: 1,
             ),
           ),

@@ -1,18 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/edesk_python_io.dart';
 import 'package:gerenciador_horas/data/services/edesk_service.dart';
-import 'package:gerenciador_horas/features/edesk/screens/edesk_webview_test_screen.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
-import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 import 'package:gerenciador_horas/data/services/edesk_credentials_service.dart';
 
@@ -34,7 +30,6 @@ class TarefasScreen extends StatefulWidget {
 }
 
 class _TarefasScreenState extends State<TarefasScreen> {
-  final FirebaseService _firebaseService = FirebaseService();
   bool _enviandoEdesk = false;
 
   String _search = '';
@@ -44,6 +39,14 @@ class _TarefasScreenState extends State<TarefasScreen> {
   DateTime? _endDate;
 
   final Set<String> _semanasExpandidas = {};
+  final Set<int> _anosExpandidos = {};
+  final Set<String> _mesesExpandidos = {};
+  DateTime? _diaSelecionado;
+  String _nivelHistoricoSelecionado = 'dia';
+  int? _anoHistoricoSelecionado;
+  int? _mesHistoricoSelecionado;
+  DateTime? _semanaHistoricoSelecionada;
+  bool _historicoInicializado = false;
 
   @override
   void initState() {
@@ -450,14 +453,14 @@ class _TarefasScreenState extends State<TarefasScreen> {
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: CoresApp.superficie.withOpacity(0.96),
+        color: CoresApp.superficie.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.75),
+          color: CoresApp.borda.withValues(alpha: 0.75),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
+            color: Colors.black.withValues(alpha: 0.10),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -599,10 +602,10 @@ class _TarefasScreenState extends State<TarefasScreen> {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.primaria.withOpacity(0.11),
+            color: CoresApp.primaria.withValues(alpha: 0.11),
             borderRadius: BorderRadius.circular(13),
             border: Border.all(
-              color: CoresApp.primaria.withOpacity(0.22),
+              color: CoresApp.primaria.withValues(alpha: 0.22),
             ),
           ),
           child: const Icon(
@@ -670,11 +673,11 @@ class _TarefasScreenState extends State<TarefasScreen> {
         color: CoresApp.superficie,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -687,7 +690,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
@@ -729,7 +732,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: color.withOpacity(0.9),
+                    color: color.withValues(alpha: 0.9),
                     fontSize: 9,
                     fontWeight: FontWeight.w600,
                   ),
@@ -768,13 +771,13 @@ class _TarefasScreenState extends State<TarefasScreen> {
           ),
           decoration: BoxDecoration(
             color: enabled
-                ? CoresApp.primaria.withOpacity(0.10)
-                : CoresApp.fundo.withOpacity(0.55),
+                ? CoresApp.primaria.withValues(alpha: 0.10)
+                : CoresApp.fundo.withValues(alpha: 0.55),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: enabled
-                  ? CoresApp.primaria.withOpacity(0.30)
-                  : CoresApp.borda.withOpacity(0.45),
+                  ? CoresApp.primaria.withValues(alpha: 0.30)
+                  : CoresApp.borda.withValues(alpha: 0.45),
             ),
           ),
           child: Column(
@@ -786,15 +789,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: enabled
-                      ? CoresApp.primaria.withOpacity(0.12)
-                      : CoresApp.borda.withOpacity(0.25),
+                      ? CoresApp.primaria.withValues(alpha: 0.12)
+                      : CoresApp.borda.withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.picture_as_pdf_rounded,
                   color: enabled
                       ? CoresApp.destaque
-                      : CoresApp.textoSecundario.withOpacity(0.5),
+                      : CoresApp.textoSecundario.withValues(alpha: 0.5),
                   size: 17,
                 ),
               ),
@@ -804,7 +807,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 style: TextStyle(
                   color: enabled
                       ? CoresApp.textoPrincipal
-                      : CoresApp.textoSecundario.withOpacity(0.5),
+                      : CoresApp.textoSecundario.withValues(alpha: 0.5),
                   fontSize: 8.5,
                   fontWeight: FontWeight.w800,
                 ),
@@ -841,10 +844,10 @@ class _TarefasScreenState extends State<TarefasScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: CoresApp.superficie.withOpacity(0.95),
+        color: CoresApp.superficie.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.7),
+          color: CoresApp.borda.withValues(alpha: 0.7),
         ),
       ),
       child: LayoutBuilder(
@@ -877,7 +880,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide(
-                          color: CoresApp.borda.withOpacity(0.6),
+                          color: CoresApp.borda.withValues(alpha: 0.6),
                         ),
                       ),
                       focusedBorder: const OutlineInputBorder(
@@ -947,7 +950,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide(
-                          color: CoresApp.borda.withOpacity(0.6),
+                          color: CoresApp.borda.withValues(alpha: 0.6),
                         ),
                       ),
                       focusedBorder: const OutlineInputBorder(
@@ -998,7 +1001,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
         color: CoresApp.fundo,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.6),
+          color: CoresApp.borda.withValues(alpha: 0.6),
         ),
       ),
       child: DropdownButtonHideUnderline(
@@ -1062,10 +1065,14 @@ class _TarefasScreenState extends State<TarefasScreen> {
           horizontal: 12,
         ),
         decoration: BoxDecoration(
-          color: active ? CoresApp.primaria.withOpacity(0.12) : CoresApp.fundo,
+          color: active
+              ? CoresApp.primaria.withValues(alpha: 0.12)
+              : CoresApp.fundo,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: active ? CoresApp.primaria.withOpacity(0.4) : CoresApp.borda,
+            color: active
+                ? CoresApp.primaria.withValues(alpha: 0.4)
+                : CoresApp.borda,
           ),
         ),
         child: Row(
@@ -1103,10 +1110,10 @@ class _TarefasScreenState extends State<TarefasScreen> {
         horizontal: 10,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.primaria.withOpacity(0.12),
+        color: CoresApp.primaria.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: CoresApp.primaria.withOpacity(0.35),
+          color: CoresApp.primaria.withValues(alpha: 0.35),
         ),
       ),
       child: Row(
@@ -1168,7 +1175,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: CoresApp.borda.withOpacity(0.6),
+              color: CoresApp.borda.withValues(alpha: 0.6),
             ),
           ),
           title: Row(
@@ -1177,7 +1184,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: CoresApp.primaria.withOpacity(0.12),
+                  color: CoresApp.primaria.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: const Icon(
@@ -1218,7 +1225,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: CoresApp.primaria.withOpacity(0.12),
+                  color: CoresApp.primaria.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -1247,7 +1254,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     color: CoresApp.fundo,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: CoresApp.borda.withOpacity(0.5),
+                      color: CoresApp.borda.withValues(alpha: 0.5),
                     ),
                   ),
                   child: Row(
@@ -1257,7 +1264,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                         height: 30,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: CoresApp.primaria.withOpacity(0.1),
+                          color: CoresApp.primaria.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -1331,12 +1338,11 @@ class _TarefasScreenState extends State<TarefasScreen> {
                           size: 18,
                         ),
                         onPressed: () async {
-                          if (log.id != null && log.id!.isNotEmpty) {
-                            await widget.timeLogStore.deleteFirebaseLog(log);
+                          final excluido =
+                              await _excluirApontamentoComConfirmacao(log);
 
-                            if (mounted) {
-                              Navigator.pop(context);
-                            }
+                          if (excluido && context.mounted) {
+                            Navigator.pop(context);
                           }
                         },
                       ),
@@ -1479,15 +1485,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
       );
     }).toList();
 
-    // ============================================================
-    // SELEÇÃO DOS TRABALHOS PARA ENVIO
-    // Todos iniciam selecionados.
-    // ============================================================
-
-    final Set<String> selecionados = {
-      for (final draft in drafts) draft.log.id,
-    };
-
     final taskControllers = <String, TextEditingController>{
       for (final draft in drafts)
         draft.log.id: TextEditingController(
@@ -1502,45 +1499,38 @@ class _TarefasScreenState extends State<TarefasScreen> {
         ),
     };
 
+    // IDs dos lançamentos selecionados para envio ao E-Desk.
+    // Todos iniciam selecionados para preservar o comportamento anterior.
+    final selecionadosEdesk = <String>{
+      for (final draft in drafts) draft.log.id,
+    };
+
     final dialogFuture = showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            // ============================================================
-            // SELECIONADOS
-            // ============================================================
-
-            final draftsSelecionados = drafts
-                .where(
-                  (draft) => selecionados.contains(draft.log.id),
-                )
-                .toList();
-
-            final bool todosSelecionados =
-                drafts.isNotEmpty && draftsSelecionados.length == drafts.length;
-
-            // ============================================================
-            // TOTAL DOS SELECIONADOS
-            // ============================================================
-
             int totalMinutes = 0;
 
-            for (final draft in draftsSelecionados) {
+            for (final draft in drafts) {
+              if (!selecionadosEdesk.contains(draft.log.id)) {
+                continue;
+              }
+
               totalMinutes += _calcularMinutos(
                 draft.startTime,
                 draft.endTime,
               );
             }
 
+            final selecionadosCount = selecionadosEdesk.length;
+            final todosSelecionados =
+                drafts.isNotEmpty && selecionadosCount == drafts.length;
+
             final totalFormatted =
                 '${(totalMinutes ~/ 60).toString().padLeft(2, '0')}:'
                 '${(totalMinutes % 60).toString().padLeft(2, '0')}';
-
-            // ============================================================
-            // SELETOR DE HORÁRIO
-            // ============================================================
 
             Future<void> pickTime(
               _EdeskDraft draft,
@@ -1598,11 +1588,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
               }
             }
 
-            // ============================================================
-            // SALVAR ALTERAÇÕES NO FIREBASE
-            // Mantém o comportamento original: salva todos.
-            // ============================================================
-
             Future<void> salvarAlteracoes() async {
               try {
                 for (final draft in drafts) {
@@ -1638,9 +1623,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                   draft.log.hours = hours;
 
-                  await widget.timeLogStore.updateFirebaseLog(
-                    draft.log,
-                  );
+                  await widget.timeLogStore.updateFirebaseLog(draft.log);
                 }
 
                 if (!mounted) return;
@@ -1670,36 +1653,21 @@ class _TarefasScreenState extends State<TarefasScreen> {
               }
             }
 
-            // ============================================================
-            // ENVIAR PARA O E-DESK
-            // ============================================================
-
             Future<void> enviarParaEdesk() async {
               try {
-                // ========================================================
-                // SOMENTE OS SELECIONADOS
-                // ========================================================
-
-                final draftsParaEnvio = drafts
+                final draftsSelecionados = drafts
                     .where(
-                      (draft) => selecionados.contains(
-                        draft.log.id,
-                      ),
+                      (draft) => selecionadosEdesk.contains(draft.log.id),
                     )
                     .toList();
 
-                if (draftsParaEnvio.isEmpty) {
+                if (draftsSelecionados.isEmpty) {
                   throw const EdeskException(
-                    'Selecione pelo menos um trabalho '
-                    'para enviar ao E-Desk.',
+                    'Selecione pelo menos um lançamento para enviar ao E-Desk.',
                   );
                 }
 
-                // ========================================================
-                // VALIDAÇÃO E ATUALIZAÇÃO
-                // ========================================================
-
-                for (final draft in draftsParaEnvio) {
+                for (final draft in draftsSelecionados) {
                   draft.taskName = taskControllers[draft.log.id]?.text.trim() ??
                       draft.taskName.trim();
 
@@ -1729,17 +1697,11 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   }
 
                   draft.log.taskName = draft.taskName;
-
                   draft.log.description = draft.description;
-
                   draft.log.startTime = draft.startTime;
-
                   draft.log.endTime = draft.endTime;
-
                   draft.log.durationMinutes = minutos;
-
                   draft.log.durationFormatted = _formatarMinutos(minutos);
-
                   draft.log.hours = minutos / 60.0;
 
                   await widget.timeLogStore.updateFirebaseLog(
@@ -1747,13 +1709,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   );
                 }
 
-                // ========================================================
-                // AGRUPAMENTO SOMENTE DOS SELECIONADOS
-                // ========================================================
-
                 final Map<String, List<_EdeskDraft>> grupos = {};
 
-                for (final draft in draftsParaEnvio) {
+                for (final draft in draftsSelecionados) {
                   final referencia = _extrairReferenciaEdesk(
                     draft.log,
                   );
@@ -1771,14 +1729,9 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                 if (grupos.isEmpty) {
                   throw const EdeskException(
-                    'Nenhum trabalho válido '
-                    'foi encontrado.',
+                    'Nenhum trabalho válido foi encontrado.',
                   );
                 }
-
-                // ========================================================
-                // MONTA PAYLOAD
-                // ========================================================
 
                 final trabalhos = <Map<String, dynamic>>[];
 
@@ -1792,7 +1745,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   );
 
                   final solicitacao = referencia['solicitacao']!;
-
                   final idTrabalho = referencia['idTrabalho']!;
 
                   final horas = <Map<String, dynamic>>[];
@@ -1830,19 +1782,15 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                 if (trabalhos.isEmpty) {
                   throw const EdeskException(
-                    'Nenhum trabalho válido '
-                    'foi preparado para envio.',
+                    'Nenhum trabalho válido foi preparado para envio.',
                   );
                 }
-
-                // ========================================================
-                // CREDENCIAIS
-                // ========================================================
 
                 final credenciais = await EdeskCredentialsService().ler();
 
                 final payload = {
                   'url': 'https://promob.e-desk.com.br',
+                  'enviar': true,
                   'trabalhos': trabalhos,
                   'edeskCredenciais': credenciais == null
                       ? null
@@ -1853,10 +1801,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 };
 
                 final requestJson = jsonEncode(payload);
-
-                // ========================================================
-                // PYTHON
-                // ========================================================
 
                 final resultado = await executarPythonEdesk(
                   requestJson: requestJson,
@@ -1869,8 +1813,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     resultado.message.isNotEmpty
                         ? resultado.message
                         : 'O Python não conseguiu '
-                            'registrar as horas '
-                            'no E-Desk.',
+                            'registrar as horas no E-Desk.',
                   );
                 }
 
@@ -1878,53 +1821,42 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                 if (!mounted) return;
 
+                if (!dialogContext.mounted) return;
                 setModalState(() {
                   _enviandoEdesk = false;
                 });
 
                 Navigator.of(dialogContext).pop();
 
-                ScaffoldMessenger.of(
-                  this.context,
-                ).showSnackBar(
+                ScaffoldMessenger.of(this.context).showSnackBar(
                   SnackBar(
                     content: Text(
                       '$enviados trabalho(s) '
                       'enviado(s) para o E-Desk.',
                     ),
                     backgroundColor: CoresApp.primaria,
-                    duration: const Duration(
-                      seconds: 6,
-                    ),
+                    duration: const Duration(seconds: 6),
                   ),
                 );
               } catch (e) {
                 if (!mounted) return;
+                if (!dialogContext.mounted) return;
 
                 setModalState(() {
                   _enviandoEdesk = false;
                 });
 
-                ScaffoldMessenger.of(
-                  this.context,
-                ).showSnackBar(
+                ScaffoldMessenger.of(this.context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Erro ao enviar horas '
-                      'para o E-Desk: $e',
+                      'Erro ao enviar horas para o E-Desk: $e',
                     ),
                     backgroundColor: CoresApp.erro,
-                    duration: const Duration(
-                      seconds: 8,
-                    ),
+                    duration: const Duration(seconds: 8),
                   ),
                 );
               }
             }
-
-            // ============================================================
-            // MODAL
-            // ============================================================
 
             return Dialog(
               backgroundColor: CoresApp.superficie,
@@ -1932,7 +1864,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: CoresApp.borda.withOpacity(0.7),
+                  color: CoresApp.borda.withValues(alpha: 0.7),
                 ),
               ),
               child: SizedBox(
@@ -1940,10 +1872,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 height: 700,
                 child: Column(
                   children: [
-                    // ====================================================
-                    // CABEÇALHO
-                    // ====================================================
-
                     Container(
                       height: 64,
                       padding: const EdgeInsets.symmetric(
@@ -1956,7 +1884,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                         ),
                         border: Border(
                           bottom: BorderSide(
-                            color: CoresApp.borda.withOpacity(0.7),
+                            color: CoresApp.borda.withValues(alpha: 0.7),
                           ),
                         ),
                       ),
@@ -1966,9 +1894,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: CoresApp.primaria.withOpacity(
-                                0.15,
-                              ),
+                              color: CoresApp.primaria.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(
                                 10,
                               ),
@@ -1979,9 +1905,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               size: 20,
                             ),
                           ),
-                          const SizedBox(
-                            width: 12,
-                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1996,8 +1920,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${draftsSelecionados.length} de '
-                                  '${drafts.length} selecionado(s) • '
+                                  '$selecionadosCount de ${drafts.length} selecionado(s) • '
                                   'Total: $totalFormatted',
                                   style: const TextStyle(
                                     color: CoresApp.textoSecundario,
@@ -2022,111 +1945,52 @@ class _TarefasScreenState extends State<TarefasScreen> {
                         ],
                       ),
                     ),
-
-                    // ====================================================
-                    // SELECIONAR TODOS
-                    // ====================================================
-
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: CoresApp.fundo,
-                        border: Border(
-                          bottom: BorderSide(
-                            color: CoresApp.borda.withOpacity(
-                              0.5,
-                            ),
-                          ),
-                        ),
-                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: Row(
                         children: [
                           Checkbox(
                             value: todosSelecionados,
-                            activeColor: CoresApp.primaria,
                             onChanged: _enviandoEdesk
                                 ? null
                                 : (value) {
-                                    setModalState(
-                                      () {
-                                        if (value == true) {
-                                          selecionados
-                                            ..clear()
-                                            ..addAll(
-                                              drafts.map(
-                                                (draft) => draft.log.id,
-                                              ),
-                                            );
-                                        } else {
-                                          selecionados.clear();
-                                        }
-                                      },
-                                    );
+                                    setModalState(() {
+                                      selecionadosEdesk.clear();
+                                      if (value == true) {
+                                        selecionadosEdesk.addAll(
+                                          drafts.map((draft) => draft.log.id),
+                                        );
+                                      }
+                                    });
                                   },
                           ),
-                          TextButton(
-                            onPressed: _enviandoEdesk
-                                ? null
-                                : () {
-                                    setModalState(
-                                      () {
-                                        if (todosSelecionados) {
-                                          selecionados.clear();
-                                        } else {
-                                          selecionados
-                                            ..clear()
-                                            ..addAll(
-                                              drafts.map(
-                                                (draft) => draft.log.id,
-                                              ),
-                                            );
-                                        }
-                                      },
-                                    );
-                                  },
-                            child: Text(
-                              todosSelecionados
-                                  ? 'Desmarcar todos'
-                                  : 'Selecionar todos',
-                              style: const TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          Text(
+                            todosSelecionados
+                                ? 'Desmarcar todos'
+                                : 'Selecionar todos',
+                            style: const TextStyle(
+                              color: CoresApp.textoPrincipal,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           const Spacer(),
                           Text(
-                            '${draftsSelecionados.length} '
-                            'selecionado(s)',
+                            '$selecionadosCount selecionado(s)',
                             style: const TextStyle(
                               color: CoresApp.textoSecundario,
                               fontSize: 11,
-                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
                     ),
-
-                    // ====================================================
-                    // LISTA
-                    // ====================================================
-
                     Expanded(
                       child: ListView.builder(
-                        padding: const EdgeInsets.all(
-                          16,
-                        ),
+                        padding: const EdgeInsets.all(16),
                         itemCount: drafts.length,
                         itemBuilder: (context, index) {
                           final draft = drafts[index];
-
-                          final estaSelecionado = selecionados.contains(
-                            draft.log.id,
-                          );
 
                           final minutes = _calcularMinutos(
                             draft.startTime,
@@ -2148,55 +2012,41 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                 12,
                               ),
                               border: Border.all(
-                                color: estaSelecionado
-                                    ? CoresApp.primaria.withOpacity(
-                                        0.55,
-                                      )
-                                    : CoresApp.borda.withOpacity(
-                                        0.6,
-                                      ),
+                                color: CoresApp.borda.withValues(alpha: 0.6),
                               ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // ========================================
-                                // CABEÇALHO DO TRABALHO
-                                // ========================================
-
                                 Row(
                                   children: [
                                     Checkbox(
-                                      value: estaSelecionado,
-                                      activeColor: CoresApp.primaria,
+                                      value: selecionadosEdesk.contains(
+                                        draft.log.id,
+                                      ),
                                       onChanged: _enviandoEdesk
                                           ? null
                                           : (value) {
-                                              setModalState(
-                                                () {
-                                                  if (value == true) {
-                                                    selecionados.add(
-                                                      draft.log.id,
-                                                    );
-                                                  } else {
-                                                    selecionados.remove(
-                                                      draft.log.id,
-                                                    );
-                                                  }
-                                                },
-                                              );
+                                              setModalState(() {
+                                                if (value == true) {
+                                                  selecionadosEdesk.add(
+                                                    draft.log.id,
+                                                  );
+                                                } else {
+                                                  selecionadosEdesk.remove(
+                                                    draft.log.id,
+                                                  );
+                                                }
+                                              });
                                             },
-                                    ),
-                                    const SizedBox(
-                                      width: 4,
                                     ),
                                     Container(
                                       width: 28,
                                       height: 28,
                                       alignment: Alignment.center,
                                       decoration: BoxDecoration(
-                                        color: CoresApp.primaria.withOpacity(
-                                          0.15,
+                                        color: CoresApp.primaria.withValues(
+                                          alpha: 0.15,
                                         ),
                                         borderRadius: BorderRadius.circular(
                                           7,
@@ -2211,9 +2061,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(
-                                      width: 10,
-                                    ),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
                                         draft.log.projectName
@@ -2239,15 +2087,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     ),
                                   ],
                                 ),
-
-                                const SizedBox(
-                                  height: 8,
-                                ),
-
-                                // ========================================
-                                // REFERÊNCIA E-DESK
-                                // ========================================
-
+                                const SizedBox(height: 8),
                                 Row(
                                   children: [
                                     const Icon(
@@ -2255,9 +2095,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                       color: CoresApp.destaque,
                                       size: 15,
                                     ),
-                                    const SizedBox(
-                                      width: 6,
-                                    ),
+                                    const SizedBox(width: 6),
                                     const Text(
                                       'Referência E-Desk:',
                                       style: TextStyle(
@@ -2265,9 +2103,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                         fontSize: 11,
                                       ),
                                     ),
-                                    const SizedBox(
-                                      width: 5,
-                                    ),
+                                    const SizedBox(width: 5),
                                     Text(
                                       _referenciaEdesk(
                                         draft.log,
@@ -2280,15 +2116,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     ),
                                   ],
                                 ),
-
-                                const SizedBox(
-                                  height: 12,
-                                ),
-
-                                // ========================================
-                                // TAREFA / HORÁRIOS
-                                // ========================================
-
+                                const SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Expanded(
@@ -2305,9 +2133,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(
-                                      width: 10,
-                                    ),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Row(
                                         children: [
@@ -2335,9 +2161,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                               ),
                                             ),
                                           ),
-                                          const SizedBox(
-                                            width: 8,
-                                          ),
+                                          const SizedBox(width: 8),
                                           Expanded(
                                             child: InkWell(
                                               onTap: _enviandoEdesk
@@ -2367,15 +2191,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     ),
                                   ],
                                 ),
-
-                                const SizedBox(
-                                  height: 10,
-                                ),
-
-                                // ========================================
-                                // DESCRIÇÃO
-                                // ========================================
-
+                                const SizedBox(height: 10),
                                 TextField(
                                   controller:
                                       descriptionControllers[draft.log.id],
@@ -2390,11 +2206,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     'Descrição / Descritivo',
                                   ),
                                 ),
-
-                                const SizedBox(
-                                  height: 8,
-                                ),
-
+                                const SizedBox(height: 8),
                                 Row(
                                   children: [
                                     Text(
@@ -2423,11 +2235,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
                         },
                       ),
                     ),
-
-                    // ====================================================
-                    // RODAPÉ
-                    // ====================================================
-
                     Container(
                       padding: const EdgeInsets.fromLTRB(
                         16,
@@ -2439,9 +2246,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                         color: CoresApp.superficie,
                         border: Border(
                           top: BorderSide(
-                            color: CoresApp.borda.withOpacity(
-                              0.7,
-                            ),
+                            color: CoresApp.borda.withValues(alpha: 0.7),
                           ),
                         ),
                       ),
@@ -2461,15 +2266,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            width: 10,
-                          ),
-
-                          // ==============================================
-                          // SALVAR
-                          // ==============================================
-
+                          const SizedBox(width: 10),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: CoresApp.fundo,
@@ -2493,15 +2290,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               'Salvar alterações',
                             ),
                           ),
-
-                          const SizedBox(
-                            width: 10,
-                          ),
-
-                          // ==============================================
-                          // ENVIAR SELECIONADOS
-                          // ==============================================
-
+                          const SizedBox(width: 10),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: CoresApp.primaria,
@@ -2514,7 +2303,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                               ),
                             ),
                             onPressed:
-                                _enviandoEdesk || draftsSelecionados.isEmpty
+                                _enviandoEdesk || selecionadosEdesk.isEmpty
                                     ? null
                                     : () {
                                         setModalState(
@@ -2541,8 +2330,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                             label: Text(
                               _enviandoEdesk
                                   ? 'Enviando horas...'
-                                  : 'Registrar selecionados '
-                                      '(${draftsSelecionados.length})',
+                                  : 'Registrar horas no E-Desk',
                             ),
                           ),
                         ],
@@ -2557,19 +2345,14 @@ class _TarefasScreenState extends State<TarefasScreen> {
       },
     );
 
-    // ============================================================
-    // LIMPEZA DOS CONTROLLERS
-    // ============================================================
-
-    dialogFuture.whenComplete(() {
-      for (final controller in taskControllers.values) {
-        controller.dispose();
-      }
-
-      for (final controller in descriptionControllers.values) {
-        controller.dispose();
-      }
-    });
+    // Não descartamos manualmente os controllers locais neste ponto.
+    // O Future do showDialog pode ser concluído enquanto elementos internos do
+    // Dialog ainda estão sendo desmontados. Descartá-los aqui fazia os
+    // TextFields acessarem controllers já finalizados e provocava as exceções
+    // "TextEditingController was used after being disposed" e
+    // "_dependents.isEmpty" após o envio bem-sucedido ao E-Desk.
+    // Eles deixam de ser referenciados junto com este modal após o fechamento.
+    dialogFuture.whenComplete(() {});
   }
 
   String _formatarDataEdesk(dynamic date) {
@@ -2690,6 +2473,55 @@ class _TarefasScreenState extends State<TarefasScreen> {
     );
   }
 
+  // Exclui um apontamento somente após confirmação do usuário.
+  Future<bool> _excluirApontamentoComConfirmacao(TimeLog log) async {
+    if (log.id.isEmpty) {
+      return false;
+    }
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: CoresApp.superficie,
+          title: const Text(
+            'Excluir apontamento?',
+            style: TextStyle(
+              color: CoresApp.textoPrincipal,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: const Text(
+            'Esta ação excluirá o apontamento do Firebase e não poderá ser desfeita.',
+            style: TextStyle(color: CoresApp.textoSecundario),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: const Text('Excluir'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.erro,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true || !mounted) {
+      return false;
+    }
+
+    await widget.timeLogStore.deleteFirebaseLog(log);
+    return true;
+  }
+
   void _abrirModalEdicao(TimeLog log) {
     final descController = TextEditingController(
       text: log.description ?? '',
@@ -2757,7 +2589,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: CoresApp.borda.withOpacity(0.6),
+                  color: CoresApp.borda.withValues(alpha: 0.6),
                 ),
               ),
               title: Row(
@@ -2766,7 +2598,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: CoresApp.primaria.withOpacity(0.12),
+                      color: CoresApp.primaria.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(9),
                     ),
                     child: const Icon(
@@ -2904,10 +2736,11 @@ class _TarefasScreenState extends State<TarefasScreen> {
 
                       await widget.timeLogStore.updateFirebaseLog(log);
 
-                      if (mounted) {
+                      if (context.mounted) {
                         Navigator.pop(context);
                       }
                     } catch (e) {
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(
@@ -2945,7 +2778,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: CoresApp.borda.withOpacity(0.6),
+                  color: CoresApp.borda.withValues(alpha: 0.6),
                 ),
               ),
               title: Row(
@@ -2954,7 +2787,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: CoresApp.primaria.withOpacity(0.12),
+                      color: CoresApp.primaria.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(9),
                     ),
                     child: const Icon(
@@ -2988,7 +2821,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: filtroSelecionado == 'Período'
+                      initialValue: filtroSelecionado == 'Período'
                           ? 'Período'
                           : filtroSelecionado,
                       dropdownColor: CoresApp.superficie,
@@ -3240,8 +3073,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
       const corTextoPdf = PdfColor.fromInt(0xFF263238);
       const corTextoSecundarioPdf = PdfColor.fromInt(0xFF687078);
       const corFundoResumo = PdfColor.fromInt(0xFFF1F4F8);
-
-      final totalMinutos = _totalMinutos(logsFiltrados);
 
       String periodoDescricao;
 
@@ -3640,8 +3471,6 @@ class _TarefasScreenState extends State<TarefasScreen> {
   }
 
   static const PdfColor corTextoPdfLocal = PdfColor.fromInt(0xFF263238);
-  static const PdfColor corTextoSecundarioPdfLocal =
-      PdfColor.fromInt(0xFF687078);
 
   // ============================================================
   // ESTADO VAZIO
@@ -3661,12 +3490,12 @@ class _TarefasScreenState extends State<TarefasScreen> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: CoresApp.primaria.withOpacity(0.1),
+                color: CoresApp.primaria.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(
                   16,
                 ),
                 border: Border.all(
-                  color: CoresApp.primaria.withOpacity(0.2),
+                  color: CoresApp.primaria.withValues(alpha: 0.2),
                 ),
               ),
               child: const Icon(
@@ -3739,13 +3568,13 @@ class _TarefasScreenState extends State<TarefasScreen> {
           ),
           decoration: BoxDecoration(
             color: isToday
-                ? CoresApp.primaria.withOpacity(0.08)
+                ? CoresApp.primaria.withValues(alpha: 0.08)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isToday
-                  ? CoresApp.primaria.withOpacity(0.25)
-                  : CoresApp.borda.withOpacity(0.4),
+                  ? CoresApp.primaria.withValues(alpha: 0.25)
+                  : CoresApp.borda.withValues(alpha: 0.4),
             ),
           ),
           child: Row(
@@ -3783,7 +3612,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
               Container(
                 width: 1,
                 height: 26,
-                color: CoresApp.borda.withOpacity(0.5),
+                color: CoresApp.borda.withValues(alpha: 0.5),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -3803,7 +3632,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: CoresApp.primaria.withOpacity(0.08),
+                  color: CoresApp.primaria.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(
                     6,
                   ),
@@ -3872,12 +3701,12 @@ class _TarefasScreenState extends State<TarefasScreen> {
         bottom: 10,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.superficie.withOpacity(0.8),
+        color: CoresApp.superficie.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: expanded
-              ? CoresApp.primaria.withOpacity(0.3)
-              : CoresApp.borda.withOpacity(0.6),
+              ? CoresApp.primaria.withValues(alpha: 0.3)
+              : CoresApp.borda.withValues(alpha: 0.6),
         ),
       ),
       child: Column(
@@ -3912,8 +3741,8 @@ class _TarefasScreenState extends State<TarefasScreen> {
                       height: 34,
                       decoration: BoxDecoration(
                         color: expanded
-                            ? CoresApp.primaria.withOpacity(
-                                0.12,
+                            ? CoresApp.primaria.withValues(
+                                alpha: 0.12,
                               )
                             : CoresApp.fundo,
                         borderRadius: BorderRadius.circular(
@@ -3958,7 +3787,8 @@ class _TarefasScreenState extends State<TarefasScreen> {
                                     vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: CoresApp.destaque.withOpacity(0.12),
+                                    color: CoresApp.destaque
+                                        .withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(
                                       4,
                                     ),
@@ -4022,7 +3852,7 @@ class _TarefasScreenState extends State<TarefasScreen> {
                 children: [
                   Divider(
                     height: 1,
-                    color: CoresApp.borda.withOpacity(0.4),
+                    color: CoresApp.borda.withValues(alpha: 0.4),
                   ),
                   const SizedBox(height: 6),
                   for (final dayKey in dayKeys)
@@ -4066,6 +3896,944 @@ class _TarefasScreenState extends State<TarefasScreen> {
     );
   }
 
+  String _monthName(int month) {
+    const months = [
+      'JANEIRO',
+      'FEVEREIRO',
+      'MARÇO',
+      'ABRIL',
+      'MAIO',
+      'JUNHO',
+      'JULHO',
+      'AGOSTO',
+      'SETEMBRO',
+      'OUTUBRO',
+      'NOVEMBRO',
+      'DEZEMBRO',
+    ];
+    return months[month - 1];
+  }
+
+  String _monthKey(int year, int month) =>
+      '$year-${month.toString().padLeft(2, '0')}';
+
+  Widget _buildPeriodInfo({required String value, required String label}) {
+    return SizedBox(
+      width: 58,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(value,
+              style: const TextStyle(
+                  color: CoresApp.destaque,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900)),
+          Text(label,
+              style: const TextStyle(
+                  color: CoresApp.textoSecundario,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthCard(
+      {required int year,
+      required int month,
+      required List<TimeLog> logs,
+      required bool expanded}) {
+    final key = _monthKey(year, month);
+    final groupedWeeks = _groupLogsByWeek(logs);
+    final weekKeys = groupedWeeks.keys.toList()..sort((a, b) => b.compareTo(a));
+    final now = DateTime.now();
+    final isCurrent = year == now.year && month == now.month;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      decoration: BoxDecoration(
+        color: CoresApp.superficie.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: expanded
+                ? CoresApp.primaria.withValues(alpha: 0.35)
+                : CoresApp.borda.withValues(alpha: 0.6)),
+      ),
+      child: Column(children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => expanded
+                ? _mesesExpandidos.remove(key)
+                : _mesesExpandidos.add(key)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(children: [
+                Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    color: expanded
+                        ? CoresApp.destaque
+                        : CoresApp.textoSecundario),
+                const SizedBox(width: 8),
+                const Icon(Icons.calendar_month_rounded,
+                    color: CoresApp.destaque, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Row(children: [
+                  Text('${_monthName(month)} $year',
+                      style: const TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900)),
+                  if (isCurrent) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: CoresApp.destaque.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4)),
+                      child: const Text('ATUAL',
+                          style: TextStyle(
+                              color: CoresApp.destaque,
+                              fontSize: 7.5,
+                              fontWeight: FontWeight.w900)),
+                    ),
+                  ],
+                ])),
+                _buildPeriodInfo(
+                    value: _formatarMinutos(_totalMinutos(logs)),
+                    label: 'horas'),
+                const SizedBox(width: 10),
+                _buildPeriodInfo(value: '${logs.length}', label: 'tarefas'),
+                const SizedBox(width: 10),
+                _buildPeriodInfo(
+                    value: '${_projetosUnicos(logs).length}',
+                    label: 'projetos'),
+              ]),
+            ),
+          ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Column(children: [
+              for (final weekKey in weekKeys)
+                _buildWeekCard(
+                  weekStart: _weekStart(groupedWeeks[weekKey]!.first.date),
+                  logsDaSemana: groupedWeeks[weekKey]!,
+                  expanded: _semanasExpandidas.contains(weekKey) ||
+                      weekKey == _weekKey(DateTime.now()),
+                ),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  Widget _buildYearCard(
+      {required int year,
+      required List<TimeLog> logs,
+      required bool expanded}) {
+    final groupedMonths = <int, List<TimeLog>>{};
+    final weeks = _groupLogsByWeek(logs);
+    for (final entry in weeks.entries) {
+      final weekLogs = entry.value;
+      final start = _weekStart(weekLogs.first.date);
+      final reference = start.add(const Duration(days: 6));
+      groupedMonths.putIfAbsent(reference.month, () => []).addAll(weekLogs);
+    }
+    final months = groupedMonths.keys.toList()..sort((a, b) => b.compareTo(a));
+    final now = DateTime.now();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: CoresApp.superficie.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: expanded
+                ? CoresApp.primaria.withValues(alpha: 0.4)
+                : CoresApp.borda.withValues(alpha: 0.65)),
+      ),
+      child: Column(children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => expanded
+                ? _anosExpandidos.remove(year)
+                : _anosExpandidos.add(year)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              child: Row(children: [
+                Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    color: expanded
+                        ? CoresApp.destaque
+                        : CoresApp.textoSecundario),
+                const SizedBox(width: 8),
+                const Icon(Icons.calendar_month_rounded,
+                    color: CoresApp.destaque, size: 19),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text('$year',
+                        style: const TextStyle(
+                            color: CoresApp.textoPrincipal,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900))),
+                _buildPeriodInfo(
+                    value: _formatarMinutos(_totalMinutos(logs)),
+                    label: 'horas'),
+                const SizedBox(width: 10),
+                _buildPeriodInfo(value: '${logs.length}', label: 'tarefas'),
+                const SizedBox(width: 10),
+                _buildPeriodInfo(
+                    value: '${_projetosUnicos(logs).length}',
+                    label: 'projetos'),
+              ]),
+            ),
+          ),
+        ),
+        if (expanded)
+          for (final month in months)
+            _buildMonthCard(
+              year: year,
+              month: month,
+              logs: groupedMonths[month]!,
+              expanded: _mesesExpandidos.contains(_monthKey(year, month)) ||
+                  (year == now.year && month == now.month),
+            ),
+      ]),
+    );
+  }
+
+  String _dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  List<TimeLog> _logsDoDiaSelecionado(List<TimeLog> logs, DateTime dia) =>
+      logs.where((log) => _sameDay(log.date, dia)).toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+  DateTime _diaInicial(List<TimeLog> logs) {
+    if (_diaSelecionado != null &&
+        logs.any((log) => _sameDay(log.date, _diaSelecionado!))) {
+      return _diaSelecionado!;
+    }
+    final hoje = DateTime.now();
+    if (logs.any((log) => _sameDay(log.date, hoje))) return hoje;
+    final datas = logs.map((e) => e.date).toList()
+      ..sort((a, b) => b.compareTo(a));
+    return datas.first;
+  }
+
+  Map<int, Map<int, Map<DateTime, List<TimeLog>>>> _arvoreHistorico(
+    List<TimeLog> logs,
+  ) {
+    final arvore = <int, Map<int, Map<DateTime, List<TimeLog>>>>{};
+    final semanas = _groupLogsByWeek(logs);
+    for (final entry in semanas.entries) {
+      final inicio = _weekStart(entry.value.first.date);
+      final referencia = inicio.add(const Duration(days: 6));
+      arvore
+          .putIfAbsent(referencia.year, () => {})
+          .putIfAbsent(referencia.month, () => {})[inicio] = entry.value;
+    }
+    return arvore;
+  }
+
+  Color _corProjeto(TimeLog log) {
+    const cores = <Color>[
+      Color(0xFF2196F3), // azul
+      Color(0xFF7C4DFF), // roxo
+      Color(0xFF00C853), // verde
+      Color(0xFFFF9800), // laranja
+      Color(0xFFE91E63), // rosa
+      Color(0xFF00BCD4), // ciano
+      Color(0xFFFFC107), // amarelo
+      Color(0xFF9C27B0), // violeta
+      Color(0xFF26A69A), // verde-água
+      Color(0xFFFF5252), // vermelho
+    ];
+
+    final nome = (log.projectName ?? log.targetId).trim().toLowerCase();
+    var hash = 0;
+    for (final unidade in nome.codeUnits) {
+      hash = ((hash * 31) + unidade) & 0x7fffffff;
+    }
+    return cores[hash % cores.length];
+  }
+
+  Widget _treeInfo(String horas, int tarefas) => Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(horas,
+              style: const TextStyle(
+                  color: CoresApp.destaque,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900)),
+          Text('$tarefas ${tarefas == 1 ? 'tarefa' : 'tarefas'}',
+              style: const TextStyle(
+                  color: CoresApp.textoSecundario, fontSize: 8.5)),
+        ],
+      );
+
+  Widget _treeRow({
+    required int level,
+    required bool expanded,
+    required bool expandable,
+    required IconData icon,
+    required String title,
+    required List<TimeLog> logs,
+    required VoidCallback onTap,
+    bool selected = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: EdgeInsets.only(left: level * 18.0, bottom: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? CoresApp.destaque.withValues(alpha: .12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: selected
+              ? Border.all(color: CoresApp.destaque.withValues(alpha: .8))
+              : null,
+        ),
+        child: Row(children: [
+          SizedBox(
+            width: 18,
+            child: expandable
+                ? Icon(
+                    expanded ? Icons.keyboard_arrow_down : Icons.chevron_right,
+                    size: 18,
+                    color: CoresApp.destaque)
+                : const SizedBox.shrink(),
+          ),
+          Container(
+            width: 27,
+            height: 27,
+            decoration: BoxDecoration(
+              color: CoresApp.primaria.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Icon(icon, size: 15, color: CoresApp.destaque),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: CoresApp.textoPrincipal,
+                    fontSize: level <= 1 ? 11.5 : 10.5,
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700)),
+          ),
+          _treeInfo(_formatarMinutos(_totalMinutos(logs)), logs.length),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildHistoryTree(List<TimeLog> logs, DateTime selectedDay) {
+    final arvore = _arvoreHistorico(logs);
+    final anos = arvore.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return ListView(
+      padding: const EdgeInsets.only(right: 5),
+      children: [
+        for (final ano in anos) ...[
+          Builder(builder: (_) {
+            final mesesMap = arvore[ano]!;
+            final logsAno = mesesMap.values
+                .expand((semanas) => semanas.values.expand((e) => e))
+                .toList();
+            final anoAberto = _anosExpandidos.contains(ano);
+            return Column(children: [
+              _treeRow(
+                level: 0,
+                expanded: anoAberto,
+                expandable: true,
+                icon: Icons.calendar_month_rounded,
+                title: '$ano',
+                logs: logsAno,
+                onTap: () => setState(() {
+                  _nivelHistoricoSelecionado = 'ano';
+                  _anoHistoricoSelecionado = ano;
+                  _mesHistoricoSelecionado = null;
+                  _semanaHistoricoSelecionada = null;
+                  anoAberto
+                      ? _anosExpandidos.remove(ano)
+                      : _anosExpandidos.add(ano);
+                }),
+                selected: _nivelHistoricoSelecionado == 'ano' &&
+                    _anoHistoricoSelecionado == ano,
+              ),
+              if (anoAberto)
+                for (final mes
+                    in (mesesMap.keys.toList()..sort((a, b) => b.compareTo(a))))
+                  Builder(builder: (_) {
+                    final semanasMap = mesesMap[mes]!;
+                    final logsMes = semanasMap.values.expand((e) => e).toList();
+                    final mk = _monthKey(ano, mes);
+                    final mesAberto = _mesesExpandidos.contains(mk);
+                    return Column(children: [
+                      _treeRow(
+                        level: 1,
+                        expanded: mesAberto,
+                        expandable: true,
+                        icon: Icons.folder_rounded,
+                        title: _monthName(mes),
+                        logs: logsMes,
+                        onTap: () => setState(() {
+                          _nivelHistoricoSelecionado = 'mes';
+                          _anoHistoricoSelecionado = ano;
+                          _mesHistoricoSelecionado = mes;
+                          _semanaHistoricoSelecionada = null;
+                          mesAberto
+                              ? _mesesExpandidos.remove(mk)
+                              : _mesesExpandidos.add(mk);
+                        }),
+                        selected: _nivelHistoricoSelecionado == 'mes' &&
+                            _anoHistoricoSelecionado == ano &&
+                            _mesHistoricoSelecionado == mes,
+                      ),
+                      if (mesAberto)
+                        for (final inicio
+                            in (semanasMap.keys.toList()
+                              ..sort((a, b) => b.compareTo(a))))
+                          Builder(builder: (_) {
+                            final logsSemana = semanasMap[inicio]!;
+                            final wk = _weekKey(inicio);
+                            final semanaAberta =
+                                _semanasExpandidas.contains(wk);
+                            final dias = <String, List<TimeLog>>{};
+                            for (final log in logsSemana) {
+                              dias
+                                  .putIfAbsent(_dayKey(log.date), () => [])
+                                  .add(log);
+                            }
+                            final datas = dias.values
+                                .map((e) => e.first.date)
+                                .toList()
+                              ..sort((a, b) => a.compareTo(b));
+                            return Column(children: [
+                              _treeRow(
+                                level: 2,
+                                expanded: semanaAberta,
+                                expandable: true,
+                                icon: Icons.date_range_rounded,
+                                title: _formatWeekTitle(inicio),
+                                logs: logsSemana,
+                                onTap: () => setState(() {
+                                  _nivelHistoricoSelecionado = 'semana';
+                                  _anoHistoricoSelecionado = ano;
+                                  _mesHistoricoSelecionado = mes;
+                                  _semanaHistoricoSelecionada = inicio;
+                                  semanaAberta
+                                      ? _semanasExpandidas.remove(wk)
+                                      : _semanasExpandidas.add(wk);
+                                }),
+                                selected: _nivelHistoricoSelecionado ==
+                                        'semana' &&
+                                    _semanaHistoricoSelecionada != null &&
+                                    _sameDay(
+                                        _semanaHistoricoSelecionada!, inicio),
+                              ),
+                              if (semanaAberta)
+                                for (final data in datas)
+                                  _treeRow(
+                                    level: 3,
+                                    expanded: false,
+                                    expandable: false,
+                                    icon: Icons.calendar_today_rounded,
+                                    title:
+                                        '${_formatShortDate(data)} (${_dayNameShort(data.weekday)})',
+                                    logs: dias[_dayKey(data)]!,
+                                    selected:
+                                        _nivelHistoricoSelecionado == 'dia' &&
+                                            _sameDay(data, selectedDay),
+                                    onTap: () => setState(() {
+                                      _nivelHistoricoSelecionado = 'dia';
+                                      _diaSelecionado = data;
+                                      _anoHistoricoSelecionado = data.year;
+                                      _mesHistoricoSelecionado = data.month;
+                                      _semanaHistoricoSelecionada =
+                                          _weekStart(data);
+                                    }),
+                                  ),
+                            ]);
+                          }),
+                    ]);
+                  }),
+            ]);
+          }),
+        ],
+      ],
+    );
+  }
+
+  List<TimeLog> _logsPeriodoSelecionado(List<TimeLog> logs) {
+    final arvore = _arvoreHistorico(logs);
+
+    if (_nivelHistoricoSelecionado == 'ano' &&
+        _anoHistoricoSelecionado != null) {
+      final meses = arvore[_anoHistoricoSelecionado];
+      if (meses == null) return [];
+      return meses.values
+          .expand((semanas) => semanas.values.expand((e) => e))
+          .toList();
+    }
+
+    if (_nivelHistoricoSelecionado == 'mes' &&
+        _anoHistoricoSelecionado != null &&
+        _mesHistoricoSelecionado != null) {
+      final semanas =
+          arvore[_anoHistoricoSelecionado]?[_mesHistoricoSelecionado];
+      if (semanas == null) return [];
+      return semanas.values.expand((e) => e).toList();
+    }
+
+    if (_nivelHistoricoSelecionado == 'semana' &&
+        _semanaHistoricoSelecionada != null) {
+      final inicio = _semanaHistoricoSelecionada!;
+      final fim = inicio.add(const Duration(days: 6));
+      return logs.where((log) {
+        final d = DateTime(log.date.year, log.date.month, log.date.day);
+        final i = DateTime(inicio.year, inicio.month, inicio.day);
+        final f = DateTime(fim.year, fim.month, fim.day);
+        return !d.isBefore(i) && !d.isAfter(f);
+      }).toList();
+    }
+
+    return [];
+  }
+
+  String _tituloPeriodoSelecionado() {
+    if (_nivelHistoricoSelecionado == 'ano') {
+      return '${_anoHistoricoSelecionado ?? ''}';
+    }
+    if (_nivelHistoricoSelecionado == 'mes') {
+      final mes = _mesHistoricoSelecionado;
+      final ano = _anoHistoricoSelecionado;
+      return mes == null || ano == null ? 'Mês' : '${_monthName(mes)} de $ano';
+    }
+    final inicio = _semanaHistoricoSelecionada;
+    if (inicio == null) return 'Semana';
+    return _formatWeekTitle(inicio);
+  }
+
+  Widget _buildSelectedPeriodPanel(List<TimeLog> allLogs) {
+    final logs = _logsPeriodoSelecionado(allLogs)
+      ..sort((a, b) {
+        final data = a.date.compareTo(b.date);
+        return data != 0 ? data : a.startTime.compareTo(b.startTime);
+      });
+    final total = _formatarMinutos(_totalMinutos(logs));
+    final projetos = _projetosUnicos(logs).length;
+    final porDia = <String, List<TimeLog>>{};
+    for (final log in logs) {
+      porDia.putIfAbsent(_dayKey(log.date), () => []).add(log);
+    }
+    final dias = porDia.values.map((e) => e.first.date).toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: CoresApp.superficie.withValues(alpha: .96),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: CoresApp.borda.withValues(alpha: .7)),
+      ),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: CoresApp.primaria.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                _nivelHistoricoSelecionado == 'mes'
+                    ? Icons.calendar_month_rounded
+                    : _nivelHistoricoSelecionado == 'semana'
+                        ? Icons.date_range_rounded
+                        : Icons.calendar_today_rounded,
+                color: CoresApp.destaque,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _tituloPeriodoSelecionado(),
+                      style: const TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _nivelHistoricoSelecionado == 'mes'
+                          ? 'Todas as tarefas e horas do mês'
+                          : _nivelHistoricoSelecionado == 'semana'
+                              ? 'Todas as tarefas e horas da semana'
+                              : 'Todas as tarefas e horas do ano',
+                      style: const TextStyle(
+                          color: CoresApp.textoSecundario, fontSize: 11),
+                    ),
+                  ]),
+            ),
+            _buildPeriodInfo(value: total, label: 'horas'),
+            const SizedBox(width: 18),
+            _buildPeriodInfo(value: '${logs.length}', label: 'tarefas'),
+            const SizedBox(width: 18),
+            _buildPeriodInfo(value: '$projetos', label: 'projetos'),
+          ]),
+        ),
+        Divider(height: 1, color: CoresApp.borda.withValues(alpha: .6)),
+        Expanded(
+          child: logs.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: dias.length,
+                  itemBuilder: (_, dayIndex) {
+                    final dia = dias[dayIndex];
+                    final logsDia = porDia[_dayKey(dia)]!;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: CoresApp.fundo.withValues(alpha: .45),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                            color: CoresApp.borda.withValues(alpha: .45)),
+                      ),
+                      child: Column(children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 9),
+                          child: Row(children: [
+                            SizedBox(
+                              width: 54,
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      dia.day.toString().padLeft(2, '0'),
+                                      style: const TextStyle(
+                                          color: CoresApp.textoPrincipal,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w900),
+                                    ),
+                                    Text(
+                                      _dayNameShort(dia.weekday),
+                                      style: const TextStyle(
+                                          color: CoresApp.textoSecundario,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                  ]),
+                            ),
+                            Expanded(
+                              child: Text(
+                                _formatDateHeader(dia),
+                                style: const TextStyle(
+                                    color: CoresApp.textoPrincipal,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            _buildPeriodInfo(
+                                value: _formatarMinutos(_totalMinutos(logsDia)),
+                                label: 'horas'),
+                            const SizedBox(width: 12),
+                            _buildPeriodInfo(
+                                value: '${logsDia.length}', label: 'tarefas'),
+                          ]),
+                        ),
+                        Divider(
+                            height: 1,
+                            color: CoresApp.borda.withValues(alpha: .4)),
+                        for (final log in logsDia)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                            child: Row(children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 9, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color:
+                                      _corProjeto(log).withValues(alpha: .88),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                child: Text(
+                                  log.projectName ?? 'Projeto',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        log.taskName ?? log.targetId,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            color: CoresApp.textoPrincipal,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800),
+                                      ),
+                                      if ((log.description ?? '')
+                                          .trim()
+                                          .isNotEmpty)
+                                        Text(
+                                          log.description!,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              color: CoresApp.textoSecundario,
+                                              fontSize: 10),
+                                        ),
+                                    ]),
+                              ),
+                              Text(
+                                log.durationFormatted,
+                                style: const TextStyle(
+                                    color: CoresApp.destaque,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(width: 6),
+                              IconButton(
+                                tooltip: 'Editar',
+                                onPressed: () => _abrirModalEdicao(log),
+                                icon: const Icon(Icons.edit_outlined,
+                                    color: CoresApp.destaque, size: 18),
+                              ),
+                              IconButton(
+                                tooltip: 'Excluir',
+                                onPressed: () async {
+                                  await _excluirApontamentoComConfirmacao(log);
+                                },
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: CoresApp.erro,
+                                  size: 18,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Ver detalhes do dia',
+                                onPressed: () => setState(() {
+                                  _nivelHistoricoSelecionado = 'dia';
+                                  _diaSelecionado = dia;
+                                  _anoHistoricoSelecionado = dia.year;
+                                  _mesHistoricoSelecionado = dia.month;
+                                  _semanaHistoricoSelecionada = _weekStart(dia);
+                                }),
+                                icon: const Icon(Icons.visibility_outlined,
+                                    color: CoresApp.destaque, size: 18),
+                              ),
+                            ]),
+                          ),
+                      ]),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildSelectedDayPanel(List<TimeLog> allLogs, DateTime dia) {
+    final logs = _logsDoDiaSelecionado(allLogs, dia);
+    final total = _formatarMinutos(_totalMinutos(logs));
+    final projetos = _projetosUnicos(logs).length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: CoresApp.superficie.withValues(alpha: .96),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: CoresApp.borda.withValues(alpha: .7)),
+      ),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: CoresApp.primaria.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.calendar_month_rounded,
+                  color: CoresApp.destaque, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(_formatDateHeader(dia),
+                      style: const TextStyle(
+                          color: CoresApp.textoPrincipal,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 2),
+                  Text(_dayNameShort(dia.weekday),
+                      style: const TextStyle(
+                          color: CoresApp.textoSecundario, fontSize: 11)),
+                ])),
+            _buildPeriodInfo(value: total, label: 'horas'),
+            const SizedBox(width: 18),
+            _buildPeriodInfo(value: '${logs.length}', label: 'tarefas'),
+            const SizedBox(width: 18),
+            _buildPeriodInfo(value: '$projetos', label: 'projetos'),
+            const SizedBox(width: 18),
+            ElevatedButton.icon(
+              onPressed: logs.isEmpty ? null : () => _abrirModalEdesk(logs),
+              icon: const Icon(Icons.cloud_upload_rounded, size: 17),
+              label: const Text('Enviar para o E-Desk'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CoresApp.primaria,
+                foregroundColor: CoresApp.textoPrincipal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(9)),
+              ),
+            ),
+          ]),
+        ),
+        Divider(height: 1, color: CoresApp.borda.withValues(alpha: .6)),
+        Expanded(
+          child: logs.isEmpty
+              ? _buildEmptyState()
+              : ListView.separated(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: logs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, index) {
+                    final log = logs[index];
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CoresApp.fundo.withValues(alpha: .72),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                            color: CoresApp.borda.withValues(alpha: .45)),
+                      ),
+                      child: Row(children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _corProjeto(log).withValues(alpha: .88),
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Text(log.projectName ?? 'Projeto',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(log.taskName ?? log.targetId,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w800)),
+                              if ((log.description ?? '')
+                                  .trim()
+                                  .isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Text(log.description!,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        color: CoresApp.textoSecundario,
+                                        fontSize: 10.5)),
+                              ],
+                              const SizedBox(height: 4),
+                              Text(
+                                  '${log.startTime} até ${log.endTime}  •  ${_referenciaEdesk(log)}',
+                                  style: const TextStyle(
+                                      color: CoresApp.destaque, fontSize: 9.5)),
+                            ])),
+                        Text(log.durationFormatted,
+                            style: const TextStyle(
+                                color: CoresApp.destaque,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900)),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Enviar esta tarefa para o E-Desk',
+                          onPressed: () => _abrirModalEdesk([log]),
+                          icon: const Icon(Icons.cloud_upload_rounded,
+                              color: CoresApp.destaque, size: 18),
+                        ),
+                        IconButton(
+                          tooltip: 'Editar',
+                          onPressed: () => _abrirModalEdicao(log),
+                          icon: const Icon(Icons.edit_outlined,
+                              color: CoresApp.destaque, size: 18),
+                        ),
+                        IconButton(
+                          tooltip: 'Excluir',
+                          onPressed: () async {
+                            await _excluirApontamentoComConfirmacao(log);
+                          },
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: CoresApp.erro,
+                            size: 18,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Ver detalhes do dia',
+                          onPressed: () => _abrirModalDetalhesDia(
+                              _formatDateHeader(dia), total, logs),
+                          icon: const Icon(Icons.visibility_outlined,
+                              color: CoresApp.destaque, size: 18),
+                        ),
+                      ]),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    );
+  }
+
   // ============================================================
   // BUILD
   // ============================================================
@@ -4073,31 +4841,19 @@ class _TarefasScreenState extends State<TarefasScreen> {
   @override
   Widget build(BuildContext context) {
     final registeredLogs = _registeredLogs;
+    final totalRegistros = registeredLogs.length;
+    final totalHoras = _formatarMinutos(_totalMinutos(registeredLogs));
+    final totalProjetos = _projetosUnicos(registeredLogs).length;
+    final totalDias = _groupedLogsByDate.length;
+    final dia =
+        registeredLogs.isEmpty ? DateTime.now() : _diaInicial(registeredLogs);
 
-    final groupedWeeks = _groupLogsByWeek(
-      registeredLogs,
-    );
-
-    final sortedWeekKeys = groupedWeeks.keys.toList()
-      ..sort(
-        (a, b) => b.compareTo(a),
-      );
-
-    final int totalRegistros = registeredLogs.length;
-
-    final int totalMinutos = _totalMinutos(
-      registeredLogs,
-    );
-
-    final String totalHoras = _formatarMinutos(
-      totalMinutos,
-    );
-
-    final int totalProjetos = _projetosUnicos(
-      registeredLogs,
-    ).length;
-
-    final int totalDias = _groupedLogsByDate.length;
+    if (!_historicoInicializado && registeredLogs.isNotEmpty) {
+      _historicoInicializado = true;
+      _anosExpandidos.add(dia.year);
+      _mesesExpandidos.add(_monthKey(dia.year, dia.month));
+      _semanasExpandidas.add(_weekKey(_weekStart(dia)));
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -4107,209 +4863,88 @@ class _TarefasScreenState extends State<TarefasScreen> {
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
           searchQuery: _search,
-          onSearchChanged: (value) {
-            setState(
-              () => _search = value,
-            );
-          },
+          onSearchChanged: (value) => setState(() => _search = value),
           userName: '',
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          14,
-          12,
-          14,
-          14,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ==================================================
-            // CABEÇALHO UNIFICADO
-            // ==================================================
-            _buildUnifiedHeader(
-              totalRegistros: totalRegistros,
-              totalProjetos: totalProjetos,
-              totalHoras: totalHoras,
-              totalDias: totalDias,
-            ),
-
-            const SizedBox(height: 12),
-
-            // ==================================================
-            // FILTROS
-            // ==================================================
-            _buildFiltersBar(),
-
-            const SizedBox(height: 12),
-
-            // ==================================================
-            // HISTÓRICO (Envolvido em Expanded + ListView interno)
-            // ==================================================
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(
-                  12,
-                ),
-                decoration: BoxDecoration(
-                  color: CoresApp.superficie.withOpacity(
-                    0.95,
-                  ),
-                  borderRadius: BorderRadius.circular(
-                    14,
-                  ),
-                  border: Border.all(
-                    color: CoresApp.borda.withOpacity(
-                      0.7,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(children: [
+          _buildUnifiedHeader(
+            totalRegistros: totalRegistros,
+            totalProjetos: totalProjetos,
+            totalHoras: totalHoras,
+            totalDias: totalDias,
+          ),
+          const SizedBox(height: 12),
+          _buildFiltersBar(),
+          const SizedBox(height: 12),
+          Expanded(
+            child: registeredLogs.isEmpty
+                ? Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: CoresApp.superficie.withValues(alpha: .95),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: CoresApp.borda.withValues(alpha: .7)),
                     ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(
-                        0.06,
-                      ),
-                      blurRadius: 10,
-                      offset: const Offset(
-                        0,
-                        3,
-                      ),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: CoresApp.sucesso.withOpacity(
-                                0.12,
+                    child: _buildEmptyState(),
+                  )
+                : Row(children: [
+                    SizedBox(
+                      width: 390,
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: CoresApp.superficie.withValues(alpha: .96),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: CoresApp.borda.withValues(alpha: .7)),
+                        ),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(5, 3, 5, 8),
+                                child: Row(children: [
+                                  Icon(Icons.history_rounded,
+                                      color: CoresApp.sucesso, size: 18),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text('Histórico de apontamentos',
+                                            style: TextStyle(
+                                                color: CoresApp.textoPrincipal,
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w900)),
+                                        Text('Ano • mês • semana • dia',
+                                            style: TextStyle(
+                                                color: CoresApp.textoSecundario,
+                                                fontSize: 9.5)),
+                                      ])),
+                                ]),
                               ),
-                              borderRadius: BorderRadius.circular(
-                                8,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.history_rounded,
-                              color: CoresApp.sucesso,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Histórico de apontamentos',
-                                  style: TextStyle(
-                                    color: CoresApp.textoPrincipal,
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                SizedBox(height: 1),
-                                Text(
-                                  'Organizado por semana',
-                                  style: TextStyle(
-                                    color: CoresApp.textoSecundario,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (sortedWeekKeys.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: CoresApp.fundo,
-                                borderRadius: BorderRadius.circular(7),
-                                border: Border.all(
-                                  color: CoresApp.borda,
-                                ),
-                              ),
-                              child: Text(
-                                '${sortedWeekKeys.length} '
-                                '${sortedWeekKeys.length == 1 ? 'semana' : 'semanas'}',
-                                style: const TextStyle(
-                                  color: CoresApp.textoSecundario,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                        ],
+                              Divider(height: 1, color: CoresApp.borda),
+                              const SizedBox(height: 6),
+                              Expanded(
+                                  child:
+                                      _buildHistoryTree(registeredLogs, dia)),
+                            ]),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: sortedWeekKeys.isEmpty
-                          ? _buildEmptyState()
-                          : ListView.builder(
-                              itemCount: sortedWeekKeys.length,
-                              itemBuilder: (context, index) {
-                                final weekKey = sortedWeekKeys[index];
-
-                                final logsDaSemana = groupedWeeks[weekKey]!;
-
-                                final weekStart = _weekStart(
-                                  logsDaSemana.first.date,
-                                );
-
-                                final currentWeekKey = _weekKey(DateTime.now());
-
-                                final isCurrentWeek = weekKey == currentWeekKey;
-
-                                final expanded = _semanasExpandidas.contains(
-                                      weekKey,
-                                    ) ||
-                                    isCurrentWeek;
-
-                                if (isCurrentWeek &&
-                                    !_semanasExpandidas.contains(
-                                      weekKey,
-                                    )) {
-                                  WidgetsBinding.instance.addPostFrameCallback(
-                                    (_) {
-                                      if (mounted) {
-                                        setState(
-                                          () => _semanasExpandidas.add(
-                                            weekKey,
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  );
-                                }
-
-                                return _buildWeekCard(
-                                  weekStart: weekStart,
-                                  logsDaSemana: logsDaSemana,
-                                  expanded: expanded,
-                                );
-                              },
-                            ),
+                      child: _nivelHistoricoSelecionado == 'dia'
+                          ? _buildSelectedDayPanel(registeredLogs, dia)
+                          : _buildSelectedPeriodPanel(registeredLogs),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+                  ]),
+          ),
+        ]),
       ),
     );
   }

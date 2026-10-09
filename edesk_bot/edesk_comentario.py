@@ -202,308 +202,11 @@ def obter_guid_da_url(url):
 
 
 # ================================================================
-# CREDENCIAIS E-DESK
-# ================================================================
-
-def obter_credenciais_edesk(dados):
-
-    credenciais = dados.get(
-        "edeskCredenciais"
-    )
-
-    if isinstance(credenciais, dict):
-
-        email = str(
-            credenciais.get(
-                "email",
-                "",
-            )
-            or ""
-        ).strip()
-
-        senha = str(
-            credenciais.get(
-                "senha",
-                "",
-            )
-            or ""
-        )
-
-        if email and senha:
-            return email, senha
-
-    email = str(
-        dados.get(
-            "edeskEmail",
-            "",
-        )
-        or ""
-    ).strip()
-
-    senha = str(
-        dados.get(
-            "edeskSenha",
-            "",
-        )
-        or ""
-    )
-
-    return email, senha
-
-
-# ================================================================
 # LOGIN
 # ================================================================
 
-SELETORES_EMAIL_LOGIN = [
-    "input[placeholder='nome@exemplo.com']",
-    "input[type='email']",
-    "input[autocomplete='username']",
-    "input[name*='email' i]",
-    "input[id*='email' i]",
-]
-
-SELETORES_SENHA_LOGIN = [
-    "input[placeholder='Senha']",
-    "input[type='password']",
-    "input[autocomplete='current-password']",
-    "input[name*='senha' i]",
-    "input[id*='senha' i]",
-    "input[name*='password' i]",
-    "input[id*='password' i]",
-]
-
-SELETORES_ENTRAR_LOGIN = [
-    "button:has-text('Entrar')",
-    "input[type='submit'][value*='Entrar']",
-    "input[value*='Entrar']",
-    "button[type='submit']",
-]
-
-
-def localizar_primeiro_visivel(
-    page,
-    seletores,
-):
-
-    raizes = [page]
-
-    try:
-        for frame in page.frames:
-            if frame not in raizes:
-                raizes.append(frame)
-    except Exception:
-        pass
-
-    for raiz in raizes:
-        for seletor in seletores:
-            try:
-                locator = raiz.locator(seletor)
-                quantidade = locator.count()
-                if quantidade == 0:
-                    continue
-                for i in range(quantidade):
-                    elemento = locator.nth(i)
-                    try:
-                        if elemento.is_visible():
-                            return elemento
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-    return None
-
-
-def login_confirmado(page):
-
-    try:
-        if "/Portal/PortalAtendente.aspx" in (page.url or ""):
-            return True
-
-        botao_comentarios = page.locator(
-            "#cph1_BtCom"
-        )
-
-        if botao_comentarios.count() > 0:
-            try:
-                if botao_comentarios.first.is_visible():
-                    return True
-            except Exception:
-                return True
-
-    except Exception:
-        pass
-
-    return False
-
-
-def tela_login_detectada(page):
-
-    try:
-        if localizar_primeiro_visivel(
-            page,
-            SELETORES_SENHA_LOGIN,
-        ) is not None:
-            return True
-    except Exception:
-        pass
-
-    try:
-        url = (page.url or "").lower()
-        marcadores = [
-            "promobid.promob.com",
-            "identity.promob.com",
-            "/authentications/signin",
-            "/signin",
-            "/login",
-        ]
-        return any(marcador in url for marcador in marcadores)
-    except Exception:
-        return False
-
-
-def tentar_login_automatico(
-    page,
-    email,
-    senha,
-):
-
-    email = str(email or "").strip()
-    senha = str(senha or "")
-
-    if not email or not senha:
-        return False
-
-    log("")
-    log("========================================")
-    log("LOGIN AUTOMÁTICO E-DESK")
-    log("========================================")
-    log(
-        f"E-mail disponível: {'SIM' if email else 'NÃO'}"
-    )
-    log("Senha disponível: SIM")
-
-    inicio = time.time()
-    campo_email = None
-
-    while time.time() - inicio < 30:
-        if login_confirmado(page):
-            log("Login já estava confirmado.")
-            return True
-
-        campo_email = localizar_primeiro_visivel(
-            page,
-            SELETORES_EMAIL_LOGIN,
-        )
-
-        if campo_email is not None:
-            break
-
-        time.sleep(0.5)
-
-    if campo_email is None:
-        log(
-            "Campo de e-mail não encontrado para login automático."
-        )
-        return False
-
-    try:
-        campo_email.fill(email)
-        log("E-mail preenchido automaticamente.")
-    except Exception as erro:
-        log(
-            f"Erro preenchendo e-mail: {erro}"
-        )
-        return False
-
-    campo_senha = None
-    inicio = time.time()
-
-    while time.time() - inicio < 30:
-        campo_senha = localizar_primeiro_visivel(
-            page,
-            SELETORES_SENHA_LOGIN,
-        )
-
-        if campo_senha is not None:
-            break
-
-        time.sleep(0.5)
-
-    if campo_senha is None:
-        log(
-            "Campo de senha não encontrado para login automático."
-        )
-        return False
-
-    try:
-        campo_senha.fill(senha)
-        log("Senha preenchida automaticamente.")
-    except Exception as erro:
-        log(
-            f"Erro preenchendo senha: {erro}"
-        )
-        return False
-
-    botao_entrar = None
-    inicio = time.time()
-
-    while time.time() - inicio < 20:
-        botao_entrar = localizar_primeiro_visivel(
-            page,
-            SELETORES_ENTRAR_LOGIN,
-        )
-
-        if botao_entrar is not None:
-            break
-
-        time.sleep(0.5)
-
-    try:
-        if botao_entrar is not None:
-            botao_entrar.click()
-            log("Botão 'Entrar' clicado automaticamente.")
-        else:
-            campo_senha.press("Enter")
-            log("Login enviado pela tecla Enter.")
-
-    except Exception as erro:
-        log(
-            f"Erro acionando login automático: {erro}"
-        )
-        try:
-            campo_senha.press("Enter")
-            log(
-                "Tentativa alternativa de login pela tecla Enter."
-            )
-        except Exception:
-            return False
-
-    inicio = time.time()
-
-    while time.time() - inicio < 40:
-        if login_confirmado(page):
-            log("")
-            log("========================================")
-            log("LOGIN AUTOMÁTICO CONCLUÍDO")
-            log("========================================")
-            return True
-
-        time.sleep(0.5)
-
-    log(
-        "Login automático não foi confirmado dentro do prazo. "
-        "Continuando em modo manual."
-    )
-
-    return False
-
-
 def aguardar_login(
     page,
-    email="",
-    senha="",
     timeout_segundos=300,
 ):
 
@@ -513,70 +216,106 @@ def aguardar_login(
     log("========================================")
     log("")
 
-    credenciais_disponiveis = bool(
-        str(email or "").strip()
-        and str(senha or "")
+    log(
+        "Faça o login normalmente no navegador."
     )
 
-    log(
-        "Login automático: "
-        + (
-            "DISPONÍVEL"
-            if credenciais_disponiveis
-            else "NÃO DISPONÍVEL - LOGIN MANUAL"
-        )
-    )
+    log("")
 
     inicio = time.time()
     ultimo_url = ""
-    tentativa_automatica_realizada = False
 
     while True:
-        if time.time() - inicio > timeout_segundos:
+
+        if (
+            time.time() - inicio
+            > timeout_segundos
+        ):
+
             raise RuntimeError(
                 "Tempo limite de autenticação excedido."
             )
 
         try:
+
             url_atual = page.url
+
         except Exception:
+
             url_atual = ""
 
         if url_atual != ultimo_url:
+
             log(
                 f"URL atual: {url_atual}"
             )
+
             ultimo_url = url_atual
 
-        if login_confirmado(page):
+        # --------------------------------------------------------
+        # PORTAL AUTENTICADO
+        # --------------------------------------------------------
+
+        if (
+            "/Portal/PortalAtendente.aspx"
+            in url_atual
+        ):
+
             log("")
             log("========================================")
             log("AUTENTICAÇÃO CONCLUÍDA")
+            log(
+                "Portal do Atendente detectado."
+            )
             log("========================================")
+            log("")
+
             return
 
-        if (
-            credenciais_disponiveis
-            and not tentativa_automatica_realizada
-            and tela_login_detectada(page)
-        ):
-            tentativa_automatica_realizada = True
+        # --------------------------------------------------------
+        # JÁ ESTÁ EM UM TRABALHO
+        # --------------------------------------------------------
 
-            if tentar_login_automatico(
-                page,
-                email,
-                senha,
-            ):
-                return
+        try:
 
-            log("")
-            log(
-                "Não foi possível concluir o login automático. "
-                "Aguardando login manual no navegador."
+            botao = page.locator(
+                "#cph1_BtCom"
             )
 
-        time.sleep(1)
+            if botao.count() > 0:
 
+                try:
+
+                    if botao.first.is_visible(
+                        timeout=1000
+                    ):
+
+                        log("")
+                        log(
+                            "========================================"
+                        )
+                        log(
+                            "AUTENTICAÇÃO CONCLUÍDA"
+                        )
+                        log(
+                            "Tela de trabalho detectada."
+                        )
+                        log(
+                            "========================================"
+                        )
+                        log("")
+
+                        return
+
+                except Exception:
+
+                    pass
+
+        except Exception:
+
+            pass
+
+        time.sleep(1)
 
 
 # ================================================================
@@ -593,306 +332,43 @@ def acessar_minha_grid(
     log("ACESSANDO MINHA GRID")
     log("============================================")
 
-    # ============================================================
-    # O E-DESK NÃO DEVE RECEBER A GRID SOMENTE POR GOTO().
-    #
-    # Pela exploração do PortalAtendente, "Minha Grid" é um
-    # atalho JavaScript/ASP.NET. O clique no atalho é o que
-    # prepara o estado da sessão e então navega para
-    # ListaSolicitacao.aspx.
-    #
-    # É exatamente esse fluxo que usamos aqui.
-    # ============================================================
+    guid = str(
+        guid
+        or obter_guid_da_url(page.url)
+        or ""
+    ).strip()
 
-    url_atual = page.url or ""
-
-    # ------------------------------------------------------------
-    # Se já estamos na Grid, não precisamos clicar novamente.
-    # ------------------------------------------------------------
-
-    if "ListaSolicitacao.aspx" in url_atual:
-
-        log(
-            "Página atual já é a Minha Grid."
+    if not guid:
+        raise RuntimeError(
+            "GUID da sessão do E-Desk não encontrado."
         )
 
-    else:
-
-        # --------------------------------------------------------
-        # Procurar o atalho REAL "Minha Grid".
-        # --------------------------------------------------------
-
-        seletor_minha_grid = "#cph1_lblTitB2"
-
-        try:
-
-            atalho = page.locator(
-                seletor_minha_grid
-            ).first
-
-            quantidade = page.locator(
-                seletor_minha_grid
-            ).count()
-
-            log(
-                f"Atalho 'Minha Grid' encontrado: {quantidade}"
-            )
-
-        except Exception as erro:
-
-            raise RuntimeError(
-                "Não foi possível localizar o atalho 'Minha Grid': "
-                f"{erro}"
-            )
-
-        if quantidade == 0:
-
-            raise RuntimeError(
-                "O PortalAtendente foi aberto, mas o atalho "
-                "'Minha Grid' não foi encontrado."
-            )
-
-        try:
-
-            atalho.wait_for(
-                state="visible",
-                timeout=15000,
-            )
-
-        except Exception as erro:
-
-            raise RuntimeError(
-                "O atalho 'Minha Grid' não ficou visível: "
-                f"{erro}"
-            )
-
-        paginas_antes = set(
-            id(pagina)
-            for pagina in page.context.pages
-        )
-
-        log(
-            "Clicando no atalho real 'Minha Grid'..."
-        )
-
-        clicou = False
-
-        # --------------------------------------------------------
-        # TENTATIVA 1: clicar no próprio span.
-        # --------------------------------------------------------
-
-        try:
-
-            atalho.click(
-                timeout=10000,
-            )
-
-            clicou = True
-
-            log(
-                "Clique no span 'Minha Grid' executado."
-            )
-
-        except Exception as erro:
-
-            log(
-                f"Aviso no clique do span: {erro}"
-            )
-
-        # --------------------------------------------------------
-        # TENTATIVA 2: clicar no DIV pai.
-        # A exploração mostrou que o elemento visual é um
-        # div.TitAtalhoPortalSolicitante.
-        # --------------------------------------------------------
-
-        if not clicou:
-
-            try:
-
-                pai = atalho.locator(
-                    "xpath=.."
-                ).first
-
-                pai.wait_for(
-                    state="visible",
-                    timeout=5000,
-                )
-
-                pai.click(
-                    timeout=10000,
-                    force=True,
-                )
-
-                clicou = True
-
-                log(
-                    "Clique no DIV pai de 'Minha Grid' executado."
-                )
-
-            except Exception as erro:
-
-                log(
-                    f"Aviso no clique do DIV pai: {erro}"
-                )
-
-        if not clicou:
-
-            raise RuntimeError(
-                "Não foi possível clicar no atalho 'Minha Grid'."
-            )
-
-        # --------------------------------------------------------
-        # Aguardar a navegação provocada pelo clique.
-        # --------------------------------------------------------
-
-        inicio = time.time()
-        pagina_grid = None
-
-        while time.time() - inicio < 30:
-
-            try:
-
-                if not page.is_closed():
-
-                    if "ListaSolicitacao.aspx" in (page.url or ""):
-
-                        pagina_grid = page
-                        break
-
-            except Exception:
-
-                pass
-
-            # Caso o E-Desk abra a Grid em outra página.
-            for pagina in list(page.context.pages):
-
-                try:
-
-                    if pagina.is_closed():
-                        continue
-
-                    if (
-                        id(pagina) not in paginas_antes
-                        and "ListaSolicitacao.aspx" in (pagina.url or "")
-                    ):
-
-                        pagina_grid = pagina
-                        break
-
-                except Exception:
-
-                    continue
-
-            if pagina_grid is not None:
-                break
-
-            time.sleep(0.2)
-
-        if pagina_grid is None:
-
-            # ----------------------------------------------------
-            # Último fallback: verificar novamente a URL atual.
-            # Não construímos parâmetros de solicitação/cmd.
-            # ----------------------------------------------------
-
-            if "ListaSolicitacao.aspx" in (page.url or ""):
-
-                pagina_grid = page
-
-            else:
-
-                raise RuntimeError(
-                    "O clique em 'Minha Grid' foi executado, "
-                    "mas o E-Desk não navegou para ListaSolicitacao.aspx."
-                )
-
-        page = pagina_grid
-
-    # ============================================================
-    # GRID CARREGADA PELO FLUXO OFICIAL DO PORTAL
-    # ============================================================
-
-    try:
-
-        page.bring_to_front()
-
-    except Exception:
-
-        pass
+    url_grid = (
+        "https://promob.e-desk.com.br/"
+        "Portal/ListaSolicitacao.aspx?"
+        f"GUID={guid}"
+    )
 
     log(
-        f"URL após acesso à Minha Grid: {page.url}"
-    )
-
-    if "ListaSolicitacao.aspx" not in (page.url or ""):
-
-        raise RuntimeError(
-            "A página atual não é a Minha Grid após o acesso. "
-            f"URL: {page.url}"
-        )
-
-    # ------------------------------------------------------------
-    # Dar tempo aos controles Telerik/ASP.NET.
-    # ------------------------------------------------------------
-
-    page.wait_for_timeout(
-        3000
-    )
-
-    # ------------------------------------------------------------
-    # Garantir que o container do RadGrid existe.
-    # ------------------------------------------------------------
-
-    seletor_tabela = (
-        "#ctl00_cph1_hgrSol_ctl00"
+        f"Acessando Grid: {url_grid}"
     )
 
     try:
-
-        page.wait_for_selector(
-            seletor_tabela,
-            state="visible",
-            timeout=30000,
+        page.goto(
+            url_grid,
+            wait_until="domcontentloaded",
+            timeout=60000,
         )
-
     except Exception as erro:
-
-        raise RuntimeError(
-            "A Minha Grid abriu, mas a tabela principal "
-            "não ficou visível: "
-            f"{erro}"
+        log(
+            f"Aviso durante acesso à Grid: {erro}"
         )
 
-    # ------------------------------------------------------------
-    # Não forçar um número mínimo de linhas aqui.
-    # A função localizar_solicitacao fará a leitura do DOM
-    # e dos mecanismos do Telerik.
-    # ------------------------------------------------------------
-
-    try:
-
-        quantidade_rg = page.locator(
-            "#ctl00_cph1_hgrSol_ctl00 tr.rgRow, "
-            "#ctl00_cph1_hgrSol_ctl00 tr.rgAltRow"
-        ).count()
-
-    except Exception:
-
-        quantidade_rg = 0
+    page.wait_for_timeout(4000)
 
     log(
-        f"Linhas rgRow/rgAltRow após clique: {quantidade_rg}"
+        f"URL atual da Grid: {page.url}"
     )
-
-    log("")
-    log("============================================")
-    log("MINHA GRID ABERTA COM SUCESSO")
-    log("============================================")
-    log(
-        f"URL FINAL DA GRID: {page.url}"
-    )
-
-    return page
 
 
 # ================================================================
@@ -1707,6 +1183,79 @@ def abrir_trabalho(
 
 
 # ================================================================
+# ABRIR COMENTÁRIO
+# ================================================================
+
+def abrir_comentario(page, context):
+    """Abre o popup de comentário e retorna (pagina, frame).
+
+    Mantém o contrato já utilizado pelo main(): o botão de comentários
+    é acionado na tela do trabalho e o frame é identificado pelo campo
+    de tipo de comentário (#popC_ddlTipCom).
+    """
+
+    log("")
+    log("============================================")
+    log("ABRINDO COMENTÁRIO")
+    log("============================================")
+
+    page.bring_to_front()
+
+    botao = page.locator("#cph1_BtCom")
+    botao.wait_for(state="visible", timeout=15000)
+
+    paginas_antes = set(context.pages)
+    botao.click()
+    log("Botão Comentários clicado.")
+
+    inicio = time.time()
+    ultimo_erro = None
+
+    while time.time() - inicio < 20:
+        # O E-Desk pode abrir o comentário na própria página ou em popup.
+        paginas = list(context.pages)
+        paginas_novas = [p for p in paginas if p not in paginas_antes]
+        candidatos = paginas_novas + [p for p in paginas if p not in paginas_novas]
+
+        for pagina in candidatos:
+            try:
+                if pagina.is_closed():
+                    continue
+
+                # Primeiro verifica a própria página; em seguida, seus frames.
+                if pagina.locator("#popC_ddlTipCom").count() > 0:
+                    pagina.locator("#popC_ddlTipCom").wait_for(
+                        state="visible", timeout=2000
+                    )
+                    pagina.bring_to_front()
+                    log("Editor de comentário localizado na página.")
+                    return pagina, pagina
+
+                for frame in pagina.frames:
+                    try:
+                        campo_tipo = frame.locator("#popC_ddlTipCom")
+                        if campo_tipo.count() == 0:
+                            continue
+
+                        campo_tipo.wait_for(state="visible", timeout=2000)
+                        pagina.bring_to_front()
+                        log("Frame do comentário localizado com sucesso.")
+                        return pagina, frame
+                    except Exception as erro_frame:
+                        ultimo_erro = erro_frame
+            except Exception as erro_pagina:
+                ultimo_erro = erro_pagina
+
+        page.wait_for_timeout(300)
+
+    detalhe = f" Último erro: {ultimo_erro}" if ultimo_erro else ""
+    raise RuntimeError(
+        "O popup/frame de comentário não foi localizado após clicar em Comentários."
+        + detalhe
+    )
+
+
+# ================================================================
 # PREENCHER COMENTÁRIO
 # ================================================================
 
@@ -1798,25 +1347,23 @@ def preencher_comentario(
     # 3. PREPARAR TEXTO
     # ============================================================
 
-    texto_html = html.escape(
-        texto or ""
-    )
+    marcador_html = "[[EDESK_HTML]]"
+    texto_recebido = texto or ""
+    eh_html_pronto = texto_recebido.startswith(marcador_html)
 
-    texto_html = (
-        texto_html
-        .replace(
-            "\r\n",
-            "<br>",
+    if eh_html_pronto:
+        # HTML já foi montado pelo editor Flutter.
+        # O marcador é apenas de transporte e não entra no E-Desk.
+        texto_html = texto_recebido[len(marcador_html):]
+    else:
+        # Compatibilidade com chamadas antigas de texto simples.
+        texto_html = html.escape(texto_recebido)
+        texto_html = (
+            texto_html
+            .replace("\r\n", "<br>")
+            .replace("\n", "<br>")
+            .replace("\r", "<br>")
         )
-        .replace(
-            "\n",
-            "<br>",
-        )
-        .replace(
-            "\r",
-            "<br>",
-        )
-    )
 
     # ============================================================
     # 4. PREPARAR IMAGEM
@@ -1824,7 +1371,7 @@ def preencher_comentario(
 
     imagem_html = ""
 
-    if imagem_base64:
+    if imagem_base64 and not eh_html_pronto:
 
         try:
 
@@ -1924,11 +1471,11 @@ def preencher_comentario(
     # DEPOIS O TEXTO
     # ============================================================
 
-    html_final = (
-        imagem_html
-        + "<br>"
-        + texto_html
-    )
+    if eh_html_pronto:
+        # As imagens já estão incorporadas no documento na posição correta.
+        html_final = texto_html
+    else:
+        html_final = imagem_html + "<br>" + texto_html
 
     log(
         f"HTML final preparado: "
@@ -2266,7 +1813,7 @@ def preencher_comentario(
 # SALVAR COMENTÁRIO
 # ================================================================
 
-def salvar_comentario(frame):
+def salvar_comentario(frame, pagina):
 
     log("")
     log("============================================")
@@ -2292,17 +1839,83 @@ def salvar_comentario(frame):
         "Botão Salvar encontrado."
     )
 
-    botao_salvar.click()
+    requisicoes_salvar = set()
+    respostas_salvar = []
 
-    log(
-        "Botão Salvar clicado."
-    )
+    def registrar_requisicao(requisicao):
+        if requisicao.method != "POST":
+            return
 
-    time.sleep(3)
+        dados_post = parse_qs(
+            requisicao.post_data or "",
+            keep_blank_values=True,
+        )
+        targets = dados_post.get("__EVENTTARGET", [])
+        controles = [
+            chave
+            for chave in dados_post
+            if "BtAtu" in chave
+        ]
 
-    log(
-        "Comentário enviado ao E-Desk."
-    )
+        if not any("BtAtu" in alvo for alvo in targets) and not controles:
+            return
+
+        chave_requisicao = (
+            requisicao.url,
+            requisicao.post_data or "",
+        )
+        requisicoes_salvar.add(chave_requisicao)
+        log("POST do botão Salvar do comentário detectado.")
+
+    def registrar_resposta(resposta):
+        chave_requisicao = (
+            resposta.request.url,
+            resposta.request.post_data or "",
+        )
+        if chave_requisicao in requisicoes_salvar:
+            respostas_salvar.append(resposta)
+
+    pagina.on("request", registrar_requisicao)
+    pagina.on("response", registrar_resposta)
+    try:
+        botao_salvar.click(timeout=15000)
+
+        inicio = time.time()
+        while not respostas_salvar and time.time() - inicio < 20:
+            pagina.wait_for_timeout(250)
+
+        if not respostas_salvar:
+            raise RuntimeError(
+                "Nenhuma resposta ao POST do botão Salvar do comentário "
+                "foi observada. O bot não repetirá o envio para evitar "
+                "duplicidade."
+            )
+
+        resposta = respostas_salvar[-1]
+        if not resposta.ok:
+            raise RuntimeError(
+                "O E-Desk retornou HTTP "
+                f"{resposta.status} ao salvar o comentário."
+            )
+
+        texto_resposta = resposta.text()
+        if "|error|" in texto_resposta.lower():
+            raise RuntimeError(
+                "O E-Desk retornou erro ASP.NET ao salvar o comentário: "
+                f"{texto_resposta[:500]}"
+            )
+
+        log(
+            "Resposta do E-Desk ao salvamento recebida: "
+            f"HTTP {resposta.status}."
+        )
+        log(
+            "A resposta HTTP não comprova, sozinha, a persistência "
+            "do comentário."
+        )
+    finally:
+        pagina.remove_listener("request", registrar_requisicao)
+        pagina.remove_listener("response", registrar_resposta)
 
 
 # ================================================================
@@ -2420,15 +2033,6 @@ def main():
     # ============================================================
 
     dados = carregar_request()
-
-    edesk_email, edesk_senha = obter_credenciais_edesk(
-        dados
-    )
-
-    log(
-        "Credenciais E-Desk: "
-        f"{'DISPONÍVEIS' if edesk_email and edesk_senha else 'NÃO DISPONÍVEIS'}"
-    )
 
     solicitacao = extrair_solicitacao(
         dados
@@ -2584,11 +2188,7 @@ def main():
                 f"URL após abertura: {page.url}"
             )
 
-            aguardar_login(
-                page,
-                email=edesk_email,
-                senha=edesk_senha,
-            )
+            aguardar_login(page)
 
         else:
 
@@ -2626,7 +2226,7 @@ def main():
 
         page.bring_to_front()
 
-        page = acessar_minha_grid(
+        acessar_minha_grid(
             page,
             guid_sessao,
         )
@@ -2730,7 +2330,8 @@ def main():
         if enviar:
 
             salvar_comentario(
-                frame
+                frame,
+                pagina_comentario,
             )
 
             log("")
@@ -2739,11 +2340,11 @@ def main():
             log("============================================")
 
             log(
-                "Comentário preenchido e salvo no E-Desk."
+                "O E-Desk respondeu ao pedido de salvamento do comentário."
             )
 
             log(
-                "Texto + imagem enviados."
+                "O conteúdo do comentário foi enviado no POST."
             )
 
             log(
@@ -2806,6 +2407,8 @@ def main():
         log(
             "============================================"
         )
+
+        log("EDESK_TEST_READY")
 
         # ========================================================
         # CORREÇÃO IMPORTANTE:

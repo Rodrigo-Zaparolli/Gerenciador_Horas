@@ -341,10 +341,10 @@ class _LoginScreenState extends State<LoginScreen>
         vertical: compact ? 7 : 9,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.superficie.withOpacity(0.75),
+        color: CoresApp.superficie.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(30),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.8),
+          color: CoresApp.borda.withValues(alpha: 0.8),
         ),
       ),
       child: Row(
@@ -440,7 +440,7 @@ class _LoginScreenState extends State<LoginScreen>
             blurRadius: 35,
             spreadRadius: 0,
             offset: const Offset(0, 15),
-            color: Colors.black.withOpacity(0.22),
+            color: Colors.black.withValues(alpha: 0.22),
           ),
         ],
       ),
@@ -570,7 +570,8 @@ class _LoginScreenState extends State<LoginScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.primaria,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: CoresApp.primaria.withOpacity(0.45),
+                disabledBackgroundColor:
+                    CoresApp.primaria.withValues(alpha: 0.45),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -715,7 +716,7 @@ class _LoginScreenState extends State<LoginScreen>
                   height: 420,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: CoresApp.primaria.withOpacity(0.06),
+                    color: CoresApp.primaria.withValues(alpha: 0.06),
                   ),
                 ),
               ),
@@ -728,7 +729,7 @@ class _LoginScreenState extends State<LoginScreen>
                   height: 480,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: CoresApp.destaque.withOpacity(0.035),
+                    color: CoresApp.destaque.withValues(alpha: 0.035),
                   ),
                 ),
               ),

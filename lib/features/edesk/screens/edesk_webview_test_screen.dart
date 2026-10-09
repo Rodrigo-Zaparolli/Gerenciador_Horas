@@ -43,8 +43,6 @@ class _EdeskWebViewTestScreenState extends State<EdeskWebViewTestScreen> {
   bool _procurandoTrabalho = false;
   bool _trabalhoEncontrado = false;
 
-  String? _urlTrabalho;
-
   @override
   void initState() {
     super.initState();
@@ -100,7 +98,6 @@ class _EdeskWebViewTestScreenState extends State<EdeskWebViewTestScreen> {
 
         if (url.contains('/Portal/Trabalho.aspx') &&
             url.contains('id_trabalho=')) {
-          _urlTrabalho = url;
           _trabalhoEncontrado = true;
 
           debugPrint('');

@@ -14,6 +14,7 @@ from urllib.parse import (
 )
 
 from playwright.sync_api import sync_playwright
+from texto_trabalho import acrescentar_trabalho_realizado
 
 from config import (
     PROFILE_DIR,
@@ -30,6 +31,10 @@ LOGS_PATH = BASE_DIR / LOGS_DIR
 PROFILE_PATH.mkdir(parents=True, exist_ok=True)
 SCREENSHOTS_PATH.mkdir(parents=True, exist_ok=True)
 LOGS_PATH.mkdir(parents=True, exist_ok=True)
+
+RUN_LOG_PATH = LOGS_PATH / (
+    f"edesk_horas_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}.log"
+)
 
 SELETORES_EMAIL_LOGIN = [
     "input[placeholder='nome@exemplo.com']",
@@ -57,7 +62,10 @@ SELETORES_ENTRAR_LOGIN = [
 ]
 
 def log(mensagem):
-    print(f"[E-Desk][Horas] {mensagem}", flush=True)
+    linha = f"[E-Desk][Horas] {mensagem}"
+    print(linha, flush=True)
+    with RUN_LOG_PATH.open("a", encoding="utf-8") as arquivo:
+        arquivo.write(linha + "\n")
 
 def carregar_request():
     if len(sys.argv) < 2:
@@ -79,6 +87,8 @@ def carregar_request():
         credenciais_log = dict(credenciais_log)
         if "senha" in credenciais_log:
             credenciais_log["senha"] = "*** OCULTA ***"
+        if "email" in credenciais_log:
+            credenciais_log["email"] = "*** OCULTO ***"
         dados_log["edeskCredenciais"] = credenciais_log
 
     log("")
@@ -423,7 +433,7 @@ def obter_credenciais_edesk(dados):
         return None
 
     log("Credenciais E-Desk disponíveis para login automático.")
-    log(f"E-mail disponível: SIM | {email}")
+    log("E-mail disponível: SIM | [OCULTO]")
     log(f"Senha disponível: SIM | {len(senha)} caracteres")
 
     return {
@@ -701,7 +711,7 @@ def instalar_monitor_requests(page):
             pass
     page.on("request", monitor_request)
 
-def localizar_solicitacao(page, numero_solicitacao, atividade_alvo=""):
+def localizar_solicitacao(page, context, numero_solicitacao, atividade_alvo=""):
     numero_solicitacao = str(numero_solicitacao or "").strip()
     atividade_alvo = str(atividade_alvo or "").strip()
 
@@ -713,6 +723,10 @@ def localizar_solicitacao(page, numero_solicitacao, atividade_alvo=""):
     log(f"Atividade alvo: {atividade_alvo or '[NÃO INFORMADA]'}")
 
     seletor_tabela = "#ctl00_cph1_hgrSol_ctl00"
+
+    # Guardamos o estado das páginas antes da pesquisa. O E-Desk pode manter
+    # a Grid na página atual, abrir outra página ou navegar a página atual.
+    paginas_antes = {id(p): (p.url or "") for p in context.pages if not p.is_closed()}
 
     try:
         campo = page.locator("#cph1_txtSol").first
@@ -727,31 +741,91 @@ def localizar_solicitacao(page, numero_solicitacao, atividade_alvo=""):
         try:
             botao.click(force=True, timeout=10000)
         except Exception:
-            campo.press("Enter")
-
-        inicio = time.time()
-        while time.time() - inicio < 25:
-            try:
-                page.wait_for_timeout(400)
-                tabela = page.locator(seletor_tabela).first
-                if tabela.count() and numero_solicitacao in tabela.inner_text(timeout=3000):
-                    break
-            except Exception:
-                pass
-
-        log(f"URL após pesquisa: {page.url}")
+            # O clique pode ter enviado o postback antes de o Playwright
+            # reportar uma falha. Não reenviamos a pesquisa com Enter, pois
+            # isso pode abrir a mesma solicitação uma segunda vez.
+            log(
+                "O clique da pesquisa retornou erro; aguardando o resultado "
+                "sem reenviar o formulário."
+            )
     except Exception as erro:
         log(f"Erro ao pesquisar solicitação: {erro}")
-        return None
+        return None, None, None
+
+    # O E-Desk pode manter o resultado na Grid OU abrir Solicitação.aspx
+    # automaticamente ao pesquisar. Quando a Solicitação já foi aberta,
+    # ela deve ser reaproveitada; não executamos um segundo clique na Grid.
+    pagina_grid = None
+    pagina_solicitacao_preaberta = None
+    inicio = time.time()
+    urls_vistas = set()
+
+    while time.time() - inicio < 25:
+        for pagina in list(context.pages):
+            try:
+                if pagina.is_closed():
+                    continue
+
+                url_atual = pagina.url or ""
+                chave_url = f"{id(pagina)}|{url_atual}"
+                if chave_url not in urls_vistas:
+                    log(f"Página observada após pesquisa: {url_atual}")
+                    urls_vistas.add(chave_url)
+
+                if eh_solicitacao(url_atual):
+                    pagina_nova = id(pagina) not in paginas_antes
+                    pagina_navegou = (
+                        id(pagina) in paginas_antes
+                        and paginas_antes[id(pagina)] != url_atual
+                    )
+                    if pagina_nova or pagina_navegou:
+                        pagina_solicitacao_preaberta = pagina
+                        break
+
+                tabela_candidata = pagina.locator(seletor_tabela).first
+                if tabela_candidata.count() == 0:
+                    continue
+
+                texto_tabela = tabela_candidata.inner_text(timeout=1500)
+                if numero_solicitacao not in texto_tabela:
+                    continue
+
+                pagina_grid = pagina
+                break
+            except Exception:
+                continue
+
+        if pagina_solicitacao_preaberta is not None or pagina_grid is not None:
+            break
+        time.sleep(0.4)
+
+    if pagina_solicitacao_preaberta is not None:
+        log(
+            "A pesquisa abriu Solicitação.aspx automaticamente. "
+            "A página será reutilizada sem novo clique na Grid."
+        )
+        return page, None, pagina_solicitacao_preaberta
+
+    if pagina_grid is None:
+        log(f"URL da página original após pesquisa: {page.url}")
+        log("Nenhuma página com a Grid e a solicitação pesquisada foi encontrada.")
+        return None, None, None
+
+    if pagina_grid is not page:
+        log("Resultado da pesquisa localizado em outra página do navegador.")
+    elif paginas_antes.get(id(page), "") != (page.url or ""):
+        log("A página original navegou durante a pesquisa e continuou sendo a Grid válida.")
+
+    log(f"URL da Grid válida após pesquisa: {pagina_grid.url}")
 
     try:
-        tabela = page.locator(seletor_tabela).first
+        tabela = pagina_grid.locator(seletor_tabela).first
         tabela.wait_for(state="visible", timeout=15000)
     except Exception as erro:
-        log(f"Grid não ficou visível após a pesquisa: {erro}")
-        return None
+        log(f"Grid válida não ficou visível após a pesquisa: {erro}")
+        return None, None, None
 
-    linhas = page.locator(
+    linhas = pagina_grid.locator(
         f"{seletor_tabela} tr.rgRow, {seletor_tabela} tr.rgAltRow"
     )
     candidatos = []
@@ -788,7 +862,7 @@ def localizar_solicitacao(page, numero_solicitacao, atividade_alvo=""):
 
     if not candidatos:
         log(f"Solicitação {numero_solicitacao} não encontrada após usar Pesquisar.")
-        return None
+        return None, None, None
 
     def normalizar(valor):
         valor = str(valor or "").lower()
@@ -833,9 +907,10 @@ def localizar_solicitacao(page, numero_solicitacao, atividade_alvo=""):
     log(f"Índice: {indice}")
     log(f"Texto: {texto_linha}")
     log(f"Ocorrências: {len(candidatos)}")
-    return linha
+    return pagina_grid, linha, None
 
-def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
+
+def abrir_trabalho_na_solicitacao(page, context, numero_solicitacao, id_trabalho):
     log("")
     log("=" * 60)
     log("ABRINDO TRABALHO NA ABA TRABALHOS")
@@ -869,14 +944,29 @@ def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
     for i in range(quantidade):
         linha = linhas.nth(i)
         try:
-            celulas = linha.locator("td")
-            if celulas.count() < 2:
-                continue
-            valor_id = celulas.nth(1).inner_text().strip()
-            log(f"LINHA {i} - ID E-DESK VISÍVEL: {valor_id}")
-            if valor_id == id_trabalho:
-                linha_alvo = linha
-                log(f"Trabalho {id_trabalho} encontrado pelo ID exato na linha {i}.")
+            # O E-Desk coloca o número e o nome do trabalho em TDs que
+            # executam o mesmo btnSelTra. Procuramos o número EXATO nesses
+            # TDs, sem assumir que ele esteja em uma coluna fixa da Grid.
+            celulas_selecao_linha = linha.locator('td[onclick*="btnSelTra"]')
+            valores_visiveis = []
+
+            for j in range(celulas_selecao_linha.count()):
+                valor = celulas_selecao_linha.nth(j).inner_text(timeout=1000).strip()
+                if valor:
+                    valores_visiveis.append(valor)
+
+                if valor == id_trabalho:
+                    linha_alvo = linha
+                    log(
+                        f"Trabalho {id_trabalho} encontrado pelo ID exato "
+                        f"na linha {i}, usando o próprio btnSelTra."
+                    )
+                    break
+
+            if valores_visiveis:
+                log(f"LINHA {i} - CAMPOS btnSelTra: {valores_visiveis}")
+
+            if linha_alvo is not None:
                 break
         except Exception:
             continue
@@ -920,6 +1010,11 @@ def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
         log(f"EVENT ARGUMENT: {postback_match.group(2)}")
 
     log("Executando clique original do botão de seleção...")
+
+    # Snapshot antes do clique: evita capturar Trabalho.aspx antigo de outro ciclo.
+    paginas_antes = {id(p): (p.url or "") for p in context.pages if not p.is_closed()}
+    url_solicitacao_antes = page.url or ""
+
     try:
         alvo.scroll_into_view_if_needed(timeout=5000)
     except Exception:
@@ -948,11 +1043,28 @@ def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
                     log(f"URL durante abertura do trabalho: {url_atual}")
                     urls_vistas.add(url_atual)
 
-                if eh_trabalho(url_atual):
+                # Aceita somente a própria Solicitação que navegou para Trabalho
+                # ou uma página nova criada por ESTE clique.
+                pagina_nova = id(pagina) not in paginas_antes
+                pagina_atual_navegou = (
+                    pagina is page
+                    and url_atual != url_solicitacao_antes
+                )
+
+                if eh_trabalho(url_atual) and (pagina_nova or pagina_atual_navegou):
+                    if not validar_tela_trabalho(
+                        pagina, numero_solicitacao, id_trabalho
+                    ):
+                        continue
+
                     log("")
                     log("****************************************")
                     log("TRABALHO ABERTO COM SUCESSO")
                     log("****************************************")
+                    log(
+                        "SOLICITAÇÃO/TRABALHO CONFIRMADO: "
+                        f"{numero_solicitacao}/{id_trabalho}"
+                    )
                     log(f"URL: {url_atual}")
                     log("")
                     return pagina
@@ -960,7 +1072,9 @@ def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
                 continue
 
         try:
-            if eh_trabalho(page.url):
+            if eh_trabalho(page.url) and validar_tela_trabalho(
+                page, numero_solicitacao, id_trabalho
+            ):
                 return page
         except Exception:
             pass
@@ -970,6 +1084,64 @@ def abrir_trabalho_na_solicitacao(page, context, id_trabalho):
     log("Tempo limite aguardando Trabalho.aspx.")
     log(f"URL atual: {page.url}")
     return None
+
+def validar_tela_trabalho(pagina, numero_solicitacao, id_trabalho):
+    """
+    Confirma que Trabalho.aspx corresponde exatamente à chave
+    Solicitação/Trabalho recebida do Flutter (ex.: 2265173/4).
+    """
+    numero_solicitacao = str(numero_solicitacao or "").strip()
+    id_trabalho = str(id_trabalho or "").strip()
+    referencia_esperada = f"{numero_solicitacao}/{id_trabalho}"
+
+    if pagina is None:
+        return False
+
+    try:
+        if pagina.is_closed() or not eh_trabalho(pagina.url):
+            return False
+    except Exception:
+        return False
+
+    # Valida pelos parâmetros da URL, quando o E-Desk os fornece.
+    try:
+        dados_url = extrair_dados_url_trabalho(pagina.url)
+        solicitacao_url = str(dados_url.get("solicitacao", "") or "").strip()
+        trabalho_url = str(dados_url.get("id_trabalho", "") or "").strip()
+
+        if (
+            solicitacao_url
+            and trabalho_url
+            and solicitacao_url == numero_solicitacao
+            and trabalho_url == id_trabalho
+        ):
+            log(f"Trabalho.aspx validado pela URL: {referencia_esperada}")
+            return True
+    except Exception:
+        pass
+
+    # Confirma pela informação visual "Solicitação/Trabalho 2265173/4".
+    try:
+        corpo = pagina.locator("body").inner_text(timeout=5000)
+        corpo_compacto = re.sub(r"\s+", " ", corpo or "")
+        padrao = re.compile(
+            rf"Solicita[cç][aã]o\s*/\s*Trabalho\s*:?\s*"
+            rf"{re.escape(numero_solicitacao)}\s*/\s*{re.escape(id_trabalho)}",
+            re.IGNORECASE,
+        )
+
+        if padrao.search(corpo_compacto):
+            log(f"Trabalho.aspx validado pelo texto da tela: {referencia_esperada}")
+            return True
+    except Exception as erro:
+        log(f"Aviso ao validar Solicitação/Trabalho na tela: {erro}")
+
+    log(
+        "Trabalho.aspx rejeitado: a tela não confirmou "
+        f"Solicitação/Trabalho {referencia_esperada}."
+    )
+    return False
+
 
 def abrir_trabalho_retroativo(pagina_trabalho, dados_trabalho):
     log("")
@@ -1042,7 +1214,7 @@ def salvar_mapeamento(dados):
     except Exception:
         pass
 
-def abrir_trabalho(page, context, linha_grid, numero_solicitacao, id_trabalho):
+def abrir_trabalho(page, context, linha_grid, numero_solicitacao, id_trabalho, pagina_solicitacao_preaberta=None):
     id_trabalho = str(id_trabalho).strip()
     numero_solicitacao = str(numero_solicitacao).strip()
 
@@ -1057,231 +1229,217 @@ def abrir_trabalho(page, context, linha_grid, numero_solicitacao, id_trabalho):
     if not guid:
         raise RuntimeError("GUID da sessão não encontrado antes de abrir solicitação.")
 
-    if linha_grid is None:
-        raise RuntimeError(f"A linha da solicitação {numero_solicitacao} não foi encontrada.")
+    if linha_grid is None and pagina_solicitacao_preaberta is None:
+        raise RuntimeError(
+            f"A linha da solicitação {numero_solicitacao} não foi encontrada "
+            "e nenhuma Solicitação.aspx foi aberta pela pesquisa."
+        )
 
-    paginas_antes = set(id(pagina) for pagina in context.pages)
+    # Snapshot completo. A partir daqui só aceitamos uma Solicitação que seja
+    # criada ou navegada pela ação DESTE ciclo. Nunca reutilizamos uma aba
+    # Solicitação.aspx antiga deixada por uma hora/trabalho anterior.
+    paginas_antes = {id(p): (p.url or "") for p in context.pages if not p.is_closed()}
+    url_grid_antes = page.url or ""
+    pagina_solicitacao = pagina_solicitacao_preaberta
 
-    log("Tentando abrir a Solicitação pela linha da Grid...")
-    try:
-        linha_grid.scroll_into_view_if_needed()
-        page.wait_for_timeout(300)
-        linha_grid.dblclick(delay=100, timeout=10000)
-    except Exception as erro:
-        log(f"Aviso ao clicar na linha da solicitação: {erro}")
-
-    inicio = time.time()
-    pagina_solicitacao = None
-
-    while time.time() - inicio < 10:
-        for pagina in context.pages:
+    def contem_trabalho_esperado(pagina):
+        inicio = time.time()
+        while time.time() - inicio < 15:
             try:
-                if pagina.is_closed():
-                    continue
-                if eh_solicitacao(pagina.url):
-                    pagina_solicitacao = pagina
-                    break
+                tabela = pagina.locator(
+                    "#cph1_rpvTrabalhos #cph1_gvwTra"
+                ).first
+                linhas = tabela.locator("tr")
+                for i in range(linhas.count()):
+                    # O número é identificado no próprio TD clicável que
+                    # dispara btnSelTra, sem depender da posição da coluna.
+                    celulas_trabalho = linhas.nth(i).locator(
+                        'td[onclick*="btnSelTra"]'
+                    )
+                    for j in range(celulas_trabalho.count()):
+                        valor_celula = celulas_trabalho.nth(j).inner_text(
+                            timeout=1000
+                        ).strip()
+                        if valor_celula == id_trabalho:
+                            return True
             except Exception:
                 pass
-        if pagina_solicitacao:
-            break
-        time.sleep(0.5)
 
-    if not pagina_solicitacao:
-        log("Clique na linha não abriu a Solicitação.aspx.")
-        log("Procurando elemento clicável dentro da linha...")
-        elementos_clicaveis = []
-
-        try:
-            elementos = linha_grid.locator("a, td[onclick], span[onclick], input, img")
-            quantidade = elementos.count()
-            log(f"Elementos clicáveis encontrados na linha: {quantidade}")
-
-            for i in range(quantidade):
-                elemento = elementos.nth(i)
-                try:
-                    texto = elemento.inner_text(timeout=500).strip()
-                except Exception:
-                    texto = ""
-
-                try:
-                    href = elemento.get_attribute("href") or ""
-                except Exception:
-                    href = ""
-
-                try:
-                    onclick = elemento.get_attribute("onclick") or ""
-                except Exception:
-                    onclick = ""
-
-                descricao = f"Elemento {i} | texto={texto} | href={href} | onclick={onclick}"
-                log(descricao[:1000])
-                elementos_clicaveis.append((elemento, texto, href, onclick))
-        except Exception as erro:
-            log(f"Erro ao procurar elemento clicável: {erro}")
-
-        candidatos = []
-        for item in elementos_clicaveis:
-            elemento, texto, href, onclick = item
-            texto_completo = f"{texto} {href} {onclick}".lower()
-            if "solicitacao.aspx" in texto_completo:
-                candidatos.insert(0, item)
-            elif numero_solicitacao.lower() in texto_completo:
-                candidatos.append(item)
-
-        candidatos.extend([item for item in elementos_clicaveis if item not in candidatos])
-
-        for item in candidatos:
-            elemento, texto, href, onclick = item
             try:
-                log("Tentando clicar elemento da solicitação...")
-                elemento.scroll_into_view_if_needed(timeout=3000)
-                elemento.click(timeout=7000, force=True)
+                pagina.wait_for_timeout(250)
+            except Exception:
+                return False
 
-                inicio = time.time()
-                while time.time() - inicio < 8:
-                    for pagina in context.pages:
-                        try:
-                            if pagina.is_closed():
-                                continue
-                            if eh_solicitacao(pagina.url):
-                                pagina_solicitacao = pagina
-                                break
-                        except Exception:
-                            continue
-                    if pagina_solicitacao:
-                        break
-                    time.sleep(0.5)
+        return False
 
-                if pagina_solicitacao:
-                    break
-            except Exception as erro:
-                log(f"Falha no elemento: {erro}")
-
-    if not pagina_solicitacao:
-        log("Nenhum elemento da linha abriu a solicitação.")
-        log("Tentando localizar link da solicitação pelo número...")
-        try:
-            links = page.locator("a")
-            quantidade_links = links.count()
-
-            for i in range(quantidade_links):
-                link = links.nth(i)
+    def capturar_solicitacao_deste_ciclo(timeout_segundos):
+        inicio = time.time()
+        paginas_em_branco_observadas = set()
+        while time.time() - inicio < timeout_segundos:
+            for pagina in list(context.pages):
                 try:
-                    texto = link.inner_text(timeout=500).strip()
-                except Exception:
-                    texto = ""
-
-                try:
-                    href = link.get_attribute("href") or ""
-                except Exception:
-                    href = ""
-
-                if numero_solicitacao not in texto and numero_solicitacao not in href:
-                    continue
-
-                log(f"Link candidato encontrado: texto={texto} href={href}")
-                try:
-                    link.click(timeout=7000, force=True)
-                except Exception:
-                    continue
-
-                inicio = time.time()
-                while time.time() - inicio < 8:
-                    for pagina in context.pages:
-                        try:
-                            if pagina.is_closed():
-                                continue
-                            if eh_solicitacao(pagina.url):
-                                pagina_solicitacao = pagina
-                                break
-                        except Exception:
-                            continue
-                    if pagina_solicitacao:
-                        break
-                    time.sleep(0.5)
-
-                if pagina_solicitacao:
-                    break
-        except Exception as erro:
-            log(f"Erro procurando link global: {erro}")
-
-    if not pagina_solicitacao:
-        log("Tentando comando interno do Telerik RadGrid na linha escolhida...")
-        try:
-            resultado_telerik = page.evaluate(
-                """
-                (rowId) => {
-                    const grid = window.$find ? window.$find('ctl00_cph1_hgrSol') : null;
-                    if (!grid || !grid.get_masterTableView) {
-                        return {sucesso:false, erro:'RadGrid não encontrado'};
-                    }
-                    const view = grid.get_masterTableView();
-                    const itens = view.get_dataItems ? view.get_dataItems() : [];
-                    for (let i = 0; i < itens.length; i++) {
-                        const item = itens[i];
-                        let el = null;
-                        try { el = item.get_element(); } catch (_) {}
-                        if (!el || el.id !== rowId) continue;
-                        let itemIndex = i;
-                        try { itemIndex = item.get_itemIndex(); } catch (_) {}
-                        try {
-                            if (item.set_selected) item.set_selected(true);
-                        } catch (_) {}
-                        try {
-                            if (view.fireCommand) {
-                                view.fireCommand('Select', String(itemIndex));
-                                return {sucesso:true, metodo:'fireCommand Select', itemIndex:itemIndex};
-                            }
-                        } catch (e) {
-                            return {sucesso:false, erro:String(e), itemIndex:itemIndex};
-                        }
-                        return {sucesso:false, erro:'fireCommand indisponível', itemIndex:itemIndex};
-                    }
-                    return {sucesso:false, erro:'Linha não localizada nos dataItems'};
-                }
-                """,
-                linha_grid.get_attribute("id") or "",
-            )
-            log(f"Resultado Telerik: {resultado_telerik}")
-            inicio = time.time()
-            while time.time() - inicio < 12:
-                for pagina in context.pages:
-                    try:
-                        if pagina.is_closed():
-                            continue
-                        if eh_solicitacao(pagina.url):
-                            pagina_solicitacao = pagina
-                            break
-                    except Exception:
+                    if pagina.is_closed():
                         continue
-                if pagina_solicitacao:
-                    break
-                time.sleep(0.5)
-        except Exception as erro:
-            log(f"Falha no comando interno Telerik: {erro}")
+                    url_atual = pagina.url or ""
+                    pagina_nova = id(pagina) not in paginas_antes
+                    pagina_grid_navegou = (
+                        pagina is page
+                        and url_atual != url_grid_antes
+                    )
+                    outra_pagina_navegou = (
+                        id(pagina) in paginas_antes
+                        and paginas_antes[id(pagina)] != url_atual
+                    )
 
-    if not pagina_solicitacao:
+                    if not (pagina_nova or pagina_grid_navegou or outra_pagina_navegou):
+                        continue
+
+                    if pagina_nova and url_atual in ("", "about:blank"):
+                        if id(pagina) not in paginas_em_branco_observadas:
+                            log(
+                                "Nova aba detectada após a ação; aguardando "
+                                "sua navegação antes de decidir se a "
+                                "Solicitação abriu."
+                            )
+                            paginas_em_branco_observadas.add(id(pagina))
+                        continue
+
+                    if not eh_solicitacao(url_atual):
+                        continue
+
+                    return pagina
+                except Exception:
+                    continue
+            try:
+                page.wait_for_timeout(250)
+            except Exception:
+                time.sleep(0.25)
+        return None
+
+    if pagina_solicitacao is not None:
+        if contem_trabalho_esperado(pagina_solicitacao):
+            log(
+                "Solicitação aberta automaticamente pela pesquisa confirmada. "
+                "Reutilizando sem novo clique na Grid."
+            )
+        else:
+            log(
+                "Solicitação aberta automaticamente foi rejeitada porque "
+                f"não contém o trabalho {id_trabalho}."
+            )
+            raise RuntimeError(
+                "A pesquisa já abriu uma tela de Solicitação, mas ela não "
+                f"confirmou o trabalho {id_trabalho}. Para evitar abrir a "
+                "solicitação em duplicidade, nenhum novo clique será feito."
+            )
+
+    # O E-Desk abre a solicitação com duplo clique na linha Telerik.
+    # Um clique simples na célula do número não dispara essa ação.
+    if pagina_solicitacao is None and linha_grid is not None:
+        log(
+            "Abrindo a solicitação com um único duplo clique na linha "
+            "selecionada..."
+        )
+        try:
+            linha_grid.scroll_into_view_if_needed(timeout=5000)
+            try:
+                linha_grid.dblclick(timeout=10000, force=True)
+            except Exception as erro_clique:
+                log(
+                    "O duplo clique retornou erro; verificando se o E-Desk abriu "
+                    f"a solicitação antes de decidir falha: {erro_clique}"
+                )
+
+            pagina_solicitacao = capturar_solicitacao_deste_ciclo(20)
+
+            if pagina_solicitacao is None:
+                raise RuntimeError(
+                    "O duplo clique na linha não abriu uma tela válida de "
+                    "Solicitação. O bot não repetirá a ação automaticamente."
+                )
+
+            # O grid pode deixar uma Solicitação.aspx duplicada aberta se
+            # houver páginas antigas no contexto. Fecha somente cópias novas
+            # desta mesma URL, preservando a página escolhida.
+            pagina_solicitacao.wait_for_timeout(750)
+            url_solicitacao_selecionada = pagina_solicitacao.url
+            for pagina in list(context.pages):
+                if pagina is pagina_solicitacao:
+                    continue
+                try:
+                    if (
+                        not pagina.is_closed()
+                        and id(pagina) not in paginas_antes
+                        and eh_solicitacao(pagina.url)
+                        and pagina.url == url_solicitacao_selecionada
+                    ):
+                        pagina.close()
+                        log(
+                            "Aba duplicada da Solicitação aberta neste ciclo "
+                            "foi fechada."
+                        )
+                except Exception as erro_fechamento:
+                    log(
+                        "Não foi possível fechar uma aba duplicada da "
+                        f"Solicitação: {erro_fechamento}"
+                    )
+
+            if not contem_trabalho_esperado(pagina_solicitacao):
+                raise RuntimeError(
+                    "A tela da Solicitação foi aberta, mas não confirmou o "
+                    f"trabalho {id_trabalho}. O bot não repetirá o duplo clique."
+                )
+        except Exception as erro:
+            if isinstance(erro, RuntimeError):
+                raise
+            log(f"Falha ao tentar células da linha escolhida: {erro}")
+
+    if pagina_solicitacao is None:
         log("")
         log("============================================================")
         log("FALHA AO ABRIR SOLICITAÇÃO")
         log("============================================================")
         log(f"SOLICITAÇÃO: {numero_solicitacao}")
         log(f"TRABALHO RELATIVO: {id_trabalho}")
-        log(f"URL ATUAL: {page.url}")
-        raise RuntimeError("O E-Desk não abriu a Solicitação.aspx.")
+        log(f"URL DA GRID NO INÍCIO: {url_grid_antes}")
+        log(f"URL ATUAL DA PÁGINA DA GRID: {page.url if not page.is_closed() else '[FECHADA]'}")
+        raise RuntimeError(
+            "O E-Desk não abriu uma Solicitação.aspx válida contendo "
+            f"o trabalho {id_trabalho}."
+        )
 
-    page = pagina_solicitacao
-    log(f"Solicitação aberta: {page.url}")
+    pagina_solicitacao_atual = pagina_solicitacao
+    log(f"Solicitação correta aberta: {pagina_solicitacao_atual.url}")
 
-    dados_solicitacao = extrair_dados_url(page.url)
+    dados_solicitacao = extrair_dados_url(pagina_solicitacao_atual.url)
     solicitacao_encoded = dados_solicitacao.get("solicitacao", "") or numero_solicitacao
     cmd = dados_solicitacao.get("cmd", "")
+    url_solicitacao_mapeamento = pagina_solicitacao_atual.url
 
-    pagina_trabalho = abrir_trabalho_na_solicitacao(page, context, id_trabalho)
+    pagina_trabalho = abrir_trabalho_na_solicitacao(
+        pagina_solicitacao_atual,
+        context,
+        numero_solicitacao,
+        id_trabalho,
+    )
     if not pagina_trabalho:
         log("Não foi possível abrir Trabalho.aspx.")
-        raise RuntimeError(f"Não foi possível abrir o trabalho relativo {id_trabalho} da solicitação {numero_solicitacao}.")
+        raise RuntimeError(
+            f"Não foi possível abrir o trabalho relativo {id_trabalho} "
+            f"da solicitação {numero_solicitacao}."
+        )
+
+    # Fecha somente a Solicitação intermediária criada em uma NOVA página.
+    # Se a Grid original navegou para Solicitação, não a fechamos: ela é a
+    # página principal que o loop reutilizará para voltar à Grid.
+    if pagina_trabalho is not pagina_solicitacao_atual:
+        try:
+            solicitacao_era_pagina_nova = id(pagina_solicitacao_atual) not in paginas_antes
+            if solicitacao_era_pagina_nova and not pagina_solicitacao_atual.is_closed():
+                pagina_solicitacao_atual.close()
+                log("Aba intermediária criada para a Solicitação foi fechada.")
+        except Exception as erro:
+            log(f"Aviso ao fechar aba intermediária da Solicitação: {erro}")
 
     dados_trabalho = extrair_dados_url(pagina_trabalho.url)
     id_efetivo = dados_trabalho.get("id_trabalho", "") or id_trabalho
@@ -1300,7 +1458,7 @@ def abrir_trabalho(page, context, linha_grid, numero_solicitacao, id_trabalho):
         "cmd": cmd,
         "solicitacaoEncoded": solicitacao_encoded,
         "guid": guid,
-        "urlSolicitacao": page.url,
+        "urlSolicitacao": url_solicitacao_mapeamento,
         "urlTrabalho": pagina_trabalho.url,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -1312,6 +1470,7 @@ def abrir_trabalho(page, context, linha_grid, numero_solicitacao, id_trabalho):
     log("")
 
     return abrir_trabalho_retroativo(pagina_trabalho, dados_trabalho)
+
 
 def salvar_hora(page, hora, indice_hora, total_horas):
     """
@@ -1392,6 +1551,20 @@ def salvar_hora(page, hora, indice_hora, total_horas):
             f"A HORA {indice_hora} não possui descritivo."
         )
 
+    tipo = str(hora.get("tipo", "0") or "0").strip()
+    tipos_por_nome = {
+        "interno": "0",
+        "externo": "1",
+        "padrão": "3",
+        "padrao": "3",
+        "padrão (interno)": "4",
+        "padrao (interno)": "4",
+    }
+    tipo = tipos_por_nome.get(tipo.lower(), tipo)
+
+    if not tipo:
+        tipo = "0"
+
     # ============================================================
     # 2. CONFIRMA QUE ESTAMOS NA TELA CORRETA
     # ============================================================
@@ -1447,6 +1620,9 @@ def salvar_hora(page, hora, indice_hora, total_horas):
     log("")
     log("PREENCHENDO CAMPOS DA HORA...")
 
+    # Guarda o histórico antes de qualquer postback do formulário.
+    trabalho_realizado_anterior = campo_rea.input_value()
+
     log(f"Preenchendo DATA: {data}")
 
     campo_data.fill(data)
@@ -1463,16 +1639,16 @@ def salvar_hora(page, hora, indice_hora, total_horas):
     # 5. TIPO DE REGISTRO
     # ============================================================
 
-    log("Selecionando TIPO DE REGISTRO: 0")
+    log(f"Selecionando TIPO DE REGISTRO: {tipo}")
 
     try:
 
-        campo_tipo.select_option("0")
+        campo_tipo.select_option(tipo)
 
     except Exception as erro:
 
         raise RuntimeError(
-            f"Erro ao selecionar tipo de registro: {erro}"
+            f"Erro ao selecionar tipo de registro '{tipo}': {erro}"
         )
 
     # Pequena espera apenas para permitir que eventual AJAX/postback
@@ -1498,58 +1674,17 @@ def salvar_hora(page, hora, indice_hora, total_horas):
     campo_inicio.fill(inicio)
     campo_fim.fill(fim)
 
-    # ============================================================
-    # 7. MONTA O DESCRITIVO
-    # ============================================================
-
-    try:
-
-        texto_existente = campo_rea.input_value()
-
-    except Exception:
-
-        texto_existente = ""
-
-    texto_existente = str(
-        texto_existente or ""
-    ).strip()
-
+    # Relê o histórico após o postback e preserva também o conteúdo inicial
+    # caso o E-Desk tenha limpado o campo durante a atualização do formulário.
+    texto_existente = campo_rea.input_value() or trabalho_realizado_anterior
+    trabalho_realizado = acrescentar_trabalho_realizado(
+        texto_existente, data, descritivo
+    )
     log("")
-    log("CONTEÚDO ATUAL DO CAMPO txtRea:")
+    log("CONTEÚDO DO txtRea PARA ESTE LANÇAMENTO:")
+    log(trabalho_realizado)
 
-    if texto_existente:
-
-        log(texto_existente)
-
-    else:
-
-        log("[VAZIO]")
-
-    novo_bloco = f"{data}: - {descritivo}"
-
-    if texto_existente:
-
-        if novo_bloco not in texto_existente:
-
-            texto_final = (
-                texto_existente
-                + "\n"
-                + novo_bloco
-            )
-
-        else:
-
-            texto_final = texto_existente
-
-    else:
-
-        texto_final = novo_bloco
-
-    log("")
-    log("NOVO CONTEÚDO DO txtRea:")
-    log(texto_final)
-
-    campo_rea.fill(texto_final)
+    campo_rea.fill(trabalho_realizado)
 
     # ============================================================
     # 8. CONFERÊNCIA
@@ -1557,379 +1692,168 @@ def salvar_hora(page, hora, indice_hora, total_horas):
 
     log("")
     log("============================================================")
-    log("CONFERÊNCIA ANTES DO POST HTTP")
+    log("CONFERÊNCIA ANTES DE SALVAR")
     log("============================================================")
 
-    try:
-        log(
-            f"DATA: "
-            f"{campo_data.input_value()}"
-        )
-    except Exception:
-        pass
-
-    try:
-        log(
-            f"INÍCIO: "
-            f"{campo_inicio.input_value()}"
-        )
-    except Exception:
-        pass
-
-    try:
-        log(
-            f"FIM: "
-            f"{campo_fim.input_value()}"
-        )
-    except Exception:
-        pass
-
-    try:
-        log(
-            f"TIPO: "
-            f"{campo_tipo.input_value()}"
-        )
-    except Exception:
-        pass
-
-    try:
-
-        log("DESCRITIVO:")
-        log(campo_rea.input_value())
-
-    except Exception:
-
-        pass
-
-    # ============================================================
-    # 9. POST HTTP / WEBFORMS
-    #
-    # O HAR mostrou que o botão Salvar envia um POST AJAX para
-    # TrabalhoRetroativo.aspx.
-    #
-    # Em vez de reconstruir VIEWSTATE manualmente, pegamos o
-    # formulário REAL da página atual.
-    #
-    # Isso inclui automaticamente:
-    #
-    # __VIEWSTATE
-    # __VIEWSTATEGENERATOR
-    # __EVENTVALIDATION (quando existir)
-    # campos ocultos Telerik
-    # dados do trabalho
-    # dados do atendente
-    # demais campos WebForms
-    # ============================================================
-
-    log("")
-    log("============================================================")
-    log("ENVIANDO POST HTTP PARA O E-DESK")
-    log("============================================================")
-
-    try:
-
-        resultado = page.evaluate(
-            """
-            async () => {
-
-                const form =
-                    document.querySelector('form#frmF')
-                    || document.querySelector('form');
-
-                if (!form) {
-
-                    throw new Error(
-                        'Formulário WebForms não encontrado.'
-                    );
-
-                }
-
-                /*
-                 * Copia o formulário exatamente como está
-                 * no navegador.
-                 */
-
-                const formData = new FormData(form);
-
-                const body =
-                    new URLSearchParams();
-
-                for (
-                    const [chave, valor]
-                    of formData.entries()
-                ) {
-
-                    body.append(
-                        chave,
-                        valor
-                    );
-
-                }
-
-                /*
-                 * Configuração identificada no HAR
-                 * da operação Salvar.
-                 */
-
-                body.set(
-                    'ctl00$scmF',
-                    'ctl00$cph1$uppG|ctl00$cph1$BtAtu'
-                );
-
-                body.set(
-                    '__EVENTTARGET',
-                    ''
-                );
-
-                body.set(
-                    '__EVENTARGUMENT',
-                    ''
-                );
-
-                body.set(
-                    '__LASTFOCUS',
-                    ''
-                );
-
-                body.set(
-                    '__ASYNCPOST',
-                    'true'
-                );
-
-                body.set(
-                    'ctl00$cph1$BtAtu',
-                    'Salvar'
-                );
-
-                /*
-                 * Executa o POST usando a própria sessão
-                 * autenticada do navegador.
-                 */
-
-                const resposta = await fetch(
-                    window.location.href,
-                    {
-
-                        method: 'POST',
-
-                        credentials: 'include',
-
-                        headers: {
-
-                            'Content-Type':
-                                'application/x-www-form-urlencoded; charset=UTF-8',
-
-                            'X-MicrosoftAjax':
-                                'Delta=true',
-
-                            'X-Requested-With':
-                                'XMLHttpRequest'
-
-                        },
-
-                        body: body.toString()
-
-                    }
-                );
-
-                const texto =
-                    await resposta.text();
-
-                return {
-
-                    ok:
-                        resposta.ok,
-
-                    status:
-                        resposta.status,
-
-                    statusText:
-                        resposta.statusText,
-
-                    tamanho:
-                        texto.length,
-
-                    resposta:
-                        texto.substring(
-                            0,
-                            5000
-                        )
-
-                };
-
-            }
-            """
-        )
-
-    except Exception as erro:
-
-        raise RuntimeError(
-            f"Erro ao enviar POST HTTP "
-            f"da HORA {indice_hora}: {erro}"
-        )
-
-    # ============================================================
-    # 10. VALIDA A RESPOSTA HTTP
-    # ============================================================
-
-    status = resultado.get(
-        "status"
-    )
-
-    resposta = str(
-        resultado.get(
-            "resposta",
-            "",
-        )
-        or ""
-    )
-
-    tamanho_resposta = resultado.get(
-        "tamanho",
-        0,
-    )
-
-    log("")
-    log(
-        f"Resposta HTTP do E-Desk: "
-        f"{status}"
-    )
-
-    log(
-        f"Tamanho da resposta: "
-        f"{tamanho_resposta} bytes"
-    )
-
-    if not resultado.get("ok"):
-
-        raise RuntimeError(
-            f"E-Desk retornou HTTP "
-            f"{status} ao salvar "
-            f"a HORA {indice_hora}."
-        )
-
-    # ============================================================
-    # ASP.NET AJAX pode retornar HTTP 200 mesmo quando ocorreu
-    # erro do servidor.
-    # ============================================================
-
-    resposta_lower = resposta.lower()
-
-    if "|error|" in resposta_lower:
-
-        raise RuntimeError(
-            f"E-Desk retornou erro WebForms "
-            f"ao salvar a HORA {indice_hora}. "
-            f"Resposta: {resposta[:700]}"
-        )
-
-    log("")
-    log(
-        "POST HTTP aceito pelo E-Desk."
-    )
-
-    # ============================================================
-    # 11. RECARREGA A TELA
-    #
-    # Não confiamos somente no HTTP 200.
-    # Recarregamos TrabalhoRetroativo para consultar o estado
-    # persistido pelo servidor.
-    # ============================================================
-
-    log("")
-    log(
-        "Recarregando TrabalhoRetroativo "
-        "para confirmar a gravação..."
-    )
-
-    try:
-
-        page.reload(
-            wait_until="domcontentloaded",
-            timeout=30000,
-        )
-
-    except Exception as erro:
-
-        raise RuntimeError(
-            f"O POST retornou HTTP {status}, "
-            f"mas não foi possível recarregar "
-            f"a tela para confirmar "
-            f"a HORA {indice_hora}: {erro}"
-        )
-
-    # ============================================================
-    # 12. CONFIRMA NA TABELA
-    # ============================================================
-
-    log("")
-    log("============================================================")
-    log(
-        f"VERIFICANDO REGISTRO "
-        f"DA HORA {indice_hora}"
-    )
-    log("============================================================")
-
-    try:
-
-        tabela = page.locator(
-            "#cph1_gvwTempos"
-        )
-
-        tabela.wait_for(
-            state="visible",
-            timeout=10000,
-        )
-
-        texto_tabela = tabela.inner_text(
-            timeout=5000
-        ).strip()
-
-        log("")
-        log(
-            "CONTEÚDO DA TABELA DE HORAS:"
-        )
-
-        log(texto_tabela)
-
-        encontrou_horario = (
-            inicio in texto_tabela
-            or fim in texto_tabela
-        )
-
-        if not encontrou_horario:
-
+    valores_esperados = {
+        "Data": (campo_data, data),
+        "Início": (campo_inicio, inicio),
+        "Fim": (campo_fim, fim),
+        "Tipo": (campo_tipo, tipo),
+        "Descritivo": (campo_rea, trabalho_realizado),
+    }
+
+    for nome, (elemento, esperado) in valores_esperados.items():
+        valor_atual = elemento.input_value()
+        if nome != "Descritivo":
+            valor_atual = valor_atual.strip()
+        log(f"{nome}: {valor_atual}")
+        if valor_atual != esperado:
             raise RuntimeError(
-                f"O POST da HORA {indice_hora} "
-                f"retornou HTTP {status}, "
-                "mas o horário não apareceu "
-                "na tabela após recarregar."
+                f"Conferência da HORA {indice_hora} falhou antes do envio: "
+                f"campo '{nome}' ficou com valor diferente do solicitado."
             )
 
-    except RuntimeError:
-
-        raise
-
-    except Exception as erro:
-
-        raise RuntimeError(
-            f"Não foi possível confirmar "
-            f"a HORA {indice_hora} "
-            f"na tabela após o POST: {erro}"
-        )
-
     # ============================================================
-    # 13. SUCESSO
+    # 9. SALVAMENTO PELA INTERFACE ORIGINAL DO E-DESK
+    # Trata exclusivamente a confirmação de apontamento > 4 horas.
     # ============================================================
+    log("Clicando no botão Salvar do E-Desk...")
+    requisicoes_salvar = set()
+    respostas_salvar = []
+    confirmacoes = []
 
-    log("")
-    log("****************************************")
-    log(
-        f"HORA {indice_hora} "
-        "SALVA COM SUCESSO VIA HTTP"
-    )
-    log("****************************************")
-    log("")
+    def registrar_requisicao(requisicao):
+        try:
+            if (
+                "TrabalhoRetroativo.aspx" not in requisicao.url
+                or requisicao.method != "POST"
+            ):
+                return
+
+            dados_post = parse_qs(
+                requisicao.post_data or "",
+                keep_blank_values=True,
+            )
+            targets = dados_post.get("__EVENTTARGET", [])
+            controles = [
+                chave
+                for chave in dados_post
+                if "BtAtu" in chave
+                or "HiddenButton" in chave
+                or chave == "CustomPostBack"
+            ]
+            if any(
+                identificador in alvo
+                for alvo in targets
+                for identificador in ("BtAtu", "HiddenButton", "CustomPostBack")
+            ) or controles:
+                requisicoes_salvar.add(
+                    (requisicao.url, requisicao.post_data or "")
+                )
+                log(
+                    "POST do comando Salvar/Confirmação detectado "
+                    f"(controles={controles or targets})."
+                )
+        except Exception as erro:
+            log(f"Não foi possível classificar POST do salvamento: {erro}")
+
+    def registrar_resposta(resposta):
+        try:
+            chave_requisicao = (
+                resposta.request.url,
+                resposta.request.post_data or "",
+            )
+            if chave_requisicao in requisicoes_salvar:
+                respostas_salvar.append(resposta)
+        except Exception:
+            log("Não foi possível associar a resposta ao POST de salvamento.")
+
+    def tratar_dialogo(dialogo):
+        mensagem = dialogo.message or ""
+        log(f"Diálogo do navegador: {mensagem}")
+        if "4 horas" in mensagem.lower() and "apontamento" in mensagem.lower():
+            confirmacoes.append("nativo")
+            dialogo.accept()
+        else:
+            dialogo.dismiss()
+            raise RuntimeError(f"Confirmação inesperada do E-Desk: {mensagem}")
+
+    page.on("request", registrar_requisicao)
+    page.on("response", registrar_resposta)
+    page.on("dialog", tratar_dialogo)
+    try:
+        botao = page.locator("#cph1_BtAtu").first
+        botao.wait_for(state="visible", timeout=15000)
+        botao.click(timeout=15000)
+
+        # O E-Desk pode apresentar uma confirmação Telerik em HTML.
+        # Só confirmamos se o texto indicar explicitamente > 4 horas.
+        for tentativa in range(60):
+            page.wait_for_timeout(300)
+            confirmou = False
+            if "telerik" not in confirmacoes:
+                confirmou = page.evaluate("""() => {
+                const visivel = e => {
+                    const s = getComputedStyle(e);
+                    return s.display !== 'none' && s.visibility !== 'hidden'
+                        && e.getBoundingClientRect().width > 0;
+                };
+                const caixas = [...document.querySelectorAll(
+                    '.rwWindow, .radalert, .radconfirm, [role="dialog"], .TelerikModalOverlay'
+                )].filter(visivel);
+                const caixa = caixas.find(e => /apontamento de tempo maior que 4 horas/i.test(e.innerText || ''));
+                if (!caixa) return false;
+                const botoes = [...document.querySelectorAll('button, input[type="button"], a')]
+                    .filter(visivel);
+                const sim = botoes.find(e => {
+                    const t = (e.innerText || e.value || e.title || '').trim();
+                    return /^sim$/i.test(t) && (caixa.contains(e) ||
+                        (e.closest('.rwWindow, [role="dialog"]') === caixa));
+                });
+                if (!sim) return false;
+                sim.click();
+                return true;
+            }""")
+            if confirmou:
+                confirmacoes.append("telerik")
+                log("Confirmação de mais de 4 horas: SIM.")
+                continue
+            if respostas_salvar:
+                break
+
+        inicio_espera_resposta = time.time()
+        while not respostas_salvar and time.time() - inicio_espera_resposta < 20:
+            page.wait_for_timeout(250)
+
+        if not respostas_salvar:
+            raise RuntimeError(
+                f"Nenhuma resposta ao POST do comando Salvar foi observada "
+                f"para a HORA {indice_hora}. O bot não repetirá o envio para "
+                "evitar cadastrar a mesma hora duas vezes."
+            )
+        resposta = respostas_salvar[-1]
+        if not resposta.ok:
+            raise RuntimeError(
+                f"E-Desk retornou HTTP {resposta.status} ao salvar a HORA {indice_hora}."
+            )
+        texto = resposta.text()
+        if "|error|" in texto.lower():
+            raise RuntimeError(
+                f"E-Desk retornou erro ASP.NET na HORA {indice_hora}: {texto[:500]}"
+            )
+        log(f"POST do E-Desk concluído: HTTP {resposta.status}.")
+        if confirmacoes:
+            log("Confirmação de mais de 4 horas tratada.")
+        log("ATENÇÃO: HTTP 200 não comprova, sozinho, persistência da hora.")
+    finally:
+        page.remove_listener("request", registrar_requisicao)
+        page.remove_listener("response", registrar_resposta)
+        page.remove_listener("dialog", tratar_dialogo)
+
+    # Mantém a tela aberta para a próxima hora do mesmo trabalho.
+    # Não recarrega a página nem exige a tabela opcional gvwTempos.
+    log(f"HORA {indice_hora}: operação de salvamento concluída na interface.")
 
     return True
 
@@ -2181,6 +2105,7 @@ def main():
 
     log(f"Modo envio: {enviar}")
     log(f"Manter navegador aberto: {manter_navegador_aberto}")
+    log(f"Arquivo de log desta execução: {RUN_LOG_PATH}")
     log("============================================================")
     log("")
 
@@ -2189,6 +2114,9 @@ def main():
 
     playwright = None
     context = None
+    page = None
+    pagina_hora_em_processamento = None
+    indice_hora_em_processamento = None
 
     try:
         playwright = sync_playwright().start()
@@ -2351,106 +2279,87 @@ def main():
 
                 continue
 
-            # ========================================================
-            # CADA HORA COMEÇA NOVAMENTE PELA GRID
-            # ========================================================
+            # Abre a solicitação/trabalho uma única vez para todas as horas.
+            # O retorno à Grid acontece apenas depois da última hora.
+            acessar_minha_grid(page, guid_sessao)
+            indice_hora = 1
+            # ----------------------------------------------------
+            # 2. IDENTIFICA A ATIVIDADE DESTA HORA
+            # ----------------------------------------------------
 
-            for indice_hora, hora in enumerate(
-                horas,
-                start=1
+            atividade_alvo = ""
+
+            if isinstance(horas[0], dict):
+                atividade_alvo = str(
+                    horas[0].get("tarefa", "") or ""
+                ).strip()
+
+            log(
+                f"ATIVIDADE ALVO: "
+                f"{atividade_alvo or '[NÃO INFORMADA]'}"
+            )
+
+            # ----------------------------------------------------
+            # 3. PESQUISA NOVAMENTE A SOLICITAÇÃO
+            #
+            # localizar_solicitacao já utiliza o campo Pesquisar
+            # da Grid.
+            # ----------------------------------------------------
+
+            (
+                pagina_grid,
+                linha_grid,
+                pagina_solicitacao_preaberta,
+            ) = localizar_solicitacao(
+                page,
+                context,
+                solicitacao,
+                atividade_alvo
+            )
+
+            if pagina_grid is None or (
+                linha_grid is None
+                and pagina_solicitacao_preaberta is None
             ):
-
-                log("")
-                log("============================================================")
-                log(
-                    f"INICIANDO HORA "
-                    f"{indice_hora} DE {total_horas}"
-                )
-                log("============================================================")
-                log(f"SOLICITAÇÃO: {solicitacao}")
-                log(f"TRABALHO: {id_trabalho}")
-                log("")
-
-                # ----------------------------------------------------
-                # 1. GARANTE QUE ESTAMOS NA GRID
-                # ----------------------------------------------------
-
-                log(
-                    "VOLTANDO PARA A GRID ANTES "
-                    "DE PROCESSAR A HORA..."
+                raise RuntimeError(
+                    f"Solicitação {solicitacao} "
+                    f"não encontrada na Grid "
+                    "ao abrir o trabalho."
                 )
 
-                acessar_minha_grid(
-                    page,
-                    guid_sessao
+            # ----------------------------------------------------
+            # 4. ABRE NOVAMENTE SOLICITAÇÃO / TRABALHO
+            # ----------------------------------------------------
+
+            log("")
+            log(
+                "ABRINDO SOLICITAÇÃO / "
+                "TRABALHO PARA ESTA HORA..."
+            )
+
+            pagina_final = abrir_trabalho(
+                pagina_grid,
+                context,
+                linha_grid,
+                solicitacao,
+                id_trabalho,
+                pagina_solicitacao_preaberta
+            )
+
+            if pagina_final is None:
+                raise RuntimeError(
+                    f"Não foi possível abrir o trabalho "
+                    f"{id_trabalho} da solicitação "
+                    f"{solicitacao} para a "
+                    "aberto."
                 )
 
-                # ----------------------------------------------------
-                # 2. IDENTIFICA A ATIVIDADE DESTA HORA
-                # ----------------------------------------------------
+            # A partir daqui usamos SOMENTE a página
+            # retornada para esta hora.
+            pagina_hora = pagina_final
 
-                atividade_alvo = ""
-
-                if isinstance(hora, dict):
-                    atividade_alvo = str(
-                        hora.get("tarefa", "") or ""
-                    ).strip()
-
-                log(
-                    f"ATIVIDADE ALVO: "
-                    f"{atividade_alvo or '[NÃO INFORMADA]'}"
-                )
-
-                # ----------------------------------------------------
-                # 3. PESQUISA NOVAMENTE A SOLICITAÇÃO
-                #
-                # localizar_solicitacao já utiliza o campo Pesquisar
-                # da Grid.
-                # ----------------------------------------------------
-
-                linha_grid = localizar_solicitacao(
-                    page,
-                    solicitacao,
-                    atividade_alvo
-                )
-
-                if linha_grid is None:
-                    raise RuntimeError(
-                        f"Solicitação {solicitacao} "
-                        f"não encontrada na Grid "
-                        f"para a HORA {indice_hora}."
-                    )
-
-                # ----------------------------------------------------
-                # 4. ABRE NOVAMENTE SOLICITAÇÃO / TRABALHO
-                # ----------------------------------------------------
-
-                log("")
-                log(
-                    "ABRINDO SOLICITAÇÃO / "
-                    "TRABALHO PARA ESTA HORA..."
-                )
-
-                pagina_final = abrir_trabalho(
-                    page,
-                    context,
-                    linha_grid,
-                    solicitacao,
-                    id_trabalho
-                )
-
-                if pagina_final is None:
-                    raise RuntimeError(
-                        f"Não foi possível abrir o trabalho "
-                        f"{id_trabalho} da solicitação "
-                        f"{solicitacao} para a "
-                        f"HORA {indice_hora}."
-                    )
-
-                # A partir daqui usamos SOMENTE a página
-                # retornada para esta hora.
-                pagina_hora = pagina_final
-
+            for indice_hora, hora in enumerate(horas, start=1):
+                log(f"PROCESSANDO HORA {indice_hora} DE {total_horas} NO MESMO TRABALHO")
                 # ----------------------------------------------------
                 # 5. SALVA SOMENTE ESTA HORA
                 # ----------------------------------------------------
@@ -2461,6 +2370,8 @@ def main():
                     f"{indice_hora} DE {total_horas}"
                 )
 
+                pagina_hora_em_processamento = pagina_hora
+                indice_hora_em_processamento = indice_hora
                 sucesso_hora = salvar_hora(
                     pagina_hora,
                     hora,
@@ -2485,59 +2396,23 @@ def main():
                 log("****************************************")
                 log("")
 
-                # ----------------------------------------------------
-                # 6. TERMINOU A HORA.
-                #
-                # NÃO reutilizamos a tela TrabalhoRetroativo.
-                # NÃO reutilizamos a tela Trabalho.
-                # NÃO reutilizamos a Solicitação.
-                #
-                # A mesma página é levada diretamente de volta
-                # para a Grid usando o GUID autenticado.
-                # ----------------------------------------------------
-
-                log(
-                    "HORA FINALIZADA. "
-                    "FECHANDO O FLUXO DA SOLICITAÇÃO "
-                    "E RETORNANDO PARA A GRID..."
-                )
-
+            # Encerra páginas temporárias apenas após TODAS as horas.
+            for pagina_aberta in list(context.pages):
                 try:
+                    if pagina_aberta is page or pagina_aberta.is_closed():
+                        continue
+                    url_temporaria = pagina_aberta.url or ""
+                    if any(nome in url_temporaria for nome in (
+                        "Solicitacao.aspx", "Trabalho.aspx", "TrabalhoRetroativo.aspx"
+                    )):
+                        pagina_aberta.close()
+                except Exception as erro_fechamento:
+                    log(f"Aviso ao fechar página temporária: {erro_fechamento}")
 
-                    acessar_minha_grid(
-                        pagina_hora,
-                        guid_sessao
-                    )
+            if page.is_closed():
+                raise RuntimeError("A página principal da Grid foi fechada.")
+            acessar_minha_grid(page, guid_sessao)
 
-                    # A página principal passa a ser novamente
-                    # a Grid.
-                    page = pagina_hora
-
-                    log(
-                        "RETORNO PARA A GRID "
-                        "CONCLUÍDO COM SUCESSO."
-                    )
-
-                except Exception as erro:
-
-                    raise RuntimeError(
-                        f"A HORA {indice_hora} foi salva, "
-                        f"mas não foi possível retornar "
-                        f"para a Grid: {erro}"
-                    )
-
-                log("")
-                log(
-                    f"CICLO DA HORA {indice_hora} "
-                    f"ENCERRADO."
-                )
-                log("")
-
-            # ========================================================
-            # TRABALHO CONCLUÍDO
-            # ========================================================
-
-            log("")
             log("############################################################")
             log(
                 f"TRABALHO {indice_trabalho} "
@@ -2586,7 +2461,49 @@ def main():
         log(f"{erro}")
 
         import traceback
-        traceback.print_exc()
+        traceback_texto = traceback.format_exc()
+        log(traceback_texto)
+
+        pagina_diagnostico = pagina_hora_em_processamento
+        if pagina_diagnostico is None and context is not None:
+            for pagina in reversed(context.pages):
+                try:
+                    if not pagina.is_closed():
+                        pagina_diagnostico = pagina
+                        break
+                except Exception:
+                    continue
+
+        if pagina_diagnostico is not None:
+            sufixo_hora = (
+                f"_hora_{indice_hora_em_processamento}"
+                if indice_hora_em_processamento is not None
+                else "_abertura"
+            )
+            identificador = (
+                f"{time.strftime('%Y%m%d_%H%M%S')}{sufixo_hora}"
+            )
+            screenshot_path = LOGS_PATH / f"edesk_erro_{identificador}.png"
+            html_path = LOGS_PATH / f"edesk_erro_{identificador}.html"
+
+            try:
+                pagina_diagnostico.screenshot(
+                    path=str(screenshot_path),
+                    full_page=True,
+                    timeout=15000,
+                )
+                log(f"Captura da falha salva em: {screenshot_path}")
+            except Exception as erro_screenshot:
+                log(f"Não foi possível salvar captura da falha: {erro_screenshot}")
+
+            try:
+                html_path.write_text(
+                    pagina_diagnostico.content(),
+                    encoding="utf-8",
+                )
+                log(f"HTML da tela com falha salvo em: {html_path}")
+            except Exception as erro_html:
+                log(f"Não foi possível salvar HTML da falha: {erro_html}")
 
         if (
             context is not None

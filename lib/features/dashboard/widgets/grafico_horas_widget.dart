@@ -136,17 +136,17 @@ class GraficoHorasWidget extends StatelessWidget {
           ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: Colors.white.withOpacity(0.065),
+            color: Colors.white.withValues(alpha: 0.065),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.42),
+              color: Colors.black.withValues(alpha: 0.42),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
             BoxShadow(
-              color: const Color(0xFF0099FF).withOpacity(0.035),
+              color: const Color(0xFF0099FF).withValues(alpha: 0.035),
               blurRadius: 30,
               spreadRadius: 1,
             ),
@@ -170,13 +170,13 @@ class GraficoHorasWidget extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFF0099FF).withOpacity(0.18),
-                        const Color(0xFF0099FF).withOpacity(0.055),
+                        const Color(0xFF0099FF).withValues(alpha: 0.18),
+                        const Color(0xFF0099FF).withValues(alpha: 0.055),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: const Color(0xFF0099FF).withOpacity(0.18),
+                      color: const Color(0xFF0099FF).withValues(alpha: 0.18),
                     ),
                   ),
                   child: const Icon(
@@ -214,7 +214,7 @@ class GraficoHorasWidget extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.38),
+                          color: Colors.white.withValues(alpha: 0.38),
                           fontSize: 8.5,
                           fontWeight: FontWeight.w500,
                         ),
@@ -279,7 +279,7 @@ class GraficoHorasWidget extends StatelessWidget {
                 Text(
                   'Clique em um dia para ver os apontamentos',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.34),
+                    color: Colors.white.withValues(alpha: 0.34),
                     fontSize: 7.5,
                     fontWeight: FontWeight.w500,
                   ),
@@ -291,14 +291,14 @@ class GraficoHorasWidget extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.trending_up_rounded,
-                        color: const Color(0xFF55C4FF).withOpacity(0.75),
+                        color: const Color(0xFF55C4FF).withValues(alpha: 0.75),
                         size: 11,
                       ),
                       const SizedBox(width: 3),
                       Text(
                         'Pico ${formatHours(highestPoint.hours)}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.38),
+                          color: Colors.white.withValues(alpha: 0.38),
                           fontSize: 7.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -319,9 +319,9 @@ class GraficoHorasWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.white.withOpacity(0.00),
-                    Colors.white.withOpacity(0.055),
-                    Colors.white.withOpacity(0.00),
+                    Colors.white.withValues(alpha: 0.00),
+                    Colors.white.withValues(alpha: 0.055),
+                    Colors.white.withValues(alpha: 0.00),
                   ],
                 ),
               ),
@@ -387,7 +387,7 @@ class GraficoHorasWidget extends StatelessWidget {
                         bottom: 17,
                         child: Container(
                           height: 1,
-                          color: Colors.white.withOpacity(0.055),
+                          color: Colors.white.withValues(alpha: 0.055),
                         ),
                       ),
 
@@ -434,9 +434,9 @@ class GraficoHorasWidget extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Colors.white.withOpacity(0.00),
-              Colors.white.withOpacity(opacity),
-              Colors.white.withOpacity(0.00),
+              Colors.white.withValues(alpha: 0.00),
+              Colors.white.withValues(alpha: opacity),
+              Colors.white.withValues(alpha: 0.00),
             ],
           ),
         ),
@@ -471,10 +471,10 @@ class _HoursSummary extends StatelessWidget {
         vertical: 6,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.065),
+        color: color.withValues(alpha: 0.065),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: color.withOpacity(0.14),
+          color: color.withValues(alpha: 0.14),
         ),
       ),
       child: Column(
@@ -496,7 +496,7 @@ class _HoursSummary extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.35),
+              color: Colors.white.withValues(alpha: 0.35),
               fontSize: 6.2,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.6,
@@ -616,11 +616,11 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
             color: const Color(0xFF20232B),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.40),
+                color: Colors.black.withValues(alpha: 0.40),
                 blurRadius: 14,
                 offset: const Offset(0, 5),
               ),
@@ -651,7 +651,7 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
                         ? Colors.white
                         : (point.isHighlighted
                             ? const Color(0xFFFFC400)
-                            : Colors.white.withOpacity(0.62)),
+                            : Colors.white.withValues(alpha: 0.62)),
                     fontSize: _isHovered ? 9.5 : 8.5,
                     fontWeight: _isHovered ? FontWeight.w800 : FontWeight.w600,
                     height: 1,
@@ -698,13 +698,13 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
                               width: _isHovered ? 13 : 9,
                               height: trackHeight,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(
-                                  _isHovered ? 0.05 : 0.022,
+                                color: Colors.white.withValues(
+                                  alpha: _isHovered ? 0.05 : 0.022,
                                 ),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(
-                                    _isHovered ? 0.055 : 0.018,
+                                  color: Colors.white.withValues(
+                                    alpha: _isHovered ? 0.055 : 0.018,
                                   ),
                                 ),
                               ),
@@ -757,25 +757,25 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
                                               ],
                                       ),
                                 color: isZero
-                                    ? Colors.white.withOpacity(
-                                        0.10,
+                                    ? Colors.white.withValues(
+                                        alpha: 0.10,
                                       )
                                     : null,
                                 border: Border.all(
                                   color: isZero
-                                      ? Colors.white.withOpacity(
-                                          0.055,
+                                      ? Colors.white.withValues(
+                                          alpha: 0.055,
                                         )
-                                      : Colors.white.withOpacity(
-                                          _isHovered ? 0.32 : 0.11,
+                                      : Colors.white.withValues(
+                                          alpha: _isHovered ? 0.32 : 0.11,
                                         ),
                                   width: 0.7,
                                 ),
                                 boxShadow: _isHovered || point.isHighlighted
                                     ? [
                                         BoxShadow(
-                                          color: currentBarColor.withOpacity(
-                                            _isHovered ? 0.65 : 0.42,
+                                          color: currentBarColor.withValues(
+                                            alpha: _isHovered ? 0.65 : 0.42,
                                           ),
                                           blurRadius: _isHovered ? 15 : 9,
                                           spreadRadius: _isHovered ? 2 : 1,
@@ -783,8 +783,8 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
                                       ]
                                     : [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(
-                                            0.18,
+                                          color: Colors.black.withValues(
+                                            alpha: 0.18,
                                           ),
                                           blurRadius: 3,
                                           offset: const Offset(
@@ -811,8 +811,8 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
                                   bottom: 1,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(
-                                    _isHovered ? 0.78 : 0.36,
+                                  color: Colors.white.withValues(
+                                    alpha: _isHovered ? 0.78 : 0.36,
                                   ),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -835,14 +835,15 @@ class _InteractiveBarItemState extends State<_InteractiveBarItem> {
                                     color: const Color(0xFFFFC400),
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.70),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.70),
                                       width: 0.7,
                                     ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: const Color(
                                           0xFFFFC400,
-                                        ).withOpacity(0.60),
+                                        ).withValues(alpha: 0.60),
                                         blurRadius: 7,
                                         spreadRadius: 1,
                                       ),

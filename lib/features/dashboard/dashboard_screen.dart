@@ -1,10 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
@@ -55,9 +51,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
   // FOTO DE PERFIL
   // ============================================================
-
-  ImageProvider? _fotoPerfilProvider;
-  bool _carregandoFoto = true;
 
   // ============================================================
   // FILTROS
@@ -143,6 +136,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Timer? _timer;
   int _secondsElapsed = 0;
+  bool _startingTimer = false;
+  Future<void>? _stoppingTimer;
 
   // ============================================================
   // INPUT DECORATION
@@ -254,99 +249,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
 
-    _carregarFotoDoFirestore();
     _loadDataFromFirebase(showLoader: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedIndex != 0 && widget.selectedIndex == 0) {
+      unawaited(_loadDataFromFirebase());
+    }
   }
 
   // ============================================================
   // FOTO DE PERFIL
-  // ============================================================
-
-  Future<void> _carregarFotoDoFirestore() async {
-    try {
-      final User? user = FirebaseAuth.instance.currentUser;
-
-      if (user != null) {
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-
-        if (doc.exists && doc.data()?['photoBase64'] != null) {
-          final String base64Str = doc.data()!['photoBase64'];
-          final bytes = base64Decode(base64Str);
-
-          if (mounted) {
-            setState(() {
-              _fotoPerfilProvider = MemoryImage(bytes);
-            });
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Erro ao carregar foto: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _carregandoFoto = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _alterarFotoPerfil() async {
-    final ImagePicker picker = ImagePicker();
-
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 300,
-      maxHeight: 300,
-      imageQuality: 70,
-    );
-
-    if (image == null) {
-      return;
-    }
-
-    try {
-      final User? user = FirebaseAuth.instance.currentUser;
-
-      if (user != null) {
-        final bytes = await image.readAsBytes();
-        final String base64Image = base64Encode(bytes);
-
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-          {
-            'photoBase64': base64Image,
-          },
-          SetOptions(merge: true),
-        );
-
-        if (mounted) {
-          setState(() {
-            _fotoPerfilProvider = MemoryImage(bytes);
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto alterada com sucesso!'),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao alterar foto: $e'),
-          ),
-        );
-      }
-    }
-  }
-
-  // ============================================================
-  // DISPOSE
   // ============================================================
 
   @override
@@ -530,14 +445,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _startTimer(String targetId) {
+  Future<void> _startTimer(String targetId) async {
+    if (_startingTimer || !mounted) return;
+    _startingTimer = true;
+    try {
+      if (_stoppingTimer != null) await _stoppingTimer;
+      if (!mounted) return;
+      await _startTimerForTarget(targetId);
+    } finally {
+      _startingTimer = false;
+    }
+  }
+
+  Future<void> _startTimerForTarget(String targetId) async {
     // ----------------------------------------------------------
     // NOVO TRABALHO
     // ----------------------------------------------------------
 
     if (_activeTimerTargetId != targetId) {
       if (_activeTimerTargetId != null) {
-        unawaited(_stopTimer());
+        await _stopTimer();
+        if (!mounted || _activeTimerTargetId != null) return;
       }
 
       final now = DateTime.now();
@@ -628,6 +556,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
 
   void _pauseTimer() {
+    if (_stoppingTimer != null) return;
     if (_activeTimerTargetId == null) {
       return;
     }
@@ -682,7 +611,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // FINALIZAR CRONÔMETRO
   // ============================================================
 
-  Future<void> _stopTimer() async {
+  Future<void> _stopTimer() {
+    return _stoppingTimer ??= _stopTimerAndRelease();
+  }
+
+  Future<void> _stopTimerAndRelease() async {
+    try {
+      await _stopTimerImpl();
+    } finally {
+      _stoppingTimer = null;
+    }
+  }
+
+  Future<void> _stopTimerImpl() async {
     _timer?.cancel();
     _timer = null;
 
@@ -771,7 +712,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           }
         } catch (e) {
+          // Preserve the unsaved segment so stopping can be retried.
+          _accumulatedWorkedSeconds = totalSeconds;
+          _secondsElapsed = totalSeconds;
+          _segmentStartTime = null;
+          _timerState = TimerState.paused;
           if (mounted) {
+            setState(() {});
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -785,6 +732,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             );
           }
+          return;
         }
       }
 
@@ -972,7 +920,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0099FF).withOpacity(0.12),
+                  color: const Color(0xFF0099FF).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -1011,10 +959,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0099FF).withOpacity(0.12),
+                  color: const Color(0xFF0099FF).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: const Color(0xFF0099FF).withOpacity(0.25),
+                    color: const Color(0xFF0099FF).withValues(alpha: 0.25),
                   ),
                 ),
                 child: Text(
@@ -1040,7 +988,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           width: 56,
                           height: 56,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.05),
+                            color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(
@@ -1077,10 +1025,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           vertical: 9,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.12),
+                          color: Colors.black.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: CoresApp.borda.withOpacity(0.7),
+                            color: CoresApp.borda.withValues(alpha: 0.7),
                           ),
                         ),
                         child: Row(
@@ -1131,7 +1079,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 color: CoresDashboard.fundoSecundario,
                                 borderRadius: BorderRadius.circular(11),
                                 border: Border.all(
-                                  color: CoresApp.borda.withOpacity(0.7),
+                                  color: CoresApp.borda.withValues(alpha: 0.7),
                                 ),
                               ),
                               child: Row(
@@ -1142,7 +1090,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     height: 34,
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF0099FF)
-                                          .withOpacity(0.10),
+                                          .withValues(alpha: 0.10),
                                       borderRadius: BorderRadius.circular(9),
                                     ),
                                     child: const Icon(
@@ -1217,7 +1165,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                               decoration: BoxDecoration(
                                                 color: const Color(
                                                   0xFF0099FF,
-                                                ).withOpacity(0.10),
+                                                ).withValues(alpha: 0.10),
                                                 borderRadius:
                                                     BorderRadius.circular(6),
                                               ),
@@ -1361,7 +1309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: Colors.white.withOpacity(0.16),
+                  color: Colors.white.withValues(alpha: 0.16),
                 ),
               ),
               title: const Row(
@@ -1724,7 +1672,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       project,
                     );
 
-                    if (context.mounted) {
+                    if (mounted && context.mounted) {
                       Navigator.of(context).pop();
 
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1976,7 +1924,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       project,
                     );
 
-                    if (context.mounted) {
+                    if (mounted && context.mounted) {
                       Navigator.of(context).pop();
 
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -2135,7 +2083,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   log.id = logId;
                   widget.timeLogStore.add(log);
 
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2154,7 +2102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2474,7 +2422,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 try {
                   await widget.timeLogStore.deleteFirebaseLog(log);
 
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2493,7 +2441,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2599,7 +2547,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 try {
                   await _firebaseService.deleteProject(project.id);
 
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2618,7 +2566,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2723,7 +2671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 try {
                   await _firebaseService.saveProject(project);
 
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2742,7 +2690,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted) {
                     return;
                   }
 
@@ -2885,9 +2833,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
 
-      if (_selectedTargetId == null) {
-        _selectedTargetId = projectWithSubtasks.id;
-      }
+      _selectedTargetId ??= projectWithSubtasks.id;
     });
 
     // ============================================================
@@ -3132,22 +3078,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CoresDashboard.card.withOpacity(0.98),
-            CoresDashboard.fundoSecundario.withOpacity(0.96),
+            CoresDashboard.card.withValues(alpha: 0.98),
+            CoresDashboard.fundoSecundario.withValues(alpha: 0.96),
           ],
         ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.9),
+          color: CoresApp.borda.withValues(alpha: 0.9),
           width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.20),
+            color: Colors.black.withValues(alpha: 0.20),
             blurRadius: 28,
             offset: const Offset(0, 10),
           ),
           BoxShadow(
-            color: CoresApp.primaria.withOpacity(0.035),
+            color: CoresApp.primaria.withValues(alpha: 0.035),
             blurRadius: 30,
             spreadRadius: 1,
           ),
@@ -3304,7 +3250,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: CoresApp.destaque.withOpacity(0.25),
+                color: CoresApp.destaque.withValues(alpha: 0.25),
                 blurRadius: 16,
                 spreadRadius: 1,
               ),
@@ -3321,17 +3267,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                CoresApp.primaria.withOpacity(0.26),
-                CoresApp.destaque.withOpacity(0.08),
+                CoresApp.primaria.withValues(alpha: 0.26),
+                CoresApp.destaque.withValues(alpha: 0.08),
               ],
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: CoresApp.primaria.withOpacity(0.34),
+              color: CoresApp.primaria.withValues(alpha: 0.34),
             ),
             boxShadow: [
               BoxShadow(
-                color: CoresApp.primaria.withOpacity(0.13),
+                color: CoresApp.primaria.withValues(alpha: 0.13),
                 blurRadius: 18,
                 spreadRadius: 1,
               ),
@@ -3378,10 +3324,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
           decoration: BoxDecoration(
-            color: CoresApp.sucesso.withOpacity(0.09),
+            color: CoresApp.sucesso.withValues(alpha: 0.09),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: CoresApp.sucesso.withOpacity(0.24),
+              color: CoresApp.sucesso.withValues(alpha: 0.24),
             ),
           ),
           child: Row(
@@ -3395,7 +3341,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: CoresApp.sucesso.withOpacity(0.45),
+                      color: CoresApp.sucesso.withValues(alpha: 0.45),
                       blurRadius: 7,
                     ),
                   ],
@@ -3456,25 +3402,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
             end: Alignment.bottomRight,
             colors: isSelected
                 ? [
-                    color.withOpacity(0.19),
-                    color.withOpacity(0.08),
+                    color.withValues(alpha: 0.19),
+                    color.withValues(alpha: 0.08),
                   ]
                 : [
-                    CoresDashboard.fundoSecundario.withOpacity(0.98),
-                    CoresDashboard.fundoSecundario.withOpacity(0.78),
+                    CoresDashboard.fundoSecundario.withValues(alpha: 0.98),
+                    CoresDashboard.fundoSecundario.withValues(alpha: 0.78),
                   ],
           ),
           borderRadius: BorderRadius.circular(13),
           border: Border.all(
-            color:
-                isSelected ? color.withOpacity(0.72) : color.withOpacity(0.20),
+            color: isSelected
+                ? color.withValues(alpha: 0.72)
+                : color.withValues(alpha: 0.20),
             width: isSelected ? 1.25 : 0.9,
           ),
           boxShadow: [
             BoxShadow(
               color: isSelected
-                  ? color.withOpacity(0.11)
-                  : Colors.black.withOpacity(0.10),
+                  ? color.withValues(alpha: 0.11)
+                  : Colors.black.withValues(alpha: 0.10),
               blurRadius: isSelected ? 14 : 8,
               offset: const Offset(0, 4),
             ),
@@ -3492,13 +3439,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    color.withOpacity(isSelected ? 0.24 : 0.14),
-                    color.withOpacity(isSelected ? 0.10 : 0.06),
+                    color.withValues(alpha: isSelected ? 0.24 : 0.14),
+                    color.withValues(alpha: isSelected ? 0.10 : 0.06),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(11),
                 border: Border.all(
-                  color: color.withOpacity(0.14),
+                  color: color.withValues(alpha: 0.14),
                 ),
               ),
               child: Icon(
@@ -3554,7 +3501,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: color.withOpacity(0.92),
+                      color: color.withValues(alpha: 0.92),
                       fontSize: 8.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -3865,17 +3812,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CoresDashboard.card.withOpacity(0.995),
-            CoresDashboard.fundoSecundario.withOpacity(0.94),
+            CoresDashboard.card.withValues(alpha: 0.995),
+            CoresDashboard.fundoSecundario.withValues(alpha: 0.94),
           ],
         ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.88),
+          color: CoresApp.borda.withValues(alpha: 0.88),
           width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.20),
+            color: Colors.black.withValues(alpha: 0.20),
             blurRadius: 24,
             offset: const Offset(0, 9),
           ),
@@ -3911,7 +3858,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      CoresApp.primaria.withOpacity(0.07),
+                      CoresApp.primaria.withValues(alpha: 0.07),
                       Colors.transparent,
                     ],
                   ),
@@ -3948,17 +3895,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CoresDashboard.card.withOpacity(0.995),
-            CoresDashboard.fundoSecundario.withOpacity(0.95),
+            CoresDashboard.card.withValues(alpha: 0.995),
+            CoresDashboard.fundoSecundario.withValues(alpha: 0.95),
           ],
         ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.90),
+          color: CoresApp.borda.withValues(alpha: 0.90),
           width: 0.95,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.22),
+            color: Colors.black.withValues(alpha: 0.22),
             blurRadius: 28,
             offset: const Offset(0, 11),
           ),
@@ -3971,10 +3918,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
               decoration: BoxDecoration(
-                color: CoresDashboard.fundoSecundario.withOpacity(0.42),
+                color: CoresDashboard.fundoSecundario.withValues(alpha: 0.42),
                 border: Border(
                   bottom: BorderSide(
-                    color: CoresApp.borda.withOpacity(0.55),
+                    color: CoresApp.borda.withValues(alpha: 0.55),
                   ),
                 ),
               ),
@@ -3985,10 +3932,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     height: 34,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: CoresApp.primaria.withOpacity(0.12),
+                      color: CoresApp.primaria.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: CoresApp.primaria.withOpacity(0.22),
+                        color: CoresApp.primaria.withValues(alpha: 0.22),
                       ),
                     ),
                     child: const Icon(
@@ -4026,10 +3973,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     decoration: BoxDecoration(
-                      color: CoresApp.primaria.withOpacity(0.08),
+                      color: CoresApp.primaria.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: CoresApp.primaria.withOpacity(0.18),
+                        color: CoresApp.primaria.withValues(alpha: 0.18),
                       ),
                     ),
                     child: Text(
@@ -4082,6 +4029,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onStopTimer: _stopTimer,
               onManualTime: _showManualTimeDialog,
               onEditLog: _editLogDialog,
+              onSaveLogDescription: _saveLogDescription,
               onDeleteLog: _confirmDeleteLog,
               onRegisterLog: _handleRegisterLog,
               onMarkTaskCompleted: _handleMarkTaskCompleted,
@@ -4097,6 +4045,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
   // CALLBACKS DA TABELA
   // ============================================================
+
+  Future<void> _saveLogDescription(TimeLog log, String description) async {
+    final previousDescription = log.description;
+    log.description = description;
+    try {
+      await widget.timeLogStore.updateFirebaseLog(log);
+    } catch (_) {
+      log.description = previousDescription;
+      rethrow;
+    }
+  }
 
   Future<void> _handleProjectStatusChanged(
     ProjectModel project,
@@ -4122,7 +4081,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           project,
         );
 
-        if (context.mounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -4138,7 +4097,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -4237,7 +4196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       parent,
     );
 
-    if (context.mounted) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -4266,17 +4225,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CoresDashboard.card.withOpacity(0.995),
-            CoresDashboard.fundoSecundario.withOpacity(0.95),
+            CoresDashboard.card.withValues(alpha: 0.995),
+            CoresDashboard.fundoSecundario.withValues(alpha: 0.95),
           ],
         ),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.88),
+          color: CoresApp.borda.withValues(alpha: 0.88),
           width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withValues(alpha: 0.18),
             blurRadius: 25,
             offset: const Offset(0, 10),
           ),
@@ -4289,10 +4248,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
               decoration: BoxDecoration(
-                color: CoresDashboard.fundoSecundario.withOpacity(0.42),
+                color: CoresDashboard.fundoSecundario.withValues(alpha: 0.42),
                 border: Border(
                   bottom: BorderSide(
-                    color: CoresApp.borda.withOpacity(0.55),
+                    color: CoresApp.borda.withValues(alpha: 0.55),
                   ),
                 ),
               ),
@@ -4303,10 +4262,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     height: 34,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: CoresApp.aviso.withOpacity(0.12),
+                      color: CoresApp.aviso.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: CoresApp.aviso.withOpacity(0.22),
+                        color: CoresApp.aviso.withValues(alpha: 0.22),
                       ),
                     ),
                     child: const Icon(
@@ -4348,7 +4307,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: CoresApp.aviso.withOpacity(0.45),
+                          color: CoresApp.aviso.withValues(alpha: 0.45),
                           blurRadius: 8,
                         ),
                       ],
@@ -4384,16 +4343,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              CoresDashboard.card.withOpacity(0.99),
-              CoresDashboard.fundoSecundario.withOpacity(0.96),
+              CoresDashboard.card.withValues(alpha: 0.99),
+              CoresDashboard.fundoSecundario.withValues(alpha: 0.96),
             ],
           ),
           border: Border.all(
-            color: CoresApp.borda.withOpacity(0.82),
+            color: CoresApp.borda.withValues(alpha: 0.82),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.20),
+              color: Colors.black.withValues(alpha: 0.20),
               blurRadius: 26,
               offset: const Offset(0, 10),
             ),
@@ -4407,9 +4366,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               height: 58,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                color: CoresApp.destaque.withOpacity(0.10),
+                color: CoresApp.destaque.withValues(alpha: 0.10),
                 border: Border.all(
-                  color: CoresApp.destaque.withOpacity(0.18),
+                  color: CoresApp.destaque.withValues(alpha: 0.18),
                 ),
               ),
               alignment: Alignment.center,

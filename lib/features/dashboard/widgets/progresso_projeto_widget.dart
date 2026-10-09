@@ -55,11 +55,11 @@ class ProgressoProjetoWidget extends StatelessWidget {
         color: const Color(0xFF13131A),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.28),
+            color: Colors.black.withValues(alpha: 0.28),
             blurRadius: 14,
             offset: const Offset(0, 5),
           ),
@@ -81,7 +81,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                       width: 23,
                       height: 23,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0099FF).withOpacity(0.12),
+                        color: const Color(0xFF0099FF).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Icon(
@@ -115,7 +115,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.52),
+                      color: Colors.white.withValues(alpha: 0.52),
                       fontSize: 9,
                     ),
                   ),
@@ -128,7 +128,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                     Icon(
                       Icons.date_range_outlined,
                       size: 10,
-                      color: Colors.white.withOpacity(0.35),
+                      color: Colors.white.withValues(alpha: 0.35),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -137,7 +137,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.40),
+                          color: Colors.white.withValues(alpha: 0.40),
                           fontSize: 8,
                         ),
                       ),
@@ -157,10 +157,10 @@ class ProgressoProjetoWidget extends StatelessWidget {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.025),
+                    color: Colors.white.withValues(alpha: 0.025),
                     borderRadius: BorderRadius.circular(7),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.045),
+                      color: Colors.white.withValues(alpha: 0.045),
                     ),
                   ),
                   child: Row(
@@ -208,7 +208,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.40),
+                          color: Colors.white.withValues(alpha: 0.40),
                           fontSize: 8,
                         ),
                       ),
@@ -235,7 +235,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
           Container(
             width: 1,
             margin: const EdgeInsets.symmetric(vertical: 2),
-            color: Colors.white.withOpacity(0.06),
+            color: Colors.white.withValues(alpha: 0.06),
           ),
 
           const SizedBox(width: 8),
@@ -278,7 +278,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                         Text(
                           '${subTasks.length}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.30),
+                            color: Colors.white.withValues(alpha: 0.30),
                             fontSize: 8,
                             fontWeight: FontWeight.w600,
                           ),
@@ -416,8 +416,8 @@ class ProgressoProjetoWidget extends StatelessWidget {
                                                             .ellipsis,
                                                         style: TextStyle(
                                                           color: Colors.white
-                                                              .withOpacity(
-                                                            0.28,
+                                                              .withValues(
+                                                            alpha: 0.28,
                                                           ),
                                                           fontSize: 6.5,
                                                         ),
@@ -452,14 +452,16 @@ class ProgressoProjetoWidget extends StatelessWidget {
                                                 Container(
                                                   decoration: BoxDecoration(
                                                     color: Colors.white
-                                                        .withOpacity(0.035),
+                                                        .withValues(
+                                                            alpha: 0.035),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                       4,
                                                     ),
                                                     border: Border.all(
                                                       color: Colors.white
-                                                          .withOpacity(0.055),
+                                                          .withValues(
+                                                              alpha: 0.055),
                                                     ),
                                                   ),
                                                 ),
@@ -473,7 +475,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
                                                     decoration: BoxDecoration(
                                                       color: const Color(
                                                         0xFF0099FF,
-                                                      ).withOpacity(0.48),
+                                                      ).withValues(alpha: 0.48),
                                                       borderRadius:
                                                           BorderRadius.circular(
                                                         3,
@@ -536,7 +538,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.36),
+            color: Colors.white.withValues(alpha: 0.36),
             fontSize: 7,
           ),
         ),
@@ -566,7 +568,7 @@ class ProgressoProjetoWidget extends StatelessWidget {
       width: 1,
       height: 17,
       margin: const EdgeInsets.symmetric(horizontal: 2),
-      color: Colors.white.withOpacity(0.06),
+      color: Colors.white.withValues(alpha: 0.06),
     );
   }
 

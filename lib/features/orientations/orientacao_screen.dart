@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
@@ -599,7 +597,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   ) {
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.94),
+      barrierColor: Colors.black.withValues(alpha: 0.94),
       builder: (context) {
         return Dialog(
           backgroundColor: Colors.transparent,
@@ -813,7 +811,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.55),
+                          color: Colors.black.withValues(alpha: 0.55),
                           blurRadius: 30,
                           spreadRadius: 4,
                         ),
@@ -881,8 +879,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                           ),
                                         ),
                                         filled: true,
-                                        fillColor:
-                                            CoresApp.fundo.withOpacity(0.45),
+                                        fillColor: CoresApp.fundo
+                                            .withValues(alpha: 0.45),
                                         contentPadding:
                                             const EdgeInsets.all(14),
                                       ),
@@ -937,7 +935,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                           width: 28,
                           height: 28,
                           decoration: BoxDecoration(
-                            color: CoresApp.primaria.withOpacity(0.18),
+                            color: CoresApp.primaria.withValues(alpha: 0.18),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               bottomRight: Radius.circular(18),
@@ -978,7 +976,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: CoresApp.primaria.withOpacity(0.12),
+              color: CoresApp.primaria.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -1156,7 +1154,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           width: 92,
           height: 76,
           decoration: BoxDecoration(
-            color: CoresApp.fundo.withOpacity(0.5),
+            color: CoresApp.fundo.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: CoresApp.borda,
@@ -1333,8 +1331,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           height: 76,
           decoration: BoxDecoration(
             color: selecionado
-                ? CoresApp.primaria.withOpacity(0.12)
-                : CoresApp.fundo.withOpacity(0.5),
+                ? CoresApp.primaria.withValues(alpha: 0.12)
+                : CoresApp.fundo.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: selecionado ? CoresApp.primaria : CoresApp.borda,
@@ -1510,14 +1508,14 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               muitoCompacto ? 14 : 18,
             ),
             decoration: BoxDecoration(
-              color: CoresApp.superficie.withOpacity(0.95),
+              color: CoresApp.superficie.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: CoresApp.borda.withOpacity(0.9),
+                color: CoresApp.borda.withValues(alpha: 0.9),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.24),
+                  color: Colors.black.withValues(alpha: 0.24),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -1655,17 +1653,17 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CoresApp.primaria.withOpacity(0.20),
-            CoresApp.primaria.withOpacity(0.07),
+            CoresApp.primaria.withValues(alpha: 0.20),
+            CoresApp.primaria.withValues(alpha: 0.07),
           ],
         ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: CoresApp.primaria.withOpacity(0.32),
+          color: CoresApp.primaria.withValues(alpha: 0.32),
         ),
         boxShadow: [
           BoxShadow(
-            color: CoresApp.primaria.withOpacity(0.08),
+            color: CoresApp.primaria.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -1701,7 +1699,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: CoresApp.textoSecundario.withOpacity(0.9),
+            color: CoresApp.textoSecundario.withValues(alpha: 0.9),
             fontSize: 10.5,
             height: 1.2,
           ),
@@ -1721,10 +1719,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         vertical: 9,
       ),
       decoration: BoxDecoration(
-        color: CoresApp.fundo.withOpacity(0.58),
+        color: CoresApp.fundo.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(11),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.9),
+          color: CoresApp.borda.withValues(alpha: 0.9),
         ),
       ),
       child: Row(
@@ -1734,7 +1732,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: CoresApp.primaria.withOpacity(0.11),
+              color: CoresApp.primaria.withValues(alpha: 0.11),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -1780,7 +1778,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               backgroundColor: CoresApp.primaria,
               foregroundColor: CoresApp.textoPrincipal,
               elevation: 3,
-              shadowColor: CoresApp.primaria.withOpacity(0.25),
+              shadowColor: CoresApp.primaria.withValues(alpha: 0.25),
               padding: EdgeInsets.zero,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(11),
@@ -1814,7 +1812,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           backgroundColor: CoresApp.primaria,
           foregroundColor: CoresApp.textoPrincipal,
           elevation: 3,
-          shadowColor: CoresApp.primaria.withOpacity(0.25),
+          shadowColor: CoresApp.primaria.withValues(alpha: 0.25),
           padding: const EdgeInsets.symmetric(
             horizontal: 16,
           ),
@@ -1895,7 +1893,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           ),
         ),
         filled: true,
-        fillColor: CoresApp.fundo.withOpacity(0.60),
+        fillColor: CoresApp.fundo.withValues(alpha: 0.60),
       ),
     );
   }
@@ -1918,10 +1916,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           vertical: 9,
         ),
         decoration: BoxDecoration(
-          color: CoresApp.erro.withOpacity(0.10),
+          color: CoresApp.erro.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(11),
           border: Border.all(
-            color: CoresApp.erro.withOpacity(0.35),
+            color: CoresApp.erro.withValues(alpha: 0.35),
           ),
         ),
         child: Row(
@@ -1930,7 +1928,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                color: CoresApp.erro.withOpacity(0.10),
+                color: CoresApp.erro.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
@@ -1980,14 +1978,14 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         width: 430,
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: CoresApp.superficie.withOpacity(0.92),
+          color: CoresApp.superficie.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: CoresApp.borda,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -2000,10 +1998,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: CoresApp.primaria.withOpacity(0.10),
+                color: CoresApp.primaria.withValues(alpha: 0.10),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: CoresApp.primaria.withOpacity(0.16),
+                  color: CoresApp.primaria.withValues(alpha: 0.16),
                 ),
               ),
               child: Icon(
@@ -2137,18 +2135,18 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
         ),
         decoration: BoxDecoration(
           color: _hovered
-              ? CoresApp.superficie.withOpacity(0.98)
-              : CoresApp.superficie.withOpacity(0.91),
+              ? CoresApp.superficie.withValues(alpha: 0.98)
+              : CoresApp.superficie.withValues(alpha: 0.91),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: _hovered
-                ? CoresApp.primaria.withOpacity(0.42)
-                : CoresApp.borda.withOpacity(0.85),
+                ? CoresApp.primaria.withValues(alpha: 0.42)
+                : CoresApp.borda.withValues(alpha: 0.85),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(
-                _hovered ? 0.16 : 0.06,
+              color: Colors.black.withValues(
+                alpha: _hovered ? 0.16 : 0.06,
               ),
               blurRadius: _hovered ? 12 : 6,
               offset: Offset(
@@ -2166,7 +2164,7 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
               onTap: widget.onTap,
               borderRadius: BorderRadius.circular(10),
               hoverColor: Colors.transparent,
-              splashColor: CoresApp.primaria.withOpacity(0.05),
+              splashColor: CoresApp.primaria.withValues(alpha: 0.05),
               child: Row(
                 children: [
                   AnimatedContainer(
@@ -2176,7 +2174,7 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
                     decoration: BoxDecoration(
                       color: _hovered
                           ? CoresApp.primaria
-                          : CoresApp.primaria.withOpacity(0.50),
+                          : CoresApp.primaria.withValues(alpha: 0.50),
                     ),
                   ),
                   Expanded(
@@ -2195,12 +2193,12 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
                             height: 34,
                             decoration: BoxDecoration(
                               color: _hovered
-                                  ? CoresApp.primaria.withOpacity(0.15)
-                                  : CoresApp.primaria.withOpacity(0.08),
+                                  ? CoresApp.primaria.withValues(alpha: 0.15)
+                                  : CoresApp.primaria.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(9),
                               border: Border.all(
-                                color: CoresApp.primaria.withOpacity(
-                                  _hovered ? 0.26 : 0.12,
+                                color: CoresApp.primaria.withValues(
+                                  alpha: _hovered ? 0.26 : 0.12,
                                 ),
                               ),
                             ),
@@ -2274,7 +2272,8 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
                               decoration: BoxDecoration(
                                 border: Border(
                                   left: BorderSide(
-                                    color: CoresApp.borda.withOpacity(0.8),
+                                    color:
+                                        CoresApp.borda.withValues(alpha: 0.8),
                                   ),
                                 ),
                               ),
@@ -2291,8 +2290,8 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
                                 style: TextStyle(
                                   color: possuiConteudo
                                       ? CoresApp.textoSecundario
-                                      : CoresApp.textoSecundario.withOpacity(
-                                          0.55,
+                                      : CoresApp.textoSecundario.withValues(
+                                          alpha: 0.55,
                                         ),
                                   fontSize: 9.5,
                                   height: 1.25,
@@ -2318,7 +2317,7 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
                                 width: 27,
                                 height: 27,
                                 decoration: BoxDecoration(
-                                  color: CoresApp.erro.withOpacity(0.07),
+                                  color: CoresApp.erro.withValues(alpha: 0.07),
                                   borderRadius: BorderRadius.circular(7),
                                 ),
                                 child: IconButton(
@@ -2342,7 +2341,7 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
                             height: 27,
                             decoration: BoxDecoration(
                               color: _hovered
-                                  ? CoresApp.primaria.withOpacity(0.08)
+                                  ? CoresApp.primaria.withValues(alpha: 0.08)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(7),
                             ),
@@ -2374,10 +2373,10 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
       height: 25,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: CoresApp.fundo.withOpacity(0.65),
+        color: CoresApp.fundo.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(7),
         border: Border.all(
-          color: CoresApp.borda.withOpacity(0.9),
+          color: CoresApp.borda.withValues(alpha: 0.9),
         ),
       ),
       child: Row(

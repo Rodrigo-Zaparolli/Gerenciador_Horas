@@ -164,7 +164,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                 ),
               ),
               titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
@@ -176,7 +176,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: _green.withOpacity(0.10),
+                      color: _green.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(9),
                     ),
                     child: const Icon(
@@ -435,12 +435,12 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         color: _background,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withValues(alpha: 0.18),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -460,7 +460,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
               color: _fieldBackground,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: Colors.white.withOpacity(0.12),
+                color: Colors.white.withValues(alpha: 0.12),
                 width: 1,
               ),
             ),
@@ -474,7 +474,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                         width: 23,
                         height: 23,
                         decoration: BoxDecoration(
-                          color: _green.withOpacity(0.08),
+                          color: _green.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Icon(
@@ -508,7 +508,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                         width: 23,
                         height: 23,
                         decoration: BoxDecoration(
-                          color: _yellow.withOpacity(0.08),
+                          color: _yellow.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Icon(
@@ -587,7 +587,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: _green.withOpacity(0.08),
+                      color: _green.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: const Text(
@@ -695,15 +695,13 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       Icons.add,
                       size: 15,
                     ),
-                    label: const Flexible(
-                      child: Text(
-                        'Novo Trabalho',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    label: const Text(
+                      'Novo Trabalho',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -756,7 +754,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
         color: _fieldBackground,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.12),
+          color: Colors.white.withValues(alpha: 0.12),
           width: 1,
         ),
       ),
@@ -801,7 +799,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           color: _fieldBackground,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: Colors.white.withOpacity(0.12),
+            color: Colors.white.withValues(alpha: 0.12),
             width: 1,
           ),
         ),

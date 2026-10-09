@@ -1,9 +1,6 @@
 // ignore_for_file: unnecessary_cast
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Função pública para exibir o diálogo "Sobre o Desenvolvedor" e verificação de atualizações
 void showCustomAuthorDialog(BuildContext context) async {

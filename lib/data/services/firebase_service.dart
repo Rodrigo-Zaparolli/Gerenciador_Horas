@@ -1002,11 +1002,11 @@ URL: ${task.edeskUrl}
 
   /// Mantido para compatibilidade
   /// com código antigo do projeto.
-  get firestore => _db;
+  FirebaseFirestore get firestore => _db;
 
   /// Mantido para compatibilidade
   /// com código antigo do projeto.
-  get currentUserId => _userId;
+  String get currentUserId => _userId;
 
   // ------------------------------------------------------------
   // BUSCAR ORIENTAÇÕES
@@ -1257,7 +1257,7 @@ URL: ${task.edeskUrl}
         );
       }).toList();
     } catch (e) {
-      print(
+      debugPrint(
         'Erro ao buscar modelos de check list: $e',
       );
 
@@ -1274,7 +1274,7 @@ URL: ${task.edeskUrl}
             SetOptions(merge: true),
           );
     } catch (e) {
-      print(
+      debugPrint(
         'Erro ao salvar modelo de check list: $e',
       );
 
@@ -1288,7 +1288,7 @@ URL: ${task.edeskUrl}
     try {
       await _checklistFormatsRef.doc(id).delete();
     } catch (e) {
-      print(
+      debugPrint(
         'Erro ao excluir modelo de check list: $e',
       );
 

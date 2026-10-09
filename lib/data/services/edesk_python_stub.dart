@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 Future<EdeskPythonResult> executarPythonEdesk({
   required String requestJson,
   required bool enviar,

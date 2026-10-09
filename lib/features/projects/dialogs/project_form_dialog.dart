@@ -716,7 +716,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 decoration: BoxDecoration(
                                   color: const Color(
                                     0xFFFF5252,
-                                  ).withOpacity(0.12),
+                                  ).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: const Icon(
@@ -1130,9 +1130,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           // E-DESK
           // Preserva os vínculos já cadastrados no projeto.
           // ============================================================
-          'edeskSolicitacao': existingTask?.edeskSolicitacao,
-          'edeskUrl': existingTask?.edeskUrl,
-          'edeskIdTrabalho': existingTask?.edeskIdTrabalho,
+          'edeskSolicitacao': edeskSolicitacao,
+          'edeskUrl': edeskUrl,
+          'edeskIdTrabalho': edeskIdTrabalho,
         };
       },
     );
@@ -1876,7 +1876,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   Expanded(
                     flex: 4,
                     child: DropdownButtonFormField<String>(
-                      value: _status,
+                      initialValue: _status,
                       dropdownColor: const Color(0xFF2D2D44),
                       style: const TextStyle(
                         color: Colors.white,
@@ -1948,7 +1948,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   Expanded(
                     flex: 5,
                     child: DropdownButtonFormField<WorkFormat>(
-                      value: _selectedWorkFormat,
+                      initialValue: _selectedWorkFormat,
                       isExpanded: true,
                       dropdownColor: const Color(0xFF2D2D44),
                       style: const TextStyle(
@@ -2123,10 +2123,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00FFCC).withOpacity(0.10),
+                        color: const Color(0xFF00FFCC).withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: const Color(0xFF00FFCC).withOpacity(0.30),
+                          color:
+                              const Color(0xFF00FFCC).withValues(alpha: 0.30),
                         ),
                       ),
                       child: Text(
@@ -2181,7 +2182,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               ],
                             )
                           : DropdownButtonFormField<ChecklistFormat>(
-                              value: _selectedChecklistFormat,
+                              initialValue: _selectedChecklistFormat,
                               isExpanded: true,
                               dropdownColor: const Color(0xFF2D2D44),
                               style: const TextStyle(
@@ -2320,8 +2321,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                   color: completed
                                       ? const Color(
                                           0xFF00FFCC,
-                                        ).withOpacity(0.06)
-                                      : Colors.white.withOpacity(0.02),
+                                        ).withValues(alpha: 0.06)
+                                      : Colors.white.withValues(alpha: 0.02),
                                   borderRadius: BorderRadius.circular(
                                     6,
                                   ),
@@ -2329,8 +2330,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     color: completed
                                         ? const Color(
                                             0xFF00FFCC,
-                                          ).withOpacity(0.25)
-                                        : Colors.white.withOpacity(0.08),
+                                          ).withValues(alpha: 0.25)
+                                        : Colors.white.withValues(alpha: 0.08),
                                   ),
                                 ),
                                 child: Row(
@@ -2383,11 +2384,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: isManual
-                                            ? Colors.orangeAccent.withOpacity(
-                                                0.10,
+                                            ? Colors.orangeAccent.withValues(
+                                                alpha: 0.10,
                                               )
-                                            : Colors.cyanAccent.withOpacity(
-                                                0.08,
+                                            : Colors.cyanAccent.withValues(
+                                                alpha: 0.08,
                                               ),
                                         borderRadius: BorderRadius.circular(
                                           10,
@@ -2444,7 +2445,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 side: BorderSide(
                                   color: const Color(
                                     0xFF00FFCC,
-                                  ).withOpacity(0.50),
+                                  ).withValues(alpha: 0.50),
                                 ),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
@@ -2746,7 +2747,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _hourType,
+                      initialValue: _hourType,
                       isExpanded: true,
                       dropdownColor: const Color(0xFF2D2D44),
                       style: const TextStyle(
@@ -2879,7 +2880,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.orangeAccent,
             side: BorderSide(
-              color: Colors.orangeAccent.withOpacity(0.60),
+              color: Colors.orangeAccent.withValues(alpha: 0.60),
             ),
             padding: const EdgeInsets.symmetric(
               horizontal: 14,

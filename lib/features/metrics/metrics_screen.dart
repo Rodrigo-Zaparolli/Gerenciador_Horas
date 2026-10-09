@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
@@ -318,10 +317,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
       await ref.set(
         {
-          'metaColor': _metaColor.value,
-          'cadastradasColor': _cadastradasColor.value,
-          'cobradasColor': _cobradasColor.value,
-          'demaisColor': _demaisColor.value,
+          'metaColor': _metaColor.toARGB32(),
+          'cadastradasColor': _cadastradasColor.toARGB32(),
+          'cobradasColor': _cobradasColor.toARGB32(),
+          'demaisColor': _demaisColor.toARGB32(),
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -366,11 +365,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   color: CoresDashboard.card,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
+                      color: Colors.black.withValues(alpha: 0.35),
                       blurRadius: 35,
                       offset: const Offset(0, 14),
                     ),
@@ -393,7 +392,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             height: 42,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: CoresApp.destaque.withOpacity(0.10),
+                              color: CoresApp.destaque.withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -442,7 +441,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     ),
                     Divider(
                       height: 1,
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
@@ -454,10 +453,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.10),
+                          color: Colors.black.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.05),
+                            color: Colors.white.withValues(alpha: 0.05),
                           ),
                         ),
                         child: Row(
@@ -527,7 +526,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     ),
                     Divider(
                       height: 1,
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                     ),
                     Padding(
                       padding: const EdgeInsets.all(14),
@@ -637,7 +636,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   color,
-                  color.withOpacity(0.48),
+                  color.withValues(alpha: 0.48),
                 ],
               ),
               borderRadius: BorderRadius.circular(6),
@@ -670,10 +669,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
         vertical: 9,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.025),
+        color: Colors.white.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.055),
+          color: Colors.white.withValues(alpha: 0.055),
         ),
       ),
       child: Row(
@@ -683,7 +682,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             height: 35,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Icon(
@@ -736,7 +735,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         spacing: 5,
         runSpacing: 5,
         children: _paletaCores.map((color) {
-          final selected = color.value == currentColor.value;
+          final selected = color.toARGB32() == currentColor.toARGB32();
 
           return GestureDetector(
             onTap: () => onSelected(color),
@@ -753,12 +752,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         width: 1.5,
                       )
                     : Border.all(
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                 boxShadow: selected
                     ? [
                         BoxShadow(
-                          color: color.withOpacity(0.45),
+                          color: color.withValues(alpha: 0.45),
                           blurRadius: 6,
                         ),
                       ]
@@ -1208,7 +1207,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     showDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.72),
+      barrierColor: Colors.black.withValues(alpha: 0.72),
       builder: (dialogContext) {
         final size = MediaQuery.of(dialogContext).size;
 
@@ -1226,11 +1225,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
               color: CoresDashboard.card,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.08),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
+                  color: Colors.black.withValues(alpha: 0.45),
                   blurRadius: 40,
                   offset: const Offset(0, 18),
                 ),
@@ -1246,7 +1245,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   _buildEfficiencyTabs(),
                   Divider(
                     height: 1,
-                    color: Colors.white.withOpacity(0.06),
+                    color: Colors.white.withValues(alpha: 0.06),
                   ),
                   Expanded(
                     child: TabBarView(
@@ -1299,13 +1298,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 end: Alignment.bottomRight,
                 colors: [
                   _demaisColor,
-                  _demaisColor.withOpacity(0.52),
+                  _demaisColor.withValues(alpha: 0.52),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: _demaisColor.withOpacity(0.22),
+                  color: _demaisColor.withValues(alpha: 0.22),
                   blurRadius: 15,
                   offset: const Offset(0, 6),
                 ),
@@ -1348,10 +1347,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
               vertical: 8,
             ),
             decoration: BoxDecoration(
-              color: _demaisColor.withOpacity(0.09),
+              color: _demaisColor.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(11),
               border: Border.all(
-                color: _demaisColor.withOpacity(0.15),
+                color: _demaisColor.withValues(alpha: 0.15),
               ),
             ),
             child: Column(
@@ -1402,10 +1401,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
         horizontal: 18,
       ),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.10),
+        color: Colors.black.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.045),
+          color: Colors.white.withValues(alpha: 0.045),
         ),
       ),
       child: const TabBar(
@@ -1527,10 +1526,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.025),
+        color: Colors.white.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
         ),
       ),
       child: Column(
@@ -1543,7 +1542,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 height: 34,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.10),
+                  color: color.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -1596,7 +1595,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 7,
-              backgroundColor: Colors.white.withOpacity(0.055),
+              backgroundColor: Colors.white.withValues(alpha: 0.055),
               valueColor: AlwaysStoppedAnimation<Color>(
                 color,
               ),
@@ -1642,7 +1641,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         vertical: 8,
       ),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.10),
+        color: Colors.black.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(9),
       ),
       child: Column(
@@ -1694,14 +1693,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
     double radius = 18,
   }) {
     return BoxDecoration(
-      color: color ?? CoresDashboard.card.withOpacity(0.97),
+      color: color ?? CoresDashboard.card.withValues(alpha: 0.97),
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(
-        color: CoresApp.textoPrincipal.withOpacity(0.065),
+        color: CoresApp.textoPrincipal.withValues(alpha: 0.065),
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.14),
+          color: Colors.black.withValues(alpha: 0.14),
           blurRadius: 22,
           offset: const Offset(0, 8),
         ),
@@ -1729,10 +1728,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
         vertical: 10,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.055),
+        color: color.withValues(alpha: 0.055),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: color.withOpacity(0.14),
+          color: color.withValues(alpha: 0.14),
         ),
       ),
       child: Row(
@@ -1742,7 +1741,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
@@ -1775,7 +1774,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     if (onTap != null)
                       Icon(
                         Icons.open_in_new_rounded,
-                        color: color.withOpacity(0.65),
+                        color: color.withValues(alpha: 0.65),
                         size: 10,
                       ),
                   ],
@@ -1928,13 +1927,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
               end: Alignment.bottomRight,
               colors: [
                 CoresApp.destaque,
-                CoresApp.destaque.withOpacity(0.55),
+                CoresApp.destaque.withValues(alpha: 0.55),
               ],
             ),
             borderRadius: BorderRadius.circular(15),
             boxShadow: [
               BoxShadow(
-                color: CoresApp.destaque.withOpacity(0.22),
+                color: CoresApp.destaque.withValues(alpha: 0.22),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -1973,7 +1972,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: CoresApp.destaque.withOpacity(0.10),
+                      color: CoresApp.destaque.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
@@ -2012,7 +2011,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
   Widget _buildJornadaConfigCard() {
     final totalDias = _diasUteisCalculados.fold<int>(
       0,
-      (sum, val) => sum + val,
+      (acumulado, val) => acumulado + val,
     );
 
     return Container(
@@ -2107,7 +2106,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           height: 38,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.08),
+            color: CoresApp.destaque.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(11),
           ),
           child: Icon(
@@ -2156,10 +2155,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
       height: 46,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
+        color: color.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(11),
         border: Border.all(
-          color: color.withOpacity(0.13),
+          color: color.withValues(alpha: 0.13),
         ),
       ),
       child: Row(
@@ -2228,7 +2227,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             size: 15,
           ),
           filled: true,
-          fillColor: CoresApp.textoPrincipal.withOpacity(0.035),
+          fillColor: CoresApp.textoPrincipal.withValues(alpha: 0.035),
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 8,
@@ -2237,13 +2236,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide(
-              color: CoresApp.textoPrincipal.withOpacity(0.07),
+              color: CoresApp.textoPrincipal.withValues(alpha: 0.07),
             ),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide(
-              color: CoresApp.textoPrincipal.withOpacity(0.07),
+              color: CoresApp.textoPrincipal.withValues(alpha: 0.07),
             ),
           ),
           focusedBorder: OutlineInputBorder(
@@ -2325,14 +2324,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
         return Container(
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.13),
+            color: Colors.black.withValues(alpha: 0.13),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withOpacity(0.045),
+              color: Colors.white.withValues(alpha: 0.045),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 18,
                 offset: const Offset(0, 7),
               ),
@@ -2395,9 +2394,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.02),
-                          Colors.white.withOpacity(0.14),
-                          Colors.white.withOpacity(0.02),
+                          Colors.white.withValues(alpha: 0.02),
+                          Colors.white.withValues(alpha: 0.14),
+                          Colors.white.withValues(alpha: 0.02),
                         ],
                       ),
                     ),
@@ -2424,7 +2423,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  CoresApp.destaque.withOpacity(0.075),
+                  CoresApp.destaque.withValues(alpha: 0.075),
                   Colors.transparent,
                 ],
               ),
@@ -2441,7 +2440,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  _cobradasColor.withOpacity(0.045),
+                  _cobradasColor.withValues(alpha: 0.045),
                   Colors.transparent,
                 ],
               ),
@@ -2465,8 +2464,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
               Expanded(
                 child: Container(
                   height: 1,
-                  color: Colors.white.withOpacity(
-                    index == 4 ? 0.085 : 0.028,
+                  color: Colors.white.withValues(
+                    alpha: index == 4 ? 0.085 : 0.028,
                   ),
                 ),
               ),
@@ -2498,8 +2497,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             return Text(
               _formatDoubleToTime(valor),
               style: TextStyle(
-                color: CoresApp.textoSecundario.withOpacity(
-                  index == 4 ? 0.85 : 0.60,
+                color: CoresApp.textoSecundario.withValues(
+                  alpha: index == 4 ? 0.85 : 0.60,
                 ),
                 fontSize: 6.5,
                 fontWeight: FontWeight.w700,
@@ -2567,11 +2566,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
         color: const Color(0xFF171A20),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.09),
+          color: Colors.white.withValues(alpha: 0.09),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -2601,12 +2600,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
         ),
         decoration: BoxDecoration(
           color: currentMonth
-              ? CoresApp.destaque.withOpacity(0.045)
+              ? CoresApp.destaque.withValues(alpha: 0.045)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(11),
           border: currentMonth
               ? Border.all(
-                  color: CoresApp.destaque.withOpacity(0.13),
+                  color: CoresApp.destaque.withValues(alpha: 0.13),
                 )
               : null,
         ),
@@ -2634,7 +2633,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: CoresApp.destaque.withOpacity(0.12),
+                        color: CoresApp.destaque.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(5),
                       ),
                       child: const Text(
@@ -2698,8 +2697,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
               ),
               decoration: BoxDecoration(
                 color: currentMonth
-                    ? CoresApp.destaque.withOpacity(0.13)
-                    : Colors.white.withOpacity(0.035),
+                    ? CoresApp.destaque.withValues(alpha: 0.13)
+                    : Colors.white.withValues(alpha: 0.035),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -2748,14 +2747,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  _metaColor.withOpacity(0.05),
+                  _metaColor.withValues(alpha: 0.05),
                   _metaColor,
-                  _metaColor.withOpacity(0.05),
+                  _metaColor.withValues(alpha: 0.05),
                 ],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: _metaColor.withOpacity(0.35),
+                  color: _metaColor.withValues(alpha: 0.35),
                   blurRadius: 5,
                 ),
               ],
@@ -2771,7 +2770,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: _metaColor.withOpacity(0.45),
+                color: _metaColor.withValues(alpha: 0.45),
                 blurRadius: 5,
               ),
             ],
@@ -2832,7 +2831,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   0.10,
                 )!,
                 color,
-                color.withOpacity(0.46),
+                color.withValues(alpha: 0.46),
               ],
               stops: const [
                 0.0,
@@ -2845,8 +2844,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(
-                  isMain ? 0.30 : 0.16,
+                color: color.withValues(
+                  alpha: isMain ? 0.30 : 0.16,
                 ),
                 blurRadius: isMain ? 10 : 7,
                 spreadRadius: isMain ? 0.4 : 0,
@@ -2906,7 +2905,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     borderRadius: BorderRadius.circular(2),
                     boxShadow: [
                       BoxShadow(
-                        color: color.withOpacity(0.30),
+                        color: color.withValues(alpha: 0.30),
                         blurRadius: 4,
                       ),
                     ],
@@ -2936,13 +2935,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 end: Alignment.bottomRight,
                 colors: [
                   color,
-                  color.withOpacity(0.55),
+                  color.withValues(alpha: 0.55),
                 ],
               ),
               borderRadius: BorderRadius.circular(3),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.20),
+                  color: color.withValues(alpha: 0.20),
                   blurRadius: 5,
                 ),
               ],
@@ -2973,10 +2972,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
             vertical: 7,
           ),
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.07),
+            color: CoresApp.destaque.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(9),
             border: Border.all(
-              color: CoresApp.destaque.withOpacity(0.12),
+              color: CoresApp.destaque.withValues(alpha: 0.12),
             ),
           ),
           child: const Row(
@@ -3021,7 +3020,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           height: 39,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.08),
+            color: CoresApp.destaque.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(11),
           ),
           child: Icon(
@@ -3100,7 +3099,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           height: 39,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.08),
+            color: CoresApp.destaque.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(11),
           ),
           child: const Icon(
@@ -3139,7 +3138,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             vertical: 7,
           ),
           decoration: BoxDecoration(
-            color: CoresApp.destaque.withOpacity(0.07),
+            color: CoresApp.destaque.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(20),
           ),
           child: const Row(
@@ -3187,10 +3186,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
       },
       border: TableBorder(
         horizontalInside: BorderSide(
-          color: Colors.black.withOpacity(0.07),
+          color: Colors.black.withValues(alpha: 0.07),
         ),
         verticalInside: BorderSide(
-          color: Colors.black.withOpacity(0.045),
+          color: Colors.black.withValues(alpha: 0.045),
         ),
       ),
       children: [
@@ -3242,7 +3241,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         _buildCellInput(
           _horasDiaController,
           isHeader: true,
-          bgColor: Colors.white.withOpacity(0.12),
+          bgColor: Colors.white.withValues(alpha: 0.12),
         ),
         ...List.generate(
           12,
@@ -3259,7 +3258,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
   TableRow _buildTableSubHeaderRow() {
     return TableRow(
       decoration: BoxDecoration(
-        color: CoresDashboard.cabecalhoTabela.withOpacity(0.94),
+        color: CoresDashboard.cabecalhoTabela.withValues(alpha: 0.94),
       ),
       children: [
         _buildCellInput(
@@ -3297,7 +3296,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         _buildCellText(
           '${_diasUteisCalculados.fold<int>(
             0,
-            (sum, val) => sum + val,
+            (acumulado, val) => acumulado + val,
           )}',
           isBold: true,
         ),
@@ -3326,8 +3325,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
           _formatDoubleToTime(
             _metaControllers.fold<double>(
               0,
-              (sum, item) =>
-                  sum +
+              (acumulado, item) =>
+                  acumulado +
                   _parseTimeToDouble(
                     item.text,
                   ),
@@ -3360,7 +3359,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
   TableRow _buildRealizadoRow() {
     return TableRow(
       decoration: BoxDecoration(
-        color: CoresApp.destaque.withOpacity(0.035),
+        color: CoresApp.destaque.withValues(alpha: 0.035),
       ),
       children: [
         _buildCellText(
@@ -3407,8 +3406,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
           _formatDoubleToTime(
             controllers.fold<double>(
               0,
-              (sum, item) =>
-                  sum +
+              (acumulado, item) =>
+                  acumulado +
                   _parseTimeToDouble(
                     item.text,
                   ),
@@ -3556,7 +3555,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           ),
           Positioned.fill(
             child: Container(
-              color: CoresApp.fundo.withOpacity(0.80),
+              color: CoresApp.fundo.withValues(alpha: 0.80),
             ),
           ),
           Positioned.fill(
@@ -3822,11 +3821,11 @@ class _EfficiencyAnnualTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.025),
+            color: Colors.white.withValues(alpha: 0.025),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: efficiencyColor.withOpacity(
-                0.14,
+              color: efficiencyColor.withValues(
+                alpha: 0.14,
               ),
             ),
           ),
@@ -3837,10 +3836,10 @@ class _EfficiencyAnnualTab extends StatelessWidget {
                 height: 70,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: efficiencyColor.withOpacity(0.10),
+                  color: efficiencyColor.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: efficiencyColor.withOpacity(0.18),
+                    color: efficiencyColor.withValues(alpha: 0.18),
                   ),
                 ),
                 child: Icon(
@@ -3875,7 +3874,7 @@ class _EfficiencyAnnualTab extends StatelessWidget {
               Text(
                 'Cobradas ÷ Meta × 100',
                 style: TextStyle(
-                  color: CoresApp.textoSecundario.withOpacity(0.75),
+                  color: CoresApp.textoSecundario.withValues(alpha: 0.75),
                   fontSize: 8,
                 ),
               ),
@@ -3935,10 +3934,10 @@ class _AnnualValueCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.055),
+        color: color.withValues(alpha: 0.055),
         borderRadius: BorderRadius.circular(13),
         border: Border.all(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
         ),
       ),
       child: Row(
@@ -3948,7 +3947,7 @@ class _AnnualValueCard extends StatelessWidget {
             height: 32,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
+              color: color.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Icon(

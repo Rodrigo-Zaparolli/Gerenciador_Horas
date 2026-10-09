@@ -2,24 +2,41 @@ name: gerenciador_horas
 description: "Gerenciador de Horas e Projetos"
 publish_to: 'none'
 
-# Versionamento do aplicativo
-# Formato: versão + número do build
-version: 1.0.0+1
+# ============================================================
+# VERSIONAMENTO DO APLICATIVO
+# ============================================================
+
+version: 1.0.2+3
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
 
+# ============================================================
+# DEPENDÊNCIAS
+# ============================================================
+
 dependencies:
   flutter:
     sdk: flutter
-  flutter_secure_storage: ^10.3.4
-    
 
-  # Localização
+  # ==========================================================
+  # LOCALIZAÇÃO
+  # ==========================================================
+
   flutter_localizations:
     sdk: flutter
 
-  # Interface e utilitários
+  # ==========================================================
+  # EDITOR RICH TEXT / WYSIWYG
+  # ==========================================================
+
+  flutter_quill: ^11.5.1
+  flutter_quill_extensions: ^11.0.0
+
+  # ==========================================================
+  # INTERFACE E UTILITÁRIOS
+  # ==========================================================
+
   cupertino_icons: ^1.0.8
   file_picker: ^8.0.0
   url_launcher: ^6.3.2
@@ -27,28 +44,52 @@ dependencies:
   pasteboard: ^0.5.0
   path_provider: ^2.1.6
   excel: ^4.0.6
+  flutter_secure_storage: ^10.3.4
 
-  # PDF e impressão
+  # ==========================================================
+  # ATUALIZAÇÃO AUTOMÁTICA
+  # ==========================================================
+
+  # Consulta o version.json hospedado no GitHub.
+  http: ^1.2.0
+
+  # Obtém a versão instalada do aplicativo.
+  package_info_plus: ^8.0.0
+
+  # ==========================================================
+  # PDF E IMPRESSÃO
+  # ==========================================================
+
   pdf: ^3.11.0
   printing: ^5.13.2
 
-  # Gráficos
+  # ==========================================================
+  # GRÁFICOS
+  # ==========================================================
+
   fl_chart: ^1.2.0
 
-  # Firebase
+  # ==========================================================
+  # FIREBASE
+  # ==========================================================
+
   firebase_core: ^4.15.0
   firebase_auth: ^6.7.0
   cloud_firestore: ^6.10.0
 
+  # ==========================================================
+  # WINDOWS WEBVIEW
+  # ==========================================================
+
   webview_windows: 0.4.0
 
+# ============================================================
+# DEPENDÊNCIAS DE DESENVOLVIMENTO
+# ============================================================
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  package_info_plus: ^8.0.0  
-  http: ^1.2.0              
-  url_launcher: ^6.2.0     
 
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4

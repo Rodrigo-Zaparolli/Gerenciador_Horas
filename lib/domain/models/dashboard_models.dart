@@ -34,7 +34,8 @@ class TimeLog {
     this.projectId,
   });
 
-  get dateFormatted => null;
+  String get dateFormatted => '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   set setDurationMinutes(int minutes) {
     durationMinutes = minutes;

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -16,8 +17,21 @@ from playwright.async_api import async_playwright
 BASE_URL = "https://promob.e-desk.com.br"
 
 BASE_DIR = Path(__file__).resolve().parent
-PROFILE_DIR = BASE_DIR / "perfil"
-LOG_DIR = BASE_DIR / "logs"
+
+# Dados graváveis do E-Desk não podem ficar dentro de Program Files.
+# Perfil, logs e diagnósticos ficam no LocalAppData do usuário.
+LOCAL_APP_DATA = Path(
+    os.environ.get(
+        "LOCALAPPDATA",
+        str(Path.home() / "AppData" / "Local"),
+    )
+)
+
+EDESK_DATA_DIR = LOCAL_APP_DATA / "Gerenciador de Horas" / "edesk_bot"
+PROFILE_DIR = EDESK_DATA_DIR / "perfil"
+LOG_DIR = EDESK_DATA_DIR / "logs"
+
+PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_FILE = LOG_DIR / "exploracao_edesk.log"
@@ -4542,6 +4556,47 @@ async def executar():
             )
 
             # ====================================================
+            # SALVAMENTO
+            #
+            # Salva somente depois que o preenchimento terminou
+            # sem erros e pelo menos uma fase foi atualizada.
+            # ====================================================
+
+            resultado_salvamento = {
+                "salvo": False,
+                "mensagemSucesso": False,
+            }
+
+            if fases_atualizadas and not erros:
+
+                resultado_salvamento = await salvar_fases(
+                    page
+                )
+
+                if not resultado_salvamento.get(
+                    "salvo",
+                    False
+                ):
+
+                    erro_salvamento = (
+                        resultado_salvamento.get(
+                            "erro"
+                        )
+                        or "Não foi possível salvar as fases no E-Desk."
+                    )
+
+                    erros.append(
+                        erro_salvamento
+                    )
+
+            salvo = bool(
+                resultado_salvamento.get(
+                    "salvo",
+                    False
+                )
+            )
+
+            # ====================================================
             # RESULTADO
             # ====================================================
 
@@ -4565,23 +4620,29 @@ async def executar():
                 f"{len(erros)}"
             )
 
-            log(
-                "Nenhuma fase foi salva."
-            )
+            if salvo:
 
-            log(
-                "Nenhum botão Salvar foi acionado."
-            )
+                log(
+                    "Fases salvas no E-Desk."
+                )
+
+            else:
+
+                log(
+                    "As fases não foram salvas."
+                )
 
             responder({
 
                 "ok": (
                     len(erros) == 0
+                    and salvo
                 ),
 
                 "message": (
-                    "Datas das fases preenchidas no E-Desk "
-                    "sem salvar."
+                    "Fases atualizadas e salvas no E-Desk."
+                    if salvo
+                    else "As fases foram preenchidas, mas não foi possível salvar."
                 ),
 
                 "atualizadas": fases_atualizadas,
@@ -4625,7 +4686,7 @@ async def executar():
 
                     log("")
                     log("=" * 70)
-                    log("MODO TESTE - NAVEGADOR PERMANECERÁ ABERTO")
+                    log("NAVEGADOR PERMANECERÁ ABERTO")
                     log("=" * 70)
 
                     log(
@@ -4633,16 +4694,12 @@ async def executar():
                     )
 
                     log(
-                        "As datas permanecerão visíveis "
+                        "A tela permanecerá visível "
                         "para conferência manual."
                     )
 
                     log(
-                        "Nenhum botão Salvar será acionado."
-                    )
-
-                    log(
-                        f"Trava de segurança: "
+                        f"Salvamento habilitado: "
                         f"PERMITIR_SALVAMENTO={PERMITIR_SALVAMENTO}"
                     )
 

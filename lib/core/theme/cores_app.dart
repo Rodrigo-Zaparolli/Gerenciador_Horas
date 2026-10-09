@@ -11,14 +11,17 @@ class CoresApp {
   // =============================================================
 
   static const Color fundo =
-      Color(0xFF0B0F19); // Fundo principal ultra-profundo
+      Color.fromARGB(255, 49, 62, 96); // Fundo principal ultra-profundo
   static const Color fundoSecundario =
       Color(0xFF111827); // Fundo secundário sutil
   static const Color superficie =
       Color(0xFF1E293B); // Superfície de cartões padrão
-  static const Color superficieClara = Color(0xFF334155); // Superfície elevada
+  static const Color superficieClara =
+      Color.fromARGB(255, 102, 123, 153); // Superfície elevada
   static const Color superficieEscura =
       Color(0xFF0F172A); // Superfície de destaque escuro
+  static const Color grafico =
+      Color.fromARGB(255, 18, 24, 35); // Superfície de cartões padrão
 
   // =============================================================
   // CORES PRINCIPAIS

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Conexão Microsoft</title></head>
+<body style="font:16px system-ui;max-width:640px;margin:60px auto;padding:24px">
+<h1>Conexão Microsoft</h1><p id="status">Concluindo a conexão com o Gerenciador…</p>
+<script>
+(() => {
+  const query = new URLSearchParams(location.search);
+  const state = query.get('state'), code = query.get('code'), error = query.get('error');
+  history.replaceState(null, '', location.pathname);
+  if (!state || !/^[A-Za-z0-9_-]{40,64}$/.test(state) || (!code && !error)) {
+    document.getElementById('status').textContent = 'Abra a conexão Microsoft pelo botão do Gerenciador.';
+    return;
+  }
+  const data = {type: 'gerenciador-sharepoint-auth', state, code, error};
+  if (window.opener) { try { window.opener.postMessage(data, location.origin); } catch (_) {} }
+  if (typeof BroadcastChannel === 'function') {
+    const channel = new BroadcastChannel('gerenciador-sharepoint-' + state);
+    channel.postMessage(data);
+    setTimeout(() => channel.close(), 500);
+  }
+  document.getElementById('status').textContent = error
+    ? 'A conexão não foi autorizada. Volte ao Gerenciador para conferir.'
+    : 'Retorne ao Gerenciador. Esta janela pode ser fechada.';
+})();
+</script></body></html>

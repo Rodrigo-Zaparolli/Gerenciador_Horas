@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 /// ================================================================
 /// PROCESSO ATUAL DA SINCRONIZAÇÃO DE FASES
@@ -18,17 +18,17 @@ Process? _edeskComentarioTesteProcessoAtual;
 ///
 /// Procura os arquivos primeiro ao lado do executável instalado:
 ///
-///   `<app>\python\python.exe`
-///   `<app>\python\Scripts\python.exe`
-///   `<app>\python\ms-playwright`
-///   `<app>\edesk_bot\<script>`
+///   &lt;app&gt;\python\python.exe
+///   &lt;app&gt;\python\Scripts\python.exe
+///   &lt;app&gt;\python\ms-playwright
+///   &lt;app&gt;\edesk_bot\&lt;script&gt;
 ///
 /// Durante o desenvolvimento também aceita:
 ///
-///   `<projeto>\.venv\Scripts\python.exe`
-///   `<projeto>\python\python.exe`
-///   `<projeto>\python\ms-playwright`
-///   `<projeto>\edesk_bot\<script>`
+///   &lt;projeto&gt;\.venv\Scripts\python.exe
+///   &lt;projeto&gt;\python\python.exe
+///   &lt;projeto&gt;\python\ms-playwright
+///   &lt;projeto&gt;\edesk_bot\&lt;script&gt;
 ///
 /// Assim a integração não depende de caminhos absolutos da máquina
 /// de desenvolvimento.
@@ -43,7 +43,7 @@ class _EdeskRuntime {
   ///
   /// Exemplo:
   ///
-  /// `<app>\python\ms-playwright`
+  /// &lt;app&gt;\python\ms-playwright
   final String? playwrightBrowsersPath;
 
   const _EdeskRuntime({
@@ -60,7 +60,7 @@ class _EdeskRuntime {
 ///
 /// Procura:
 ///
-///   `<root>\python\ms-playwright`
+///   &lt;root&gt;\python\ms-playwright
 ///
 /// Se a pasta não existir, retorna null.
 ///
@@ -429,6 +429,8 @@ Future<EdeskPythonResult> executarPythonEdesk({
 
   // Mantém o script atual de comentários como padrão.
   String script = 'edesk_comentario.py',
+  bool speakResult = false,
+  bool commentBatchConfirmed = false,
 }) async {
   Directory? tempDirectory;
   final manterNavegadorDoTeste = !enviar && script == 'edesk_comentario.py';

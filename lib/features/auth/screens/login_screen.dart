@@ -1,7 +1,15 @@
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
+import 'package:gerenciador_horas/features/auth/widgets/auth_viewport.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/features/auth/screens/register_screen.dart';
+import '../login_session.dart';
+import '../login_storage.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -25,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _keepConnected = true;
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -39,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
+    _keepConnected = keepLoginPreference();
 
     _animationController = AnimationController(
       vsync: this,
@@ -81,6 +91,7 @@ class _LoginScreenState extends State<LoginScreen>
   // ============================================================
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
     FocusScope.of(context).unfocus();
 
     final String email = _emailController.text.trim();
@@ -107,11 +118,14 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await LoginSession.signIn(
+        auth: FirebaseAuth.instance,
         email: email,
         password: password,
+        keepConnected: _keepConnected,
       );
 
+      TextInput.finishAutofillContext(shouldSave: true);
       if (!mounted) {
         return;
       }
@@ -143,9 +157,20 @@ class _LoginScreenState extends State<LoginScreen>
               'Muitas tentativas. Aguarde alguns instantes e tente novamente.';
           break;
 
+        case 'internal-error':
+          message =
+              'N\u00e3o foi poss\u00edvel concluir o login neste navegador. '
+              'Use Problemas para entrar? para recuperar a sess\u00e3o local.';
+          break;
+
         case 'network-request-failed':
           message =
               'Não foi possível conectar ao servidor. Verifique sua internet.';
+          break;
+
+        case 'web-storage-unsupported':
+          message =
+              'O navegador bloqueou o login permanente. Use Verificar login salvo para conferir o armazenamento deste navegador.';
           break;
 
         default:
@@ -479,58 +504,121 @@ class _LoginScreenState extends State<LoginScreen>
           // E-MAIL
           // ====================================================
 
-          TextField(
-            controller: _emailController,
-            focusNode: _emailFocusNode,
-            enabled: !_isLoading,
-            keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next,
-            onSubmitted: (_) {
-              _passwordFocusNode.requestFocus();
-            },
-            decoration: _inputDecoration(
-              label: 'E-mail',
-              icon: Icons.email_outlined,
-            ),
-          ),
-
-          SizedBox(height: smallHeight ? 10 : 16),
-
-          // ====================================================
-          // SENHA
-          // ====================================================
-
-          TextField(
-            controller: _passwordController,
-            focusNode: _passwordFocusNode,
-            enabled: !_isLoading,
-            obscureText: _obscurePassword,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) {
-              _handleLogin();
-            },
-            decoration: _inputDecoration(
-              label: 'Senha',
-              icon: Icons.lock_outline_rounded,
-              suffixIcon: IconButton(
-                tooltip: _obscurePassword ? 'Mostrar senha' : 'Ocultar senha',
-                icon: Icon(
-                  _obscurePassword
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
+          AutofillGroup(
+            onDisposeAction: AutofillContextAction.cancel,
+            child: Column(children: [
+              TextField(
+                controller: _emailController,
+                autofillHints: const [
+                  AutofillHints.username,
+                  AutofillHints.email
+                ],
+                autocorrect: false,
+                focusNode: _emailFocusNode,
+                enabled: !_isLoading,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) {
+                  _passwordFocusNode.requestFocus();
+                },
+                decoration: _inputDecoration(
+                  label: 'E-mail',
+                  icon: Icons.email_outlined,
                 ),
-                onPressed: _isLoading
-                    ? null
-                    : () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
               ),
-            ),
+
+              SizedBox(height: smallHeight ? 10 : 16),
+
+              // ====================================================
+              // SENHA
+              // ====================================================
+
+              TextField(
+                controller: _passwordController,
+                autofillHints: const [AutofillHints.password],
+                autocorrect: false,
+                enableSuggestions: false,
+                focusNode: _passwordFocusNode,
+                enabled: !_isLoading,
+                obscureText: _obscurePassword,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) {
+                  _handleLogin();
+                },
+                decoration: _inputDecoration(
+                  label: 'Senha',
+                  icon: Icons.lock_outline_rounded,
+                  suffixIcon: IconButton(
+                    tooltip:
+                        _obscurePassword ? 'Mostrar senha' : 'Ocultar senha',
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                  ),
+                ),
+              ),
+            ]),
           ),
 
           SizedBox(height: smallHeight ? 3 : 10),
+
+          Material(
+            type: MaterialType.transparency,
+            child: CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+              activeColor: CoresApp.primaria,
+              title: Text('Manter conectado',
+                  style:
+                      TextStyle(color: CoresApp.textoPrincipal, fontSize: 13)),
+              subtitle: Text('Continuar conectado ao reabrir este navegador.',
+                  style:
+                      TextStyle(color: CoresApp.textoSecundario, fontSize: 11)),
+              value: _keepConnected,
+              onChanged: _isLoading
+                  ? null
+                  : (value) {
+                      setState(() => _keepConnected = value ?? false);
+                    },
+            ),
+          ),
+
+          if (kIsWeb)
+            TextButton(
+              onPressed: _isLoading
+                  ? null
+                  : () => launchUrl(Uri.base.resolve('diagnostico-login.html'),
+                      webOnlyWindowName: '_blank'),
+              child: const Text('Verificar login salvo'),
+            ),
+
+          if (kIsWeb)
+            TextButton(
+              onPressed: _isLoading
+                  ? null
+                  : () async {
+                      final opened = await launchUrl(
+                        Uri.base.resolve('recuperar-acesso.html'),
+                        webOnlyWindowName: '_self',
+                      );
+                      if (!opened && mounted) {
+                        _showMessage(
+                            'N\u00e3o foi poss\u00edvel abrir a recupera\u00e7\u00e3o.',
+                            isError: true);
+                      }
+                    },
+              child: const Text('Problemas para entrar?'),
+            ),
 
           // ====================================================
           // ESQUECI A SENHA
@@ -569,7 +657,7 @@ class _LoginScreenState extends State<LoginScreen>
               onPressed: _isLoading ? null : _handleLogin,
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.primaria,
-                foregroundColor: Colors.white,
+                foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                 disabledBackgroundColor:
                     CoresApp.primaria.withValues(alpha: 0.45),
                 elevation: 0,
@@ -651,7 +739,7 @@ class _LoginScreenState extends State<LoginScreen>
             child: OutlinedButton(
               onPressed: _isLoading ? null : _openRegisterScreen,
               style: OutlinedButton.styleFrom(
-                foregroundColor: CoresApp.textoPrincipal,
+                foregroundColor: AppPalette.primary,
                 side: BorderSide(
                   color: CoresApp.borda,
                 ),
@@ -679,10 +767,12 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     return Scaffold(
       backgroundColor: CoresApp.fundo,
       body: LayoutBuilder(
         builder: (context, constraints) {
+          AppAppearance.watch(context);
           final double width = constraints.maxWidth;
           final double height = constraints.maxHeight;
 
@@ -740,133 +830,140 @@ class _LoginScreenState extends State<LoginScreen>
 
               Positioned.fill(
                 child: SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: compact ? 20 : 40,
-                      vertical: verySmallHeight
-                          ? 5
-                          : smallHeight
-                              ? 8
-                              : 18,
-                    ),
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // ====================================
-                            // LOGO
-                            // ====================================
+                  child: AuthViewport(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 20 : 40,
+                        vertical: verySmallHeight
+                            ? 5
+                            : smallHeight
+                                ? 8
+                                : 18,
+                      ),
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // ====================================
+                              // LOGO
+                              // ====================================
 
-                            SizedBox(
-                              height: logoHeight,
-                              child: _buildHorizontalLogo(
+                              SizedBox(
                                 height: logoHeight,
+                                child: _buildHorizontalLogo(
+                                  height: logoHeight,
+                                ),
                               ),
-                            ),
 
-                            SizedBox(
-                              height: verySmallHeight
-                                  ? 4
-                                  : smallHeight
-                                      ? 7
-                                      : 14,
-                            ),
+                              SizedBox(
+                                height: verySmallHeight
+                                    ? 4
+                                    : smallHeight
+                                        ? 7
+                                        : 14,
+                              ),
 
-                            // ====================================
-                            // DESCRIÇÃO
-                            // ====================================
+                              // ====================================
+                              // DESCRIÇÃO
+                              // ====================================
 
-                            if (!verySmallHeight)
+                              if (!verySmallHeight)
+                                Text(
+                                  'Organize seu trabalho, acompanhe seus '
+                                  'projetos e tenha controle total das suas horas.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: CoresApp.textoSecundario,
+                                    fontSize: smallHeight ? 11 : 13,
+                                    height: 1.35,
+                                  ),
+                                ),
+
+                              SizedBox(
+                                height: verySmallHeight
+                                    ? 5
+                                    : smallHeight
+                                        ? 8
+                                        : 14,
+                              ),
+
+                              // ====================================
+                              // FUNCIONALIDADES
+                              // ====================================
+
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 7,
+                                runSpacing: 6,
+                                children: [
+                                  _buildFeatureChip(
+                                    icon: Icons.access_time_rounded,
+                                    text: 'Horas',
+                                    compact: compact || smallHeight,
+                                  ),
+                                  _buildFeatureChip(
+                                    icon: Icons.folder_open_rounded,
+                                    text: 'Projetos',
+                                    compact: compact || smallHeight,
+                                  ),
+                                  _buildFeatureChip(
+                                    icon: Icons.bar_chart_rounded,
+                                    text: 'Métricas',
+                                    compact: compact || smallHeight,
+                                  ),
+                                ],
+                              ),
+
+                              SizedBox(
+                                height: verySmallHeight
+                                    ? 7
+                                    : smallHeight
+                                        ? 10
+                                        : 20,
+                              ),
+
+                              // ====================================
+                              // CARD
+                              // ====================================
+
+                              _buildLoginCard(
+                                smallHeight: smallHeight || verySmallHeight,
+                              ),
+
+                              SizedBox(
+                                height: verySmallHeight
+                                    ? 3
+                                    : smallHeight
+                                        ? 6
+                                        : 12,
+                              ),
+
+                              // ====================================
+                              // RODAPÉ
+                              // ====================================
+
                               Text(
-                                'Organize seu trabalho, acompanhe seus '
-                                'projetos e tenha controle total das suas horas.',
-                                textAlign: TextAlign.center,
+                                'Gestão de Horas e Projetos',
                                 style: TextStyle(
-                                  color: CoresApp.textoSecundario,
-                                  fontSize: smallHeight ? 11 : 13,
-                                  height: 1.35,
+                                  color: CoresApp.textoFraco,
+                                  fontSize: verySmallHeight ? 8 : 10,
                                 ),
                               ),
-
-                            SizedBox(
-                              height: verySmallHeight
-                                  ? 5
-                                  : smallHeight
-                                      ? 8
-                                      : 14,
-                            ),
-
-                            // ====================================
-                            // FUNCIONALIDADES
-                            // ====================================
-
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 7,
-                              runSpacing: 6,
-                              children: [
-                                _buildFeatureChip(
-                                  icon: Icons.access_time_rounded,
-                                  text: 'Horas',
-                                  compact: compact || smallHeight,
-                                ),
-                                _buildFeatureChip(
-                                  icon: Icons.folder_open_rounded,
-                                  text: 'Projetos',
-                                  compact: compact || smallHeight,
-                                ),
-                                _buildFeatureChip(
-                                  icon: Icons.bar_chart_rounded,
-                                  text: 'Métricas',
-                                  compact: compact || smallHeight,
-                                ),
-                              ],
-                            ),
-
-                            SizedBox(
-                              height: verySmallHeight
-                                  ? 7
-                                  : smallHeight
-                                      ? 10
-                                      : 20,
-                            ),
-
-                            // ====================================
-                            // CARD
-                            // ====================================
-
-                            _buildLoginCard(
-                              smallHeight: smallHeight || verySmallHeight,
-                            ),
-
-                            SizedBox(
-                              height: verySmallHeight
-                                  ? 3
-                                  : smallHeight
-                                      ? 6
-                                      : 12,
-                            ),
-
-                            // ====================================
-                            // RODAPÉ
-                            // ====================================
-
-                            Text(
-                              'Gestão de Horas e Projetos',
-                              style: TextStyle(
-                                color: CoresApp.textoFraco,
-                                fontSize: verySmallHeight ? 8 : 10,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
+              ),
+              const Positioned(
+                top: 8,
+                right: 12,
+                child: SafeArea(child: ThemeToggleButton()),
               ),
             ],
           );

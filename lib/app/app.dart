@@ -3,57 +3,71 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gerenciador_horas/data/services/update_service.dart';
 import 'package:gerenciador_horas/core/theme/app_theme.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
 import 'package:gerenciador_horas/features/auth/screens/login_screen.dart';
 
 import 'main_navigation_screen.dart';
+import '../shared/widgets/writing_review.dart';
+import '../data/services/web_release_monitor.dart';
+import 'package:gerenciador_horas/data/services/edesk_integration.dart';
 
 class GerenciadorHorasApp extends StatelessWidget {
   const GerenciadorHorasApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      // ==========================================================
-      // CONFIGURAÇÕES GERAIS
-      // ==========================================================
+    return ValueListenableBuilder<AppVisualTheme>(
+        valueListenable: AppAppearance.instance,
+        builder: (context, mode, child) => MaterialApp(
+              navigatorKey: appNavigatorKey,
+              // ==========================================================
+              // CONFIGURAÇÕES GERAIS
+              // ==========================================================
 
-      title: 'Gestão de Horas e Projetos',
+              title: 'Gestão de Horas e Projetos',
 
-      debugShowCheckedModeBanner: false,
+              debugShowCheckedModeBanner: false,
 
-      // ==========================================================
-      // LOCALIZAÇÃO
-      // ==========================================================
+              // ==========================================================
+              // LOCALIZAÇÃO
+              // ==========================================================
 
-      locale: const Locale('pt', 'BR'),
+              locale: const Locale('pt', 'BR'),
 
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
 
-      supportedLocales: const [
-        Locale('pt', 'BR'),
-        Locale('en', 'US'),
-      ],
+              supportedLocales: const [
+                Locale('pt', 'BR'),
+                Locale('en', 'US'),
+              ],
 
-      // ==========================================================
-      // TEMA
-      // ==========================================================
+              // ==========================================================
+              // TEMA
+              // ==========================================================
 
-      theme: AppTheme.dark,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: mode.mode,
+              themeAnimationDuration: Duration.zero,
+              builder: (context, child) => AppearanceScope(
+                controller: AppAppearance.instance,
+                child: WritingReviewScope(child: child ?? const SizedBox.shrink()),
+              ),
 
-      // ==========================================================
-      // TELA INICIAL
-      // ==========================================================
-      //
-      // O UpdateChecker executa a verificação de atualização
-      // apenas uma vez após a interface estar carregada.
-      // ==========================================================
+              // ==========================================================
+              // TELA INICIAL
+              // ==========================================================
+              //
+              // O UpdateChecker executa a verificação de atualização
+              // apenas uma vez após a interface estar carregada.
+              // ==========================================================
 
-      home: const _UpdateChecker(),
-    );
+              home: const _UpdateChecker(),
+            ));
   }
 }
 
@@ -138,7 +152,7 @@ class _UpdateCheckerState extends State<_UpdateChecker> {
         // ========================================================
 
         if (snapshot.hasData && snapshot.data != null) {
-          return MainNavigationScreen(key: ValueKey(snapshot.data!.uid));
+          return const WebReleaseMonitor(child: MainNavigationScreen());
         }
 
         // ========================================================

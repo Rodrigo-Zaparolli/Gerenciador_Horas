@@ -1,3 +1,12 @@
+import 'package:gerenciador_horas/shared/widgets/redesign_components.dart';
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'monthly_performance.dart';
+import 'planning_table_viewport.dart';
+import 'metrics_text_color.dart';
+import 'package:gerenciador_horas/domain/models/work_duration.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
+import 'package:gerenciador_horas/domain/models/monthly_hours.dart';
 
 class MetricsScreen extends StatefulWidget {
   final int selectedIndex;
@@ -29,7 +39,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
   // CONFIGURAÇÕES
   // ================================================================
 
-  static const int _ano = 2026;
+  static final int _ano = DateTime.now().year;
+  Timer? _jornadaDebounce;
 
   final List<String> _meses = const [
     'janeiro',
@@ -76,7 +87,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
   Color _cobradasColor = CoresDashboard.graficoProjetos;
   Color _demaisColor = CoresDashboard.graficoAndamento;
 
-  final List<Color> _paletaCores = const [
+  final List<Color> _paletaCores = [
     CoresApp.primaria,
     CoresApp.secundaria,
     CoresApp.sucesso,
@@ -124,7 +135,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     super.initState();
 
     _dataInicioController = TextEditingController(
-      text: '01/01/2026',
+      text: '01/01/$_ano',
     );
 
     _horasDiaController = TextEditingController(
@@ -135,20 +146,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
     _recalcularDiasUteis();
 
-    final metasIniciais = [
-      '110:00',
-      '120:00',
-      '137:00',
-      '125:00',
-      '128:00',
-      '128:00',
-      '147:00',
-      '134:00',
-      '134:00',
-      '134:00',
-      '122:00',
-      '90:00',
-    ];
+    final metasIniciais = List.generate(
+        12, (i) => '${_ano == 2026 ? MonthlyHours.defaultGoals[i] : 0}:00');
 
     _metaControllers = List.generate(
       12,
@@ -221,6 +220,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
       _atualizarValoresComLogs,
     );
 
+    _horasDiaController.addListener(_salvarJornada);
     _carregarMetasDoFirebase();
   }
 
@@ -284,6 +284,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
       }
 
       setState(() {
+        if (data['horasDia'] is String) {
+          _horasDiaController.text = data['horasDia'];
+        }
         if (data['metaColor'] is int) {
           _metaColor = Color(data['metaColor']);
         }
@@ -305,6 +308,27 @@ class _MetricsScreenState extends State<MetricsScreen> {
         'Erro ao carregar cores das métricas: $e',
       );
     }
+  }
+
+  void _salvarJornada() {
+    if (_isLoadingFirebase) return;
+    _jornadaDebounce?.cancel();
+    final value = _horasDiaController.text.trim();
+    final valid = RegExp(r'^\d{1,3}:[0-5]\d$').hasMatch(value);
+    if (!valid) return;
+    final ref = _preferenciasRef;
+    if (ref == null) return;
+    _jornadaDebounce = Timer(const Duration(milliseconds: 400), () async {
+      try {
+        await ref.set({'horasDia': value}, SetOptions(merge: true));
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:
+                  Text('Não foi possível salvar a jornada. Tente novamente.')));
+        }
+      }
+    });
   }
 
   Future<void> _salvarCoresNoFirebase() async {
@@ -345,11 +369,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return StatefulBuilder(
           builder: (
             context,
             setModalState,
           ) {
+            AppAppearance.watch(context);
+
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(
@@ -365,7 +393,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   color: CoresDashboard.card,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: AppPalette.text.withValues(alpha: 0.08),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -395,14 +423,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
                               color: CoresApp.destaque.withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.palette_rounded,
                               color: CoresApp.destaque,
                               size: 21,
                             ),
                           ),
                           const SizedBox(width: 11),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -430,7 +458,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             onPressed: () => Navigator.of(
                               dialogContext,
                             ).pop(),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.close_rounded,
                               color: CoresApp.textoSecundario,
                               size: 19,
@@ -441,7 +469,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     ),
                     Divider(
                       height: 1,
-                      color: Colors.white.withValues(alpha: 0.06),
+                      color: AppPalette.text.withValues(alpha: 0.06),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
@@ -456,7 +484,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                           color: Colors.black.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.05),
+                            color: AppPalette.text.withValues(alpha: 0.05),
                           ),
                         ),
                         child: Row(
@@ -526,7 +554,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     ),
                     Divider(
                       height: 1,
-                      color: Colors.white.withValues(alpha: 0.06),
+                      color: AppPalette.text.withValues(alpha: 0.06),
                     ),
                     Padding(
                       padding: const EdgeInsets.all(14),
@@ -592,7 +620,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: CoresApp.destaque,
-                              foregroundColor: Colors.white,
+                              foregroundColor:
+                                  AppPalette.foregroundOn(CoresApp.destaque),
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 17,
@@ -645,7 +674,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           const SizedBox(height: 6),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
               fontSize: 7,
               fontWeight: FontWeight.w700,
@@ -669,10 +698,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
         vertical: 9,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.025),
+        color: AppPalette.text.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.055),
+          color: AppPalette.text.withValues(alpha: 0.055),
         ),
       ),
       child: Row(
@@ -698,7 +727,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: CoresApp.textoPrincipal,
                     fontSize: 9.5,
                     fontWeight: FontWeight.w900,
@@ -707,7 +736,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 const SizedBox(height: 2),
                 Text(
                   description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: CoresApp.textoSecundario,
                     fontSize: 7.5,
                   ),
@@ -752,7 +781,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         width: 1.5,
                       )
                     : Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: AppPalette.text.withValues(alpha: 0.08),
                       ),
                 boxShadow: selected
                     ? [
@@ -764,9 +793,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     : null,
               ),
               child: selected
-                  ? const Icon(
+                  ? Icon(
                       Icons.check_rounded,
-                      color: Colors.white,
+                      color: AppPalette.text,
                       size: 11,
                     )
                   : null,
@@ -822,32 +851,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
   // ================================================================
   // CÁLCULOS
   // ================================================================
-
-  double _calcularHorasCadastradasDouble(
-    int mes,
-  ) {
-    double totalHoras = 0.0;
-
-    for (final log in widget.timeLogStore.logs) {
-      if (log.date.month == mes && log.date.year == _ano) {
-        totalHoras += _parseTimeToDouble(
-          log.durationFormatted,
-        );
-      }
-    }
-
-    return totalHoras;
-  }
-
-  String _calcularHorasCadastradas(
-    int mes,
-  ) {
-    return _formatDoubleToTime(
-      _calcularHorasCadastradasDouble(
-        mes,
-      ),
-    );
-  }
 
   String _calcularHorasPorTipo(
     int mes,
@@ -934,9 +937,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
       }
 
       if (match) {
-        totalHoras += _parseTimeToDouble(
-          log.durationFormatted,
-        );
+        totalHoras += WorkDuration.minutes(log) / 60;
       }
     }
 
@@ -1016,26 +1017,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
     );
   }
 
-  double _getCadastradasSum(
-    int index,
-  ) {
-    return _calcularHorasCadastradasDouble(
-      index + 1,
-    );
-  }
-
-  double _getDemaisSum(
-    int index,
-  ) {
-    final cadastradas = _getCadastradasSum(index);
-
-    final cobradas = _getCobradasSum(index);
-
-    final demais = cadastradas - cobradas;
-
-    return demais < 0 ? 0.0 : demais;
-  }
-
   double _getRealizadoSum(
     int index,
   ) {
@@ -1083,16 +1064,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
       total += _parseTimeToDouble(
         controller.text,
       );
-    }
-
-    return total;
-  }
-
-  double _getCadastradasAnual() {
-    double total = 0.0;
-
-    for (int i = 0; i < 12; i++) {
-      total += _getCadastradasSum(i);
     }
 
     return total;
@@ -1209,6 +1180,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
       barrierDismissible: true,
       barrierColor: Colors.black.withValues(alpha: 0.72),
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         final size = MediaQuery.of(dialogContext).size;
 
         final modalWidth = size.width > 980 ? 900.0 : size.width * 0.94;
@@ -1225,7 +1198,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               color: CoresDashboard.card,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: AppPalette.text.withValues(alpha: 0.08),
               ),
               boxShadow: [
                 BoxShadow(
@@ -1245,7 +1218,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   _buildEfficiencyTabs(),
                   Divider(
                     height: 1,
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color: AppPalette.text.withValues(alpha: 0.06),
                   ),
                   Expanded(
                     child: TabBarView(
@@ -1310,9 +1283,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 ),
               ],
             ),
-            child: const Icon(
+            child: Icon(
               Icons.speed_rounded,
-              color: Colors.white,
+              color: AppPalette.text,
               size: 25,
             ),
           ),
@@ -1321,7 +1294,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Análise de eficiência',
                   style: TextStyle(
                     color: CoresApp.textoPrincipal,
@@ -1331,7 +1304,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Horas cobradas em relação à meta.',
                   style: TextStyle(
                     color: CoresApp.textoSecundario,
@@ -1356,8 +1329,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const Text(
-                  '2026',
+                Text(
+                  '$_ano',
                   style: TextStyle(
                     color: CoresApp.textoSecundario,
                     fontSize: 6.5,
@@ -1369,7 +1342,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 Text(
                   _formatPercentage(eficiencia),
                   style: TextStyle(
-                    color: _demaisColor,
+                    color: metricsTextColor(_demaisColor),
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1383,7 +1356,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             onPressed: () {
               Navigator.of(dialogContext).pop();
             },
-            icon: const Icon(
+            icon: Icon(
               Icons.close_rounded,
               color: CoresApp.textoSecundario,
               size: 20,
@@ -1404,10 +1377,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
         color: Colors.black.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.045),
+          color: AppPalette.text.withValues(alpha: 0.045),
         ),
       ),
-      child: const TabBar(
+      child: TabBar(
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
         labelColor: CoresApp.destaque,
@@ -1476,6 +1449,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             context,
             constraints,
           ) {
+            AppAppearance.watch(context);
+
             final compact = constraints.maxWidth < 650;
 
             return compact
@@ -1526,7 +1501,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.025),
+        color: AppPalette.text.withValues(alpha: 0.025),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: color.withValues(alpha: 0.12),
@@ -1560,7 +1535,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       period.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w900,
@@ -1571,7 +1546,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       period.subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoSecundario,
                         fontSize: 7.5,
                       ),
@@ -1582,7 +1557,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               Text(
                 _formatPercentage(period.efficiency),
                 style: TextStyle(
-                  color: color,
+                  color: metricsTextColor(color),
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1595,7 +1570,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 7,
-              backgroundColor: Colors.white.withValues(alpha: 0.055),
+              backgroundColor: AppPalette.text.withValues(alpha: 0.055),
               valueColor: AlwaysStoppedAnimation<Color>(
                 color,
               ),
@@ -1649,7 +1624,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
               fontSize: 5.8,
               fontWeight: FontWeight.w900,
@@ -1660,7 +1635,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           Text(
             value,
             style: TextStyle(
-              color: color,
+              color: metricsTextColor(color),
               fontSize: 10,
               fontWeight: FontWeight.w900,
             ),
@@ -1692,20 +1667,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
     Color? color,
     double radius = 18,
   }) {
-    return BoxDecoration(
-      color: color ?? CoresDashboard.card.withValues(alpha: 0.97),
-      borderRadius: BorderRadius.circular(radius),
-      border: Border.all(
-        color: CoresApp.textoPrincipal.withValues(alpha: 0.065),
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.14),
-          blurRadius: 22,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    );
+    return AppVisuals.panel(radius: radius, prominent: true)
+        .copyWith(color: color);
   }
 
   // ================================================================
@@ -1719,103 +1682,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
     required Color color,
     VoidCallback? onTap,
   }) {
-    final child = Container(
-      constraints: const BoxConstraints(
-        minHeight: 70,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 13,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.055),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withValues(alpha: 0.14),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: CoresApp.textoSecundario,
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.65,
-                        ),
-                      ),
-                    ),
-                    if (onTap != null)
-                      Icon(
-                        Icons.open_in_new_rounded,
-                        color: color.withValues(alpha: 0.65),
-                        size: 10,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                FittedBox(
-                  alignment: Alignment.centerLeft,
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (onTap == null) {
-      return child;
-    }
-
-    return Tooltip(
-      message: 'Clique para ver a análise de eficiência',
-      waitDuration: const Duration(milliseconds: 500),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: child,
-        ),
-      ),
-    );
+    return AppMetricCard(
+        icon: icon,
+        label: label,
+        value: value,
+        accent: color,
+        onTap: onTap,
+        emphasizeValue: true,
+        compact: true);
   }
 
   // ================================================================
@@ -1850,19 +1724,20 @@ class _MetricsScreenState extends State<MetricsScreen> {
         icon: Icons.speed_rounded,
         label: 'EFICIÊNCIA',
         value: _getEfficiencyText(),
-        color: _demaisColor,
+        color: metricsTextColor(_demaisColor),
         onTap: _abrirModalEficiencia,
       ),
     ];
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _cardDecoration(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: LayoutBuilder(
         builder: (
           context,
           constraints,
         ) {
+          AppAppearance.watch(context);
+
           final compact = constraints.maxWidth < 1050;
 
           if (compact) {
@@ -1939,9 +1814,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
               ),
             ],
           ),
-          child: const Icon(
+          child: Icon(
             Icons.analytics_rounded,
-            color: Colors.white,
+            color: AppPalette.text,
             size: 27,
           ),
         ),
@@ -1957,9 +1832,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       'Métricas de desempenho',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
-                        fontSize: 18,
+                        fontSize: 26,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.45,
                       ),
@@ -1975,8 +1850,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       color: CoresApp.destaque.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Text(
-                      '2026',
+                    child: Text(
+                      '$_ano',
                       style: TextStyle(
                         color: CoresApp.destaque,
                         fontSize: 8,
@@ -1987,7 +1862,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 ],
               ),
               const SizedBox(height: 5),
-              const Text(
+              Text(
                 'Visão geral da produtividade, metas e distribuição das horas.',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -2011,17 +1886,18 @@ class _MetricsScreenState extends State<MetricsScreen> {
   Widget _buildJornadaConfigCard() {
     final totalDias = _diasUteisCalculados.fold<int>(
       0,
-      (acumulado, val) => acumulado + val,
+      (total, val) => total + val,
     );
 
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: _cardDecoration(radius: 15),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       child: LayoutBuilder(
         builder: (
           context,
           constraints,
         ) {
+          AppAppearance.watch(context);
+
           final compact = constraints.maxWidth < 800;
 
           final campos = [
@@ -2122,7 +1998,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   color: CoresApp.textoPrincipal,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w900,
@@ -2133,7 +2009,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   color: CoresApp.textoSecundario,
                   fontSize: 8.5,
                 ),
@@ -2176,7 +2052,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   color: CoresApp.textoSecundario,
                   fontSize: 6.5,
                   fontWeight: FontWeight.w900,
@@ -2187,7 +2063,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               Text(
                 value,
                 style: TextStyle(
-                  color: color,
+                  color: metricsTextColor(color),
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
                 ),
@@ -2210,14 +2086,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
       child: TextField(
         controller: controller,
         onChanged: onChanged,
-        style: const TextStyle(
+        style: TextStyle(
           color: CoresApp.textoPrincipal,
           fontSize: 9.5,
           fontWeight: FontWeight.w800,
         ),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(
+          labelStyle: TextStyle(
             color: CoresApp.textoSecundario,
             fontSize: 8,
           ),
@@ -2247,7 +2123,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(
+            borderSide: BorderSide(
               color: CoresApp.destaque,
               width: 1.2,
             ),
@@ -2262,251 +2138,16 @@ class _MetricsScreenState extends State<MetricsScreen> {
   // ================================================================
 
   Widget _buildChartCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader(
-            icon: Icons.insights_rounded,
-            title: 'Desempenho mensal',
-            subtitle:
-                'Compare as horas cobradas e demais horas com a meta mensal.',
-            trailing: _buildCustomizeButton(),
-          ),
-          const SizedBox(height: 15),
-          _buildLegend(),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 350,
-            child: _buildRobustChart(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRobustChart() {
-    return LayoutBuilder(
-      builder: (
-        context,
-        constraints,
-      ) {
-        final valores = <double>[];
-
-        for (int i = 0; i < 12; i++) {
-          valores.add(
-            _parseTimeToDouble(
-              _metaControllers[i].text,
-            ),
-          );
-
-          valores.add(
-            _getCobradasSum(i),
-          );
-
-          valores.add(
-            _getDemaisSum(i),
-          );
-        }
-
-        double maiorValor = valores.fold<double>(
-          0.0,
-          (max, value) => value > max ? value : max,
-        );
-
-        if (maiorValor < 50) {
-          maiorValor = 50;
-        }
-
-        final maxValor = maiorValor * 1.18;
-
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.045),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 18,
-                offset: const Offset(0, 7),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: _buildChartBackground(),
-                ),
-                Positioned.fill(
-                  left: 48,
-                  right: 10,
-                  top: 14,
-                  bottom: 43,
-                  child: _buildChartGrid(maxValor),
-                ),
-                Positioned.fill(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        child: _buildYAxis(maxValor),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(
-                            right: 8,
-                            top: 12,
-                            bottom: 8,
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: List.generate(
-                              12,
-                              (index) {
-                                return Expanded(
-                                  child: _buildProfessionalMonthColumn(
-                                    index,
-                                    maxValor,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  left: 48,
-                  right: 10,
-                  bottom: 42,
-                  child: Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withValues(alpha: 0.02),
-                          Colors.white.withValues(alpha: 0.14),
-                          Colors.white.withValues(alpha: 0.02),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildChartBackground() {
-    return Stack(
-      children: [
-        Positioned(
-          top: -80,
-          right: -50,
-          child: Container(
-            width: 220,
-            height: 180,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  CoresApp.destaque.withValues(alpha: 0.075),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: -100,
-          left: -50,
-          child: Container(
-            width: 220,
-            height: 180,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  _cobradasColor.withValues(alpha: 0.045),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildChartGrid(
-    double maxValor,
-  ) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(
-        5,
-        (index) {
-          return Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 1,
-                  color: Colors.white.withValues(
-                    alpha: index == 4 ? 0.085 : 0.028,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildYAxis(
-    double maxValor,
-  ) {
     return Padding(
-      padding: const EdgeInsets.only(
-        top: 14,
-        bottom: 43,
-        right: 8,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: List.generate(
-          5,
-          (index) {
-            final percentual = 1 - (index / 4);
-            final valor = maxValor * percentual;
-
-            return Text(
-              _formatDoubleToTime(valor),
-              style: TextStyle(
-                color: CoresApp.textoSecundario.withValues(
-                  alpha: index == 4 ? 0.85 : 0.60,
-                ),
-                fontSize: 6.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.15,
-              ),
-            );
-          },
-        ),
+      padding: EdgeInsets.zero,
+      child: MonthlyPerformance(
+        year: _ano,
+        logs: widget.timeLogStore.logs,
+        goals: List.generate(12,
+            (i) => (_parseTimeToDouble(_metaControllers[i].text) * 60).round()),
+        chargedColor: _cobradasColor,
+        otherColor: _demaisColor,
+        settings: _buildCustomizeButton(),
       ),
     );
   }
@@ -2515,450 +2156,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
   // COLUNA MENSAL
   // ================================================================
 
-  Widget _buildProfessionalMonthColumn(
-    int index,
-    double maxValor,
-  ) {
-    final meta = _parseTimeToDouble(
-      _metaControllers[index].text,
-    );
-
-    final realizado = _getCadastradasSum(index);
-    final cobradas = _getCobradasSum(index);
-    final demais = _getDemaisSum(index);
-
-    final currentMonth =
-        DateTime.now().year == _ano && DateTime.now().month == index + 1;
-
-    final maxBarHeight = 238.0;
-
-    double barHeight(
-      double value,
-    ) {
-      if (value <= 0) {
-        return 3;
-      }
-
-      final result = (value / maxValor) * maxBarHeight;
-
-      return result.clamp(
-        4.0,
-        maxBarHeight,
-      );
-    }
-
-    final percentualMensal = meta <= 0 ? 0.0 : (realizado / meta) * 100;
-
-    // EFICIÊNCIA = HORAS COBRADAS ÷ META × 100
-    final eficienciaMensal = meta <= 0 ? 0.0 : (cobradas / meta) * 100;
-
-    final isBestMonth = _isBestMonth(index);
-
-    return Tooltip(
-      waitDuration: const Duration(milliseconds: 180),
-      showDuration: const Duration(seconds: 4),
-      preferBelow: false,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 13,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFF171A20),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.09),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      textStyle: const TextStyle(
-        color: Colors.white,
-        fontSize: 9,
-        height: 1.45,
-      ),
-      message: '${_meses[index].toUpperCase()}\n'
-          'Meta: ${_metaControllers[index].text}h\n'
-          'Cobradas: ${_formatDoubleToTime(cobradas)}h\n'
-          'Demais: ${_formatDoubleToTime(demais)}h\n'
-          'Atingimento: ${percentualMensal.toStringAsFixed(1)}%\n'
-          'Eficiência: ${eficienciaMensal.toStringAsFixed(1)}%',
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-        margin: const EdgeInsets.symmetric(
-          horizontal: 1,
-          vertical: 3,
-        ),
-        padding: const EdgeInsets.only(
-          top: 4,
-          bottom: 2,
-        ),
-        decoration: BoxDecoration(
-          color: currentMonth
-              ? CoresApp.destaque.withValues(alpha: 0.045)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
-          border: currentMonth
-              ? Border.all(
-                  color: CoresApp.destaque.withValues(alpha: 0.13),
-                )
-              : null,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            SizedBox(
-              height: 17,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (isBestMonth)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 2),
-                      child: Icon(
-                        Icons.workspace_premium_rounded,
-                        size: 8,
-                        color: CoresApp.destaqueAmarelo,
-                      ),
-                    ),
-                  if (currentMonth)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: CoresApp.destaque.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Text(
-                        'ATUAL',
-                        style: TextStyle(
-                          color: CoresApp.destaque,
-                          fontSize: 5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.25,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  Positioned.fill(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _buildProfessionalBar(
-                          value: cobradas,
-                          height: barHeight(cobradas),
-                          color: _cobradasColor,
-                          width: 18,
-                          isMain: true,
-                        ),
-                        const SizedBox(width: 4),
-                        _buildProfessionalBar(
-                          value: demais,
-                          height: barHeight(demais),
-                          color: _demaisColor,
-                          width: 11,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    left: 3,
-                    right: 3,
-                    bottom: _calculateMetaLinePosition(
-                      meta,
-                      maxValor,
-                      maxBarHeight,
-                    ),
-                    child: _buildMetaLine(meta),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 5,
-                vertical: 3,
-              ),
-              decoration: BoxDecoration(
-                color: currentMonth
-                    ? CoresApp.destaque.withValues(alpha: 0.13)
-                    : Colors.white.withValues(alpha: 0.035),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                _meses[index].substring(0, 3).toUpperCase(),
-                style: TextStyle(
-                  color: currentMonth
-                      ? CoresApp.destaque
-                      : CoresApp.textoSecundario,
-                  fontSize: 6.5,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.35,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  double _calculateMetaLinePosition(
-    double meta,
-    double maxValor,
-    double maxBarHeight,
-  ) {
-    if (meta <= 0) {
-      return 0;
-    }
-
-    final position = (meta / maxValor) * maxBarHeight;
-
-    return position.clamp(
-      2.0,
-      maxBarHeight - 2,
-    );
-  }
-
-  Widget _buildMetaLine(
-    double meta,
-  ) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 2,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _metaColor.withValues(alpha: 0.05),
-                  _metaColor,
-                  _metaColor.withValues(alpha: 0.05),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _metaColor.withValues(alpha: 0.35),
-                  blurRadius: 5,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 2),
-        Container(
-          width: 5,
-          height: 5,
-          decoration: BoxDecoration(
-            color: _metaColor,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: _metaColor.withValues(alpha: 0.45),
-                blurRadius: 5,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  bool _isBestMonth(
-    int index,
-  ) {
-    double maior = -1;
-    int melhorIndex = -1;
-
-    for (int i = 0; i < 12; i++) {
-      final realizado = _getCadastradasSum(i);
-
-      if (realizado > maior) {
-        maior = realizado;
-        melhorIndex = i;
-      }
-    }
-
-    return melhorIndex == index && maior > 0;
-  }
-
-  Widget _buildProfessionalBar({
-    required double value,
-    required double height,
-    required Color color,
-    required double width,
-    bool isMain = false,
-  }) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(
-        begin: 0,
-        end: height,
-      ),
-      duration: const Duration(milliseconds: 700),
-      curve: Curves.easeOutCubic,
-      builder: (
-        context,
-        animatedHeight,
-        child,
-      ) {
-        return Container(
-          width: width,
-          height: animatedHeight,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color.lerp(
-                  Colors.white,
-                  color,
-                  0.10,
-                )!,
-                color,
-                color.withValues(alpha: 0.46),
-              ],
-              stops: const [
-                0.0,
-                0.18,
-                1.0,
-              ],
-            ),
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(6),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(
-                  alpha: isMain ? 0.30 : 0.16,
-                ),
-                blurRadius: isMain ? 10 : 7,
-                spreadRadius: isMain ? 0.4 : 0,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   // ================================================================
   // LEGENDA
   // ================================================================
-
-  Widget _buildLegend() {
-    return Wrap(
-      spacing: 18,
-      runSpacing: 7,
-      children: [
-        _buildLegendItem(
-          'Meta',
-          _metaColor,
-          isLine: true,
-        ),
-        _buildLegendItem(
-          'Cobradas',
-          _cobradasColor,
-        ),
-        _buildLegendItem(
-          'Demais',
-          _demaisColor,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(
-    String label,
-    Color color, {
-    bool isLine = false,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (isLine)
-          SizedBox(
-            width: 12,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  height: 2,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.30),
-                        blurRadius: 4,
-                      ),
-                    ],
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Container(
-                    width: 5,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  color,
-                  color.withValues(alpha: 0.55),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(3),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.20),
-                  blurRadius: 5,
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: const TextStyle(
-            color: CoresApp.textoSecundario,
-            fontSize: 8.5,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildCustomizeButton() {
     return Material(
@@ -2978,7 +2178,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               color: CoresApp.destaque.withValues(alpha: 0.12),
             ),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
@@ -3007,88 +2207,32 @@ class _MetricsScreenState extends State<MetricsScreen> {
   // SECTION HEADER
   // ================================================================
 
-  Widget _buildSectionHeader({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    Widget? trailing,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 39,
-          height: 39,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: CoresApp.destaque.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: Icon(
-            icon,
-            color: CoresApp.destaque,
-            size: 19,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: CoresApp.textoPrincipal,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: CoresApp.textoSecundario,
-                  fontSize: 8.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (trailing != null) trailing,
-      ],
-    );
-  }
-
   // ================================================================
   // TABELA
   // ================================================================
 
   Widget _buildPlanningTable() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(17),
-      decoration: _cardDecoration(
-        color: Colors.white,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildTableHeader(),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: 1420,
-                child: _buildTable(),
+    return Center(
+        child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: double.infinity),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: _cardDecoration(
+                color: AppPalette.surface,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTableHeader(),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: PlanningTableViewport(child: _buildTable()),
+                  ),
+                ],
+              ),
+            )));
   }
 
   Widget _buildTableHeader() {
@@ -3102,30 +2246,30 @@ class _MetricsScreenState extends State<MetricsScreen> {
             color: CoresApp.destaque.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(11),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.table_chart_rounded,
             color: CoresApp.destaque,
             size: 19,
           ),
         ),
         const SizedBox(width: 10),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Planejamento anual',
                 style: TextStyle(
-                  color: Colors.black87,
+                  color: AppPalette.text,
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               SizedBox(height: 3),
               Text(
-                'Metas mensais e distribuição das horas ao longo de 2026.',
+                'Metas mensais e distribuição das horas ao longo de $_ano.',
                 style: TextStyle(
-                  color: Colors.black54,
+                  color: AppPalette.secondary,
                   fontSize: 8.5,
                 ),
               ),
@@ -3141,7 +2285,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             color: CoresApp.destaque.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
@@ -3186,10 +2330,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
       },
       border: TableBorder(
         horizontalInside: BorderSide(
-          color: Colors.black.withValues(alpha: 0.07),
+          color: AppPalette.border.withValues(alpha: 0.7),
         ),
         verticalInside: BorderSide(
-          color: Colors.black.withValues(alpha: 0.045),
+          color: AppPalette.border.withValues(alpha: 0.45),
         ),
       ),
       children: [
@@ -3235,20 +2379,20 @@ class _MetricsScreenState extends State<MetricsScreen> {
         _buildCellText(
           'Data Início / Jornada',
           isHeader: true,
-          color: Colors.white,
+          color: AppPalette.text,
           alignLeft: true,
         ),
         _buildCellInput(
           _horasDiaController,
           isHeader: true,
-          bgColor: Colors.white.withValues(alpha: 0.12),
+          bgColor: AppPalette.text.withValues(alpha: 0.12),
         ),
         ...List.generate(
           12,
           (i) => _buildCellText(
             _meses[i],
             isHeader: true,
-            color: Colors.white,
+            color: AppPalette.text,
           ),
         ),
       ],
@@ -3263,7 +2407,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
       children: [
         _buildCellInput(
           _dataInicioController,
-          bgColor: const Color(0xFFFFF2CC),
+          bgColor: AppPalette.warning.withValues(alpha: 0.10),
           onChanged: (_) {
             _recalcularDiasUteis();
             setState(() {});
@@ -3278,7 +2422,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           (i) => _buildCellText(
             '${i + 1}',
             isHeader: true,
-            color: Colors.white,
+            color: AppPalette.text,
           ),
         ),
       ],
@@ -3296,7 +2440,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         _buildCellText(
           '${_diasUteisCalculados.fold<int>(
             0,
-            (acumulado, val) => acumulado + val,
+            (total, val) => total + val,
           )}',
           isBold: true,
         ),
@@ -3312,8 +2456,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   TableRow _buildMetaRow() {
     return TableRow(
-      decoration: const BoxDecoration(
-        color: Color(0xFFFFF8DF),
+      decoration: BoxDecoration(
+        color: AppPalette.warning.withValues(alpha: 0.08),
       ),
       children: [
         _buildCellText(
@@ -3325,8 +2469,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
           _formatDoubleToTime(
             _metaControllers.fold<double>(
               0,
-              (acumulado, item) =>
-                  acumulado +
+              (total, item) =>
+                  total +
                   _parseTimeToDouble(
                     item.text,
                   ),
@@ -3406,8 +2550,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
           _formatDoubleToTime(
             controllers.fold<double>(
               0,
-              (acumulado, item) =>
-                  acumulado +
+              (total, item) =>
+                  total +
                   _parseTimeToDouble(
                     item.text,
                   ),
@@ -3432,10 +2576,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
     Color? color,
   }) {
     return Container(
-      height: 39,
+      height: 22,
       padding: const EdgeInsets.symmetric(
         horizontal: 5,
-        vertical: 6,
+        vertical: 3,
       ),
       alignment: alignLeft ? Alignment.centerLeft : Alignment.center,
       child: Text(
@@ -3443,7 +2587,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: color ?? Colors.black87,
+          color: color == null ? AppPalette.text : metricsTextColor(color),
           fontSize: 10,
           fontWeight: isHeader || isBold ? FontWeight.w800 : FontWeight.w500,
         ),
@@ -3459,7 +2603,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     ValueChanged<String>? onChanged,
   }) {
     return Container(
-      height: 39,
+      height: 22,
       color: bgColor,
       padding: const EdgeInsets.symmetric(
         horizontal: 2,
@@ -3471,13 +2615,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
         style: TextStyle(
           fontSize: 10,
           fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
-          color: isHeader ? Colors.white : Colors.black87,
+          color: AppPalette.text,
         ),
         decoration: const InputDecoration(
           border: InputBorder.none,
           isDense: true,
           contentPadding: EdgeInsets.symmetric(
-            vertical: 8,
+            vertical: 3,
           ),
         ),
         onChanged: (val) {
@@ -3502,6 +2646,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     );
 
     _dataInicioController.dispose();
+    // A edição pendente termina de salvar mesmo ao sair da tela.
     _horasDiaController.dispose();
 
     for (int i = 0; i < 12; i++) {
@@ -3526,7 +2671,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     BuildContext context,
   ) {
     if (_isLoadingFirebase) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: CoresDashboard.fundo,
         body: Center(
           child: CircularProgressIndicator(),
@@ -3537,7 +2682,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
+        preferredSize: const Size.fromHeight(68),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
@@ -3555,7 +2700,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           ),
           Positioned.fill(
             child: Container(
-              color: CoresApp.fundo.withValues(alpha: 0.80),
+              color: Colors.transparent,
             ),
           ),
           Positioned.fill(
@@ -3569,13 +2714,39 @@ class _MetricsScreenState extends State<MetricsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildPageHeader(),
-                  const SizedBox(height: 13),
-                  _buildJornadaConfigCard(),
+                  Container(
+                    decoration: _cardDecoration(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildPageHeader(),
+                        Divider(height: 1, color: AppVisuals.divider),
+                        _buildJornadaConfigCard(),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 13),
                   _buildChartCard(),
                   const SizedBox(height: 13),
                   _buildPlanningTable(),
+                  const SizedBox(height: 12),
+                  const AppSuggestionsBanner(items: [
+                    (
+                      Icons.track_changes,
+                      'Acompanhamento por meta',
+                      'Acompanhe a evolução das suas metas mensais.'
+                    ),
+                    (
+                      Icons.bar_chart,
+                      'Análises comparativas',
+                      'Compare meses e o acumulado do ano.'
+                    ),
+                    (
+                      Icons.tune,
+                      'Personalização',
+                      'Ajuste os indicadores nos controles disponíveis.'
+                    ),
+                  ]),
                 ],
               ),
             ),
@@ -3621,6 +2792,7 @@ class _EfficiencyMonthlyTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final periods = List.generate(
       12,
       (index) {
@@ -3672,6 +2844,7 @@ class _EfficiencyQuarterlyTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final periods = <_EfficiencyPeriodData>[];
 
     const ranges = [
@@ -3732,6 +2905,7 @@ class _EfficiencySemiannualTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final periods = <_EfficiencyPeriodData>[];
 
     const ranges = [
@@ -3790,6 +2964,7 @@ class _EfficiencyAnnualTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final cobradas = state._getCobradasAnual();
 
     final realizado = state._getRealizadoAnual();
@@ -3821,7 +2996,7 @@ class _EfficiencyAnnualTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.025),
+            color: AppPalette.text.withValues(alpha: 0.025),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: efficiencyColor.withValues(
@@ -3849,8 +3024,8 @@ class _EfficiencyAnnualTab extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
-                'EFICIÊNCIA DE 2026',
+              Text(
+                'EFICIÊNCIA DE ${_MetricsScreenState._ano}',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
                   fontSize: 8,
@@ -3864,7 +3039,7 @@ class _EfficiencyAnnualTab extends StatelessWidget {
                   efficiency,
                 ),
                 style: TextStyle(
-                  color: efficiencyColor,
+                  color: metricsTextColor(efficiencyColor),
                   fontSize: 31,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -1,
@@ -3931,6 +3106,7 @@ class _AnnualValueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
@@ -3965,7 +3141,7 @@ class _AnnualValueCard extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: CoresApp.textoSecundario,
                     fontSize: 6,
                     fontWeight: FontWeight.w900,
@@ -3976,7 +3152,7 @@ class _AnnualValueCard extends StatelessWidget {
                 Text(
                   value,
                   style: TextStyle(
-                    color: color,
+                    color: metricsTextColor(color),
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),

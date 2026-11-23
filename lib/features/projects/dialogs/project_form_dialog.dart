@@ -1,14 +1,25 @@
-import 'dart:io';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
+import '../widgets/edesk_phase_send_button.dart';
+import 'package:gerenciador_horas/core/platform/local_files.dart';
+import 'package:gerenciador_horas/data/services/project_file_service.dart';
+import 'package:gerenciador_horas/data/services/project_reference_save.dart';
+import 'package:gerenciador_horas/data/services/browser_local_files_service.dart';
+import '../widgets/project_reference_field.dart';
+import 'package:gerenciador_horas/core/config/web_config.dart';
+import 'package:gerenciador_horas/features/projects/widgets/project_storage_files_dialog.dart';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'project_archive_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:gerenciador_horas/data/services/edesk_service.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
+import 'package:gerenciador_horas/data/services/project_storage_service.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ProjectFormDialog extends StatefulWidget {
   final List<WorkFormat> workFormats;
@@ -42,8 +53,8 @@ class HoursInputFormatter extends TextInputFormatter {
   ) {
     String digits = newValue.text.replaceAll(RegExp(r'\D'), '');
 
-    if (digits.length > 4) {
-      digits = digits.substring(0, 4);
+    if (digits.length > 6) {
+      digits = digits.substring(0, 6);
     }
 
     String formatted = digits;
@@ -67,9 +78,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _clientController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _leaderController = TextEditingController();
   final TextEditingController _excelLinkController = TextEditingController();
   final TextEditingController _folderPathController = TextEditingController();
+  late final String? _initialFolderReference, _initialExcelReference;
 
   final EdeskService _edeskService = EdeskService();
 
@@ -89,6 +102,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   // ============================================================
 
   bool _isUpdatingEdesk = false;
+  final Set<int> _selectedEdeskPhaseIndices = {};
 
   // ============================================================
   // CHECKLIST
@@ -116,6 +130,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     super.initState();
 
     final project = widget.projectToEdit;
+    _initialFolderReference = project?.folderPath;
+    _initialExcelReference = project?.excelLink;
 
     // ----------------------------------------------------------
     // VALORES DO PROJETO
@@ -124,6 +140,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     if (project != null) {
       _idController.text = project.id;
       _clientController.text = project.client;
+      _emailController.text = project.email ?? '';
       _leaderController.text = project.leader;
 
       _status = project.status;
@@ -238,7 +255,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     try {
       final formats = await _firebaseService.getChecklistFormats();
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -279,7 +296,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         'ERRO AO CARREGAR MODELOS DE CHECKLIST: $e',
       );
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -404,12 +421,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final String? itemName = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
-          backgroundColor: const Color(0xFF2D2D44),
-          title: const Text(
+          backgroundColor: AppPalette.surface,
+          title: Text(
             'Adicionar item ao Check List',
             style: TextStyle(
-              color: Colors.white,
+              color: AppPalette.text,
               fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
@@ -419,8 +438,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             child: TextField(
               controller: _newChecklistItemController,
               autofocus: true,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppPalette.text,
               ),
               onSubmitted: (value) {
                 final text = value.trim();
@@ -429,14 +448,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   Navigator.of(dialogContext).pop(text);
                 }
               },
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Descrição do item',
                 labelStyle: TextStyle(
-                  color: Colors.white70,
+                  color: AppPalette.secondary,
                 ),
                 hintText: 'Digite o item do Check List',
                 hintStyle: TextStyle(
-                  color: Colors.white30,
+                  color: AppPalette.border,
                 ),
                 border: OutlineInputBorder(),
                 isDense: true,
@@ -448,17 +467,17 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               onPressed: () {
                 Navigator.of(dialogContext).pop();
               },
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: AppPalette.secondary,
                 ),
               ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00FFCC),
-                foregroundColor: Colors.black,
+                backgroundColor: AppPalette.accent,
+                foregroundColor: AppPalette.foregroundOn(AppPalette.accent),
               ),
               onPressed: () {
                 final text = _newChecklistItemController.text.trim();
@@ -580,54 +599,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   // TRABALHO - OBTER NOME
   // ============================================================
 
-  String _getWorkName(
-    dynamic rawStep,
-    int index,
-  ) {
-    if (rawStep is String) {
-      final String value = rawStep.trim();
-
-      if (value.isNotEmpty) {
-        return value;
-      }
-    }
-
-    if (rawStep is Map) {
-      final dynamic name = rawStep['name'];
-
-      if (name != null && name.toString().trim().isNotEmpty) {
-        return name.toString().trim();
-      }
-
-      final dynamic stage = rawStep['stage'];
-
-      if (stage != null && stage.toString().trim().isNotEmpty) {
-        return stage.toString().trim();
-      }
-
-      final dynamic title = rawStep['title'];
-
-      if (title != null && title.toString().trim().isNotEmpty) {
-        return title.toString().trim();
-      }
-
-      final dynamic description = rawStep['description'];
-
-      if (description != null && description.toString().trim().isNotEmpty) {
-        return description.toString().trim();
-      }
-    }
-
-    if (rawStep != null) {
-      final String value = rawStep.toString().trim();
-
-      if (value.isNotEmpty && value != 'null') {
-        return value;
-      }
-    }
-
-    return 'Etapa ${index + 1}';
-  }
+  String _getWorkName(dynamic rawStep, int index) =>
+      workStepName(rawStep, index);
 
   // ============================================================
   // DATAS
@@ -636,7 +609,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/'
         '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
+        '${date.year.toString().padLeft(4, '0')}';
   }
 
   DateTime _onlyDate(DateTime date) {
@@ -681,13 +654,15 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         context: context,
         barrierDismissible: true,
         builder: (BuildContext dialogContext) {
+          AppAppearance.watch(dialogContext);
+
           DateTime temporaryDate = selectedDate;
 
           return Localizations.override(
             context: dialogContext,
             locale: const Locale('pt', 'BR'),
             child: Dialog(
-              backgroundColor: const Color(0xFF2D2D44),
+              backgroundColor: AppPalette.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
@@ -696,6 +671,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   BuildContext context,
                   StateSetter setDialogState,
                 ) {
+                  AppAppearance.watch(context);
+
                   return ConstrainedBox(
                     constraints: const BoxConstraints(
                       minWidth: 320,
@@ -726,11 +703,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              const Expanded(
+                              Expanded(
                                 child: Text(
                                   'Selecionar data',
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: AppPalette.text,
                                     fontSize: 17,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -741,9 +718,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 onPressed: () {
                                   Navigator.of(dialogContext).pop();
                                 },
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.close,
-                                  color: Colors.white54,
+                                  color: AppPalette.secondary,
                                   size: 20,
                                 ),
                               ),
@@ -757,10 +734,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               vertical: 10,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF232338),
+                              color: AppPalette.surface,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: Colors.white12,
+                                color: AppPalette.border,
                               ),
                             ),
                             child: Row(
@@ -774,8 +751,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 Expanded(
                                   child: Text(
                                     _formatDate(temporaryDate),
-                                    style: const TextStyle(
-                                      color: Colors.white,
+                                    style: TextStyle(
+                                      color: AppPalette.text,
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -806,10 +783,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 onPressed: () {
                                   Navigator.of(dialogContext).pop();
                                 },
-                                child: const Text(
+                                child: Text(
                                   'Cancelar',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color: AppPalette.secondary,
                                   ),
                                 ),
                               ),
@@ -828,8 +805,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                   'Confirmar',
                                 ),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF00FFCC),
-                                  foregroundColor: Colors.black,
+                                  backgroundColor: AppPalette.accent,
+                                  foregroundColor: AppPalette.foregroundOn(
+                                      AppPalette.accent),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
                                     vertical: 11,
@@ -866,7 +844,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       debugPrint('STACK TRACE: $stackTrace');
       debugPrint('==========================================');
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return null;
       }
 
@@ -898,7 +876,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         'ERRO: datas inválidas no trabalho ${work['name']}',
       );
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -945,6 +923,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     setState(() {
       work['startDate'] = picked;
+      work['startDateConfirmed'] = true;
 
       if (_internalWorks.isNotEmpty &&
           identical(
@@ -967,7 +946,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final dynamic rawEndDate = work['endDate'];
 
     if (rawStartDate is! DateTime || rawEndDate is! DateTime) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -1014,6 +993,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     setState(() {
       work['endDate'] = picked;
+      work['endDateConfirmed'] = true;
     });
   }
 
@@ -1048,6 +1028,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final List<TaskModel> existingTasks =
         existingProject?.subTasks ?? <TaskModel>[];
 
+    _selectedEdeskPhaseIndices.clear();
     _internalWorks = List.generate(
       workFormat.steps.length,
       (index) {
@@ -1064,14 +1045,6 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         String hoursText = '00:00';
 
         String subId = (index + 1).toString();
-
-        // ========================================================
-        // E-DESK
-        // ========================================================
-
-        String? edeskSolicitacao;
-        String? edeskUrl;
-        String? edeskIdTrabalho;
 
         TaskModel? existingTask;
 
@@ -1102,20 +1075,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           if (existingTask.subId.trim().isNotEmpty) {
             subId = existingTask.subId.trim();
           }
-
-          // ======================================================
-          // PRESERVAR E-DESK
-          // ======================================================
-
-          edeskSolicitacao = existingTask.edeskSolicitacao;
-          edeskUrl = existingTask.edeskUrl;
-          edeskIdTrabalho = existingTask.edeskIdTrabalho;
         }
 
         stepStart = _onlyDate(stepStart);
         stepEnd = _onlyDate(stepEnd);
 
-        if (stepEnd.isBefore(stepStart)) {
+        if (existingTask == null && stepEnd.isBefore(stepStart)) {
           stepEnd = stepStart;
         }
 
@@ -1125,14 +1090,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           'controller': TextEditingController(text: hoursText),
           'startDate': stepStart,
           'endDate': stepEnd,
+          'startDateConfirmed':
+              existingTask == null || existingTask.planStart != null,
+          'endDateConfirmed':
+              existingTask == null || existingTask.planEnd != null,
 
           // ============================================================
           // E-DESK
           // Preserva os vínculos já cadastrados no projeto.
           // ============================================================
-          'edeskSolicitacao': edeskSolicitacao,
-          'edeskUrl': edeskUrl,
-          'edeskIdTrabalho': edeskIdTrabalho,
+          'edeskSolicitacao': existingTask?.edeskSolicitacao,
+          'edeskUrl': existingTask?.edeskUrl,
+          'edeskIdTrabalho': existingTask?.edeskIdTrabalho,
+          'edeskPhaseName': existingTask?.edeskPhaseName,
         };
       },
     );
@@ -1152,7 +1122,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 // Mantém o botão sincronizando até o Python concluir
 // ============================================================
 
-  Future<void> _atualizarDatasEdesk() async {
+  Future<void> _atualizarDatasEdesk({required bool enviarTodas}) async {
     if (_isUpdatingEdesk) {
       return;
     }
@@ -1204,9 +1174,21 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     // MONTA AS FASES
     // ==========================================================
 
+    List<int> indices;
+    try {
+      indices = edeskPhaseIndices(
+          _internalWorks.length, _selectedEdeskPhaseIndices,
+          all: enviarTodas);
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+
     final List<Map<String, String>> fases = [];
 
-    for (final dynamic rawWork in _internalWorks) {
+    for (final index in indices) {
+      final dynamic rawWork = _internalWorks[index];
       if (rawWork is! Map) {
         continue;
       }
@@ -1215,21 +1197,46 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
       final dynamic rawStart = rawWork['startDate'];
       final dynamic rawEnd = rawWork['endDate'];
+      if (rawWork['startDateConfirmed'] == false ||
+          rawWork['endDateConfirmed'] == false) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Defina as datas de início e fim da fase ${index + 1} antes de enviar. As datas não foram importadas do E-Desk.'),
+        ));
+        return;
+      }
 
       if (nome.isEmpty) {
-        continue;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('A fase ${index + 1} não possui um nome válido.'),
+        ));
+        return;
       }
 
       if (rawStart is! DateTime || rawEnd is! DateTime) {
-        continue;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('Confira as datas da fase ${index + 1} antes de enviar.'),
+        ));
+        return;
       }
 
       final DateTime dataInicial = _onlyDate(rawStart);
       final DateTime dataFinal = _onlyDate(rawEnd);
+      if (dataFinal.isBefore(dataInicial)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('A data final da fase ${index + 1} está antes da inicial.'),
+        ));
+        return;
+      }
 
       fases.add(
         {
-          'nome': nome,
+          'nome':
+              rawWork['edeskPhaseName']?.toString().trim().isNotEmpty == true
+                  ? rawWork['edeskPhaseName'].toString().trim()
+                  : nome,
           'dataInicial': _formatDate(dataInicial),
           'dataFinal': _formatDate(dataFinal),
         },
@@ -1264,7 +1271,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         fases: fases,
       );
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -1275,6 +1282,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       // o sinal de conclusão.
       // ==========================================================
 
+      if (resultado.statusCode == 499) return;
       if (resultado.confirmed) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1305,7 +1313,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         );
       }
     } catch (e) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -1321,7 +1329,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         ),
       );
     } finally {
-      if (mounted) {
+      if (mounted && context.mounted) {
         setState(() {
           _isUpdatingEdesk = false;
         });
@@ -1376,36 +1384,21 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
   Future<void> _pickExcelFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [
-          'xlsx',
-          'xls',
-          'csv',
-          'docx',
-          'pdf',
-          'txt',
-        ],
-      );
-
-      if (result != null && result.files.single.path != null && mounted) {
-        setState(() {
-          _excelLinkController.text = result.files.single.path!;
-        });
-      }
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erro ao selecionar arquivo: $e',
-          ),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      final reference = await ProjectFileService.pickFile(_idController.text);
+      if (reference == null || !mounted) return;
+      setState(() {
+        _excelLinkController.text = reference;
+        if (kIsWeb &&
+            WebConfig.storageEnabled &&
+            _folderPathController.text.trim().isEmpty) {
+          _folderPathController.text =
+              ProjectFileService.cloudFolder(_idController.text);
+        }
+      });
+    } catch (error) {
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$error')));
     }
   }
 
@@ -1425,7 +1418,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     final cliente = _clientController.text.trim();
 
     if (id.isEmpty || cliente.isEmpty) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1434,6 +1427,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           ),
         ),
       );
+      return;
+    }
+
+    if (kIsWeb) {
+      try {
+        final reference =
+            await BrowserLocalFiles.pickFolder(createName: '$id - $cliente');
+        if (reference == null || !mounted) return;
+        setState(() => _folderPathController.text = reference);
+      } catch (error) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
       return;
     }
 
@@ -1447,35 +1453,24 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
       }
 
       final nomePasta = _sanitizarNomePasta('$id - $cliente');
-      final separador = Platform.pathSeparator;
-      final caminhoCompleto =
-          '${diretorioBase.replaceAll(RegExp(r'[\\/]+$'), '')}$separador$nomePasta';
+      final caminhoCompleto = await createLocalFolder(diretorioBase, nomePasta);
 
-      final pasta = Directory(caminhoCompleto);
-      final jaExistia = await pasta.exists();
-
-      if (!jaExistia) {
-        await pasta.create(recursive: true);
-      }
-
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       setState(() {
-        _folderPathController.text = pasta.path;
+        _folderPathController.text = caminhoCompleto;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            jaExistia
-                ? 'A pasta já existia e foi vinculada ao projeto.'
-                : 'Pasta criada com sucesso: $nomePasta',
+            'Pasta vinculada com sucesso: $nomePasta',
           ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1494,7 +1489,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     String? caminho,
   ) async {
     if (caminho == null || caminho.trim().isEmpty) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -1510,56 +1505,28 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
     }
 
     try {
-      final String path = caminho.trim();
-
-      if (path.startsWith('http://') || path.startsWith('https://')) {
-        final Uri uri = Uri.parse(path);
-
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(
-            uri,
-            mode: LaunchMode.externalApplication,
-          );
-        } else {
-          throw 'Não foi possível abrir o link.';
+      final path = caminho.trim();
+      if (ProjectStorageService.isStorageReference(path) &&
+          path.endsWith('/files/')) {
+        if (kIsWeb && !WebConfig.storageEnabled) {
+          throw StateError('O armazenamento de anexos não está configurado.');
         }
-
-        return;
-      }
-
-      final File file = File(path);
-      final Directory directory = Directory(path);
-
-      Uri? uri;
-
-      if (await file.exists()) {
-        uri = Uri.file(file.path);
-      } else if (await directory.exists()) {
-        uri = Uri.directory(directory.path);
+        await showProjectStorageFilesDialog(context, folderReference: path);
       } else {
-        final Directory parentDir = file.parent;
-
-        if (await parentDir.exists()) {
-          uri = Uri.directory(
-            parentDir.path,
-          );
+        final isFolder = _folderPathController.text.trim() == path;
+        final resolved = await ProjectFileService.openFile(path,
+            projectId: widget.projectToEdit?.id,
+            field: isFolder ? 'folderPath' : 'excelLink');
+        if (resolved != null && mounted) {
+          final controller =
+              isFolder ? _folderPathController : _excelLinkController;
+          if (controller.text.trim() == path) {
+            setState(() => controller.text = resolved);
+          }
         }
-      }
-
-      if (uri == null) {
-        throw 'O arquivo ou pasta não foi encontrado.';
-      }
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-      } else {
-        throw 'Não foi possível abrir o arquivo ou pasta.';
       }
     } catch (e) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -1585,6 +1552,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     final String id = _idController.text.trim();
     final String client = _clientController.text.trim();
+
+    final email = _emailController.text.trim();
+    if (email.isNotEmpty &&
+        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Informe um e-mail válido ou deixe o campo vazio.')));
+      return;
+    }
 
     if (id.isEmpty || client.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1687,10 +1662,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               ? work['edeskUrl'].toString().trim()
               : null;
 
-      final String? edeskIdTrabalho =
-          work['edeskIdTrabalho']?.toString().trim().isNotEmpty == true
-              ? work['edeskIdTrabalho'].toString().trim()
-              : null;
+      final String edeskIdTrabalho = subId;
 
       customSubTasks.add(
         TaskModel(
@@ -1698,8 +1670,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           stage: work['name'] as String,
           status: _status,
           startDate: stepStart,
-          planStart: stepStart,
-          planEnd: stepEnd,
+          planStart: work['startDateConfirmed'] == false ? null : stepStart,
+          planEnd: work['endDateConfirmed'] == false ? null : stepEnd,
           estimatedHours: rawController.text.trim().isNotEmpty
               ? rawController.text.trim()
               : '00:00',
@@ -1712,6 +1684,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           edeskSolicitacao: edeskSolicitacao,
           edeskUrl: edeskUrl,
           edeskIdTrabalho: edeskIdTrabalho,
+          edeskPhaseName: work['edeskPhaseName']?.toString(),
         ),
       );
     }
@@ -1724,51 +1697,75 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
     final List<Map<String, dynamic>> checklistToSave = _buildChecklistForSave();
 
-    final ProjectModel savedProject = ProjectModel(
-      id: id,
-      id2: widget.projectToEdit?.id2 ?? '0',
-      client: client,
-      serviceType: _selectedWorkFormat?.name ?? 'Geral',
-      stage: _internalWorks.isNotEmpty
-          ? _internalWorks.first['name'] as String
-          : 'Geral',
-      task: widget.projectToEdit?.task ?? '',
-      status: _status,
-      startDate: globalStartDate,
-      estimatedHours: _calculateTotalEstimatedHours(),
-      leader: _leaderController.text.trim().isEmpty
-          ? 'Equipe'
-          : _leaderController.text.trim(),
-      hourType: _hourType,
-      excelLink: _excelLinkController.text.trim().isEmpty
-          ? null
-          : _excelLinkController.text.trim(),
-      folderPath: _folderPathController.text.trim().isEmpty
-          ? null
-          : _folderPathController.text.trim(),
-      subTasks: customSubTasks,
-      checklist: checklistToSave,
-    );
-
     setState(() {
       _isSaving = true;
     });
 
     try {
+      final excelLink = ProjectFileService.editedReference(
+        _excelLinkController.text,
+        _initialExcelReference,
+      );
+      final folderPath = ProjectFileService.editedReference(
+        _folderPathController.text,
+        _initialFolderReference,
+      );
+
+      final ProjectModel savedProject = ProjectModel(
+        id: id,
+        id2: widget.projectToEdit?.id2 ?? '0',
+        client: client,
+        serviceType: _selectedWorkFormat?.name ?? 'Geral',
+        stage: _internalWorks.isNotEmpty
+            ? _internalWorks.first['name'] as String
+            : 'Geral',
+        task: widget.projectToEdit?.task ?? '',
+        status: _status,
+        startDate: globalStartDate,
+        estimatedHours: _calculateTotalEstimatedHours(),
+        leader: _leaderController.text.trim().isEmpty
+            ? 'Equipe'
+            : _leaderController.text.trim(),
+        hourType: _hourType,
+        excelLink: excelLink,
+        folderPath: folderPath,
+        email: email.isEmpty ? null : email,
+        subTasks: customSubTasks,
+        checklist: checklistToSave,
+      );
+
       await _firebaseService.saveProject(
         savedProject,
         savedProject.id,
+        ProjectReferenceChanges(
+          previousFolder: _initialFolderReference,
+          previousExcel: _initialExcelReference,
+        ),
       );
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
+      if (savedProject.status == 'TRAB_FIM' &&
+          widget.projectToEdit?.status != 'TRAB_FIM' &&
+          ProjectArchiveDialog.acceptsFolder(savedProject.folderPath ?? '') &&
+          ProjectArchiveDialog.allowed) {
+        final result = await ProjectArchiveDialog.show(context,
+            projectId: savedProject.id,
+            folder: savedProject.folderPath!,
+            excel: savedProject.excelLink ?? '');
+        if (result != null) {
+          savedProject.folderPath = result['folderReference'] as String;
+          savedProject.excelLink = result['excelReference'] as String;
+        }
+        if (!mounted || !context.mounted) return;
+      }
       Navigator.of(context).pop(
         savedProject,
       );
     } catch (e) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -1776,11 +1773,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         _isSaving = false;
       });
 
+      final errorMessage = 'Erro ao salvar o projeto: $e';
+
+      if (!mounted || !context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Erro ao salvar no banco de dados: $e',
-          ),
+          content: Text(errorMessage),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -1795,6 +1795,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
   void dispose() {
     _idController.dispose();
     _clientController.dispose();
+    _emailController.dispose();
     _leaderController.dispose();
     _excelLinkController.dispose();
     _folderPathController.dispose();
@@ -1814,10 +1815,11 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final String calculatedHours = _calculateTotalEstimatedHours();
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF2D2D44),
+      backgroundColor: AppPalette.surface,
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1826,8 +1828,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               _isEditing
                   ? 'Editar Trabalho - ${widget.projectToEdit!.id}'
                   : 'Novo Trabalho',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppPalette.text,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -1835,9 +1837,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
             ),
           ),
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.close,
-              color: Colors.white70,
+              color: AppPalette.secondary,
               size: 20,
             ),
             onPressed: _isSaving || _isUpdatingEdesk
@@ -1859,13 +1861,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     flex: 4,
                     child: TextField(
                       controller: _idController,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppPalette.text,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'ID',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -1877,14 +1879,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     flex: 4,
                     child: DropdownButtonFormField<String>(
                       initialValue: _status,
-                      dropdownColor: const Color(0xFF2D2D44),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      dropdownColor: AppPalette.surface,
+                      style: TextStyle(
+                        color: AppPalette.text,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Status',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -1912,7 +1914,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ),
                       ],
                       onChanged: (value) {
-                        if (!mounted) {
+                        if (!mounted || !context.mounted) {
                           return;
                         }
 
@@ -1931,13 +1933,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     flex: 6,
                     child: TextField(
                       controller: _clientController,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppPalette.text,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Cliente',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -1950,14 +1952,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     child: DropdownButtonFormField<WorkFormat>(
                       initialValue: _selectedWorkFormat,
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF2D2D44),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      dropdownColor: AppPalette.surface,
+                      style: TextStyle(
+                        color: AppPalette.text,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Tipo de Serviço',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -1992,20 +1994,37 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                 ],
               ),
               const SizedBox(height: 16),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                style: TextStyle(color: AppPalette.text),
+                decoration: InputDecoration(
+                  labelText: 'E-mail',
+                  helperText: 'Opcional',
+                  prefixIcon: const Icon(Icons.mail_outline),
+                  labelStyle: TextStyle(color: AppPalette.secondary),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: ProjectReferenceField(
                       controller: _folderPathController,
-                      readOnly: true,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      readOnly: !kIsWeb,
+                      style: TextStyle(
+                        color: AppPalette.text,
                         fontSize: 12,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'Pasta de Documentos',
-                        labelStyle: const TextStyle(
-                          color: Colors.white70,
+                        labelText: kIsWeb
+                            ? 'Pasta local ou link compartilhado (opcional)'
+                            : 'Pasta de Documentos',
+                        labelStyle: TextStyle(
+                          color: AppPalette.secondary,
                         ),
                         border: const OutlineInputBorder(),
                         isDense: true,
@@ -2015,7 +2034,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                           size: 20,
                         ),
                         suffixIcon: SizedBox(
-                          width: 88,
+                          width: kIsWeb ? 132 : 88,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -2028,6 +2047,31 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                 ),
                                 onPressed: _criarPastaProjeto,
                               ),
+                              if (kIsWeb)
+                                IconButton(
+                                  tooltip: 'Selecionar pasta local',
+                                  icon: const Icon(Icons.search,
+                                      color: Colors.cyanAccent, size: 20),
+                                  onPressed: () async {
+                                    try {
+                                      final reference =
+                                          await BrowserLocalFiles.pickFolder();
+                                      if (reference != null && mounted) {
+                                        setState(() => _folderPathController
+                                            .text = reference);
+                                      }
+                                    } catch (error) {
+                                      if (mounted && context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(SnackBar(
+                                                content: Text(error
+                                                    .toString()
+                                                    .replaceFirst(
+                                                        'Bad state: ', ''))));
+                                      }
+                                    }
+                                  },
+                                ),
                               IconButton(
                                 tooltip: 'Abrir pasta',
                                 icon: const Icon(
@@ -2035,21 +2079,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                   color: Colors.cyanAccent,
                                   size: 20,
                                 ),
-                                onPressed: () {
-                                  if (_folderPathController.text.isNotEmpty) {
-                                    _abrirCaminho(
-                                      _folderPathController.text,
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Nenhuma pasta cadastrada.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
+                                onPressed: () =>
+                                    _abrirCaminho(_folderPathController.text),
                               ),
                             ],
                           ),
@@ -2059,31 +2090,36 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: GestureDetector(
-                      onTap: _pickExcelFile,
-                      child: AbsorbPointer(
-                        child: TextField(
-                          controller: _excelLinkController,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Arquivo (Excel / Word / Link)',
-                            labelStyle: TextStyle(
-                              color: Colors.white70,
-                            ),
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                            prefixIcon: Icon(
-                              Icons.insert_drive_file,
-                              color: Colors.cyanAccent,
-                              size: 20,
-                            ),
-                            suffixIcon: Icon(
-                              Icons.attach_file,
-                              color: Colors.cyanAccent,
-                            ),
+                    child: ProjectReferenceField(
+                      controller: _excelLinkController,
+                      readOnly: !kIsWeb,
+                      onTap: kIsWeb ? null : _pickExcelFile,
+                      style: TextStyle(
+                        color: AppPalette.text,
+                        fontSize: 12,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: kIsWeb
+                            ? 'Arquivo local ou link compartilhado'
+                            : 'Arquivo (Excel / Word / Link)',
+                        labelStyle: TextStyle(
+                          color: AppPalette.secondary,
+                        ),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        prefixIcon: const Icon(
+                          Icons.insert_drive_file,
+                          color: Colors.cyanAccent,
+                          size: 20,
+                        ),
+                        suffixIcon: IconButton(
+                          tooltip: kIsWeb
+                              ? 'Selecionar anexo'
+                              : 'Selecionar arquivo',
+                          onPressed: _pickExcelFile,
+                          icon: const Icon(
+                            Icons.attach_file,
+                            color: Colors.cyanAccent,
                           ),
                         ),
                       ),
@@ -2095,13 +2131,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Check List',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
@@ -2110,7 +2146,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                       Text(
                         'Selecione um modelo para aplicar os itens ao trabalho.',
                         style: TextStyle(
-                          color: Colors.white38,
+                          color: AppPalette.secondary,
                           fontSize: 11,
                         ),
                       ),
@@ -2123,17 +2159,16 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00FFCC).withValues(alpha: 0.10),
+                        color: AppPalette.accent.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color:
-                              const Color(0xFF00FFCC).withValues(alpha: 0.30),
+                          color: AppPalette.accent.withValues(alpha: 0.30),
                         ),
                       ),
                       child: Text(
                         '${_checklistItems.where((item) => item['completed'] == true).length}/${_checklistItems.length}',
-                        style: const TextStyle(
-                          color: Color(0xFF00FFCC),
+                        style: TextStyle(
+                          color: AppPalette.accent,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -2145,37 +2180,37 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF232338),
+                  color: AppPalette.surface,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.white24,
+                    color: AppPalette.border,
                   ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.playlist_add_check,
-                      color: Color(0xFF00FFCC),
+                      color: AppPalette.accent,
                       size: 22,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _loadingChecklistFormats
-                          ? const Row(
+                          ? Row(
                               children: [
                                 SizedBox(
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Color(0xFF00FFCC),
+                                    color: AppPalette.accent,
                                   ),
                                 ),
                                 SizedBox(width: 10),
                                 Text(
                                   'Carregando modelos de Check List...',
                                   style: TextStyle(
-                                    color: Colors.white54,
+                                    color: AppPalette.secondary,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -2184,23 +2219,23 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                           : DropdownButtonFormField<ChecklistFormat>(
                               initialValue: _selectedChecklistFormat,
                               isExpanded: true,
-                              dropdownColor: const Color(0xFF2D2D44),
-                              style: const TextStyle(
-                                color: Colors.white,
+                              dropdownColor: AppPalette.surface,
+                              style: TextStyle(
+                                color: AppPalette.text,
                                 fontSize: 13,
                               ),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Modelo de Check List',
                                 labelStyle: TextStyle(
-                                  color: Colors.white70,
+                                  color: AppPalette.secondary,
                                 ),
                                 border: OutlineInputBorder(),
                                 isDense: true,
                               ),
-                              hint: const Text(
+                              hint: Text(
                                 'Selecione um modelo',
                                 style: TextStyle(
-                                  color: Colors.white38,
+                                  color: AppPalette.secondary,
                                 ),
                               ),
                               items: _checklistFormats
@@ -2221,8 +2256,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                           ),
                                           Text(
                                             '${format.items.length} itens',
-                                            style: const TextStyle(
-                                              color: Colors.white38,
+                                            style: TextStyle(
+                                              color: AppPalette.secondary,
                                               fontSize: 11,
                                             ),
                                           ),
@@ -2249,10 +2284,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF232338),
+                  color: AppPalette.surface,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.white24,
+                    color: AppPalette.border,
                   ),
                 ),
                 child: _checklistItems.isEmpty
@@ -2263,17 +2298,17 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.checklist,
-                              color: Colors.white24,
+                              color: AppPalette.border,
                               size: 22,
                             ),
                             const SizedBox(width: 10),
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 'Nenhum item no Check List deste trabalho.',
                                 style: TextStyle(
-                                  color: Colors.white38,
+                                  color: AppPalette.secondary,
                                   fontSize: 12,
                                 ),
                               ),
@@ -2322,7 +2357,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       ? const Color(
                                           0xFF00FFCC,
                                         ).withValues(alpha: 0.06)
-                                      : Colors.white.withValues(alpha: 0.02),
+                                      : AppPalette.text.withValues(alpha: 0.02),
                                   borderRadius: BorderRadius.circular(
                                     6,
                                   ),
@@ -2331,7 +2366,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         ? const Color(
                                             0xFF00FFCC,
                                           ).withValues(alpha: 0.25)
-                                        : Colors.white.withValues(alpha: 0.08),
+                                        : AppPalette.text
+                                            .withValues(alpha: 0.08),
                                   ),
                                 ),
                                 child: Row(
@@ -2341,7 +2377,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       activeColor: const Color(
                                         0xFF00FFCC,
                                       ),
-                                      checkColor: Colors.black,
+                                      checkColor: AppPalette.onPrimary,
                                       onChanged: (value) {
                                         _toggleChecklistItem(
                                           index,
@@ -2354,8 +2390,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       alignment: Alignment.center,
                                       child: Text(
                                         '${index + 1}',
-                                        style: const TextStyle(
-                                          color: Colors.white38,
+                                        style: TextStyle(
+                                          color: AppPalette.secondary,
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -2367,13 +2403,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         itemName,
                                         style: TextStyle(
                                           color: completed
-                                              ? Colors.white38
-                                              : Colors.white,
+                                              ? AppPalette.secondary
+                                              : AppPalette.text,
                                           fontSize: 12,
                                           decoration: completed
                                               ? TextDecoration.lineThrough
                                               : TextDecoration.none,
-                                          decorationColor: Colors.white38,
+                                          decorationColor: AppPalette.secondary,
                                         ),
                                       ),
                                     ),
@@ -2410,9 +2446,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     ),
                                     IconButton(
                                       tooltip: 'Remover item deste trabalho',
-                                      icon: const Icon(
+                                      icon: Icon(
                                         Icons.close,
-                                        color: Colors.white30,
+                                        color: AppPalette.border,
                                         size: 17,
                                       ),
                                       onPressed: () {
@@ -2458,19 +2494,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                       ),
               ),
               const SizedBox(height: 18),
-              const Text(
+              Text(
                 'Trabalhos Internos do Serviço',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: AppPalette.secondary,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 3),
-              const Text(
+              Text(
                 'Edite o número e clique nas datas em vermelho para editar o início e o término de cada etapa.',
                 style: TextStyle(
-                  color: Colors.white38,
+                  color: AppPalette.secondary,
                   fontSize: 11,
                 ),
               ),
@@ -2478,19 +2514,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF232338),
+                  color: AppPalette.surface,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.white24,
+                    color: AppPalette.border,
                   ),
                 ),
                 child: _internalWorks.isEmpty
-                    ? const Padding(
+                    ? Padding(
                         padding: EdgeInsets.all(8),
                         child: Text(
                           'Nenhum trabalho interno cadastrado para este serviço.',
                           style: TextStyle(
-                            color: Colors.white54,
+                            color: AppPalette.secondary,
                             fontSize: 13,
                           ),
                         ),
@@ -2520,6 +2556,30 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                               ),
                               child: Row(
                                 children: [
+                                  Tooltip(
+                                      message:
+                                          'Selecionar esta fase para enviar ao E-Desk',
+                                      child: Checkbox(
+                                          value: _selectedEdeskPhaseIndices
+                                              .contains(
+                                                  _internalWorks.indexOf(work)),
+                                          onChanged: (_isSaving ||
+                                                  _isUpdatingEdesk)
+                                              ? null
+                                              : (selected) {
+                                                  setState(() {
+                                                    final index = _internalWorks
+                                                        .indexOf(work);
+                                                    if (selected == true) {
+                                                      _selectedEdeskPhaseIndices
+                                                          .add(index);
+                                                    } else {
+                                                      _selectedEdeskPhaseIndices
+                                                          .remove(index);
+                                                    }
+                                                  });
+                                                })),
+
                                   // ------------------------------------------------
                                   // NÚMERO DA ATIVIDADE - EDITÁVEL
                                   // ------------------------------------------------
@@ -2529,8 +2589,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       controller: TextEditingController(
                                         text: work['subId']?.toString() ?? '',
                                       ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: AppPalette.text,
                                         fontSize: 13,
                                       ),
                                       textAlign: TextAlign.center,
@@ -2540,11 +2600,12 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                       ],
                                       onChanged: (value) {
                                         work['subId'] = value;
+                                        work['edeskIdTrabalho'] = value.trim();
                                       },
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         labelText: 'Nº',
                                         labelStyle: TextStyle(
-                                          color: Colors.white54,
+                                          color: AppPalette.secondary,
                                           fontSize: 11,
                                         ),
                                         border: OutlineInputBorder(),
@@ -2565,8 +2626,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     flex: 3,
                                     child: Text(
                                       work['name']?.toString() ?? 'Etapa',
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: AppPalette.text,
                                         fontSize: 13,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -2588,10 +2649,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         4,
                                       ),
                                       child: InputDecorator(
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           labelText: 'Início',
                                           labelStyle: TextStyle(
-                                            color: Colors.white54,
+                                            color: AppPalette.secondary,
                                             fontSize: 11,
                                           ),
                                           border: OutlineInputBorder(),
@@ -2609,7 +2670,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                           ),
                                         ),
                                         child: Text(
-                                          _formatDate(sDate),
+                                          work['startDateConfirmed'] == false
+                                              ? 'Não informada'
+                                              : _formatDate(sDate),
                                           style: const TextStyle(
                                             color: Color(
                                               0xFFFF5252,
@@ -2636,10 +2699,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         4,
                                       ),
                                       child: InputDecorator(
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           labelText: 'Término',
                                           labelStyle: TextStyle(
-                                            color: Colors.white54,
+                                            color: AppPalette.secondary,
                                             fontSize: 11,
                                           ),
                                           border: OutlineInputBorder(),
@@ -2657,7 +2720,9 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                           ),
                                         ),
                                         child: Text(
-                                          _formatDate(eDate),
+                                          work['endDateConfirmed'] == false
+                                              ? 'Não informada'
+                                              : _formatDate(eDate),
                                           style: const TextStyle(
                                             color: Color(
                                               0xFFFF5252,
@@ -2678,8 +2743,8 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                     width: 100,
                                     child: TextField(
                                       controller: rawController,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: AppPalette.text,
                                         fontSize: 13,
                                       ),
                                       textAlign: TextAlign.center,
@@ -2689,21 +2754,21 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                                         HoursInputFormatter(),
                                       ],
                                       onChanged: (_) {
-                                        if (!mounted) {
+                                        if (!mounted || !context.mounted) {
                                           return;
                                         }
 
                                         setState(() {});
                                       },
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         labelText: 'Horas',
                                         labelStyle: TextStyle(
-                                          color: Colors.white54,
+                                          color: AppPalette.secondary,
                                           fontSize: 11,
                                         ),
                                         hintText: '00:00',
                                         hintStyle: TextStyle(
-                                          color: Colors.white24,
+                                          color: AppPalette.border,
                                         ),
                                         border: OutlineInputBorder(),
                                         isDense: true,
@@ -2726,18 +2791,18 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                 children: [
                   Expanded(
                     child: InputDecorator(
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Hs Estimadas (Calc.)',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
                       child: Text(
                         calculatedHours,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: AppPalette.text,
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
@@ -2749,14 +2814,14 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                     child: DropdownButtonFormField<String>(
                       initialValue: _hourType,
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF2D2D44),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      dropdownColor: AppPalette.surface,
+                      style: TextStyle(
+                        color: AppPalette.text,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Tipo de Horas',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -2806,7 +2871,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                         ),
                       ],
                       onChanged: (value) {
-                        if (!mounted) {
+                        if (!mounted || !context.mounted) {
                           return;
                         }
 
@@ -2820,13 +2885,13 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                   Expanded(
                     child: TextField(
                       controller: _leaderController,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppPalette.text,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Líder Prj',
                         labelStyle: TextStyle(
-                          color: Colors.white70,
+                          color: AppPalette.secondary,
                         ),
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -2844,10 +2909,10 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
           onPressed: _isSaving || _isUpdatingEdesk
               ? null
               : () => Navigator.of(context).pop(),
-          child: const Text(
+          child: Text(
             'Cancelar',
             style: TextStyle(
-              color: Colors.white70,
+              color: AppPalette.secondary,
             ),
           ),
         ),
@@ -2856,43 +2921,19 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
         // ATUALIZAR E-DESK
         // ========================================================
 
-        OutlinedButton.icon(
-          onPressed:
-              _isSaving || _isUpdatingEdesk ? null : _atualizarDatasEdesk,
-          icon: _isUpdatingEdesk
-              ? const SizedBox(
-                  width: 17,
-                  height: 17,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.orangeAccent,
-                  ),
-                )
-              : const Icon(
-                  Icons.sync,
-                  size: 18,
-                ),
-          label: Text(
-            _isUpdatingEdesk
-                ? 'Atualizando E-Desk...'
-                : 'Atualizar datas no E-Desk',
-          ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.orangeAccent,
-            side: BorderSide(
-              color: Colors.orangeAccent.withValues(alpha: 0.60),
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 11,
-            ),
-          ),
+        EdeskPhaseSendButton(
+          total: _internalWorks.length,
+          selectedCount: _selectedEdeskPhaseIndices.length,
+          busy: _isUpdatingEdesk,
+          enabled: !_isSaving,
+          onSend: (enviarTodas) =>
+              _atualizarDatasEdesk(enviarTodas: enviarTodas),
         ),
 
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF00FFCC),
-            foregroundColor: Colors.black,
+            backgroundColor: AppPalette.accent,
+            foregroundColor: AppPalette.foregroundOn(AppPalette.accent),
           ),
           onPressed: _isSaving || _isUpdatingEdesk ? null : _saveProject,
           child: _isSaving

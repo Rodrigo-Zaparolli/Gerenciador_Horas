@@ -1,3 +1,15 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import '../../data/services/file_download.dart';
+import 'package:gerenciador_horas/shared/widgets/redesign_components.dart';
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/domain/models/work_duration.dart';
+import 'completed_project_summary.dart';
+import '../projects/dialogs/project_archive_dialog.dart';
+import '../../data/services/project_file_service.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
@@ -5,7 +17,6 @@ import 'package:gerenciador_horas/data/services/time_log_store.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class CompletedProjectsScreen extends StatefulWidget {
   final FirebaseService firebaseService;
@@ -35,6 +46,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   final Set<String> _expandedProjectIds = {};
 
   String _searchQuery = '';
+  String? _serviceFilter, _leaderFilter;
+  DateTimeRange? _periodFilter;
+  int _page = 0, _pageSize = 10;
 
   final TimeLogStore _timeLogStore = TimeLogStore();
 
@@ -102,7 +116,16 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     final completed = projects.where((project) {
       final status = project['status']?.toString().trim().toUpperCase() ?? '';
 
-      return status == 'TRAB_FIM';
+      final end = completedProjectEndDate(project, _parseDate);
+      final period = _periodFilter;
+      return status == 'TRAB_FIM' &&
+          (_serviceFilter == null ||
+              project['serviceType'] == _serviceFilter) &&
+          (_leaderFilter == null || project['leader'] == _leaderFilter) &&
+          (period == null ||
+              (end != null &&
+                  !end.isBefore(period.start) &&
+                  end.isBefore(period.end.add(const Duration(days: 1)))));
     }).toList();
 
     if (query.isEmpty) {
@@ -163,50 +186,11 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         '${date.year.toString().substring(2)}';
   }
 
-  String _formatDateTime(DateTime? date) {
-    if (date == null) {
-      return '-';
-    }
-
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year.toString().substring(2)} '
-        '${date.hour.toString().padLeft(2, '0')}:'
-        '${date.minute.toString().padLeft(2, '0')}';
-  }
-
   // ============================================================
   // HORAS
   // ============================================================
 
-  int _timeToMinutes(String value) {
-    final text = value.trim();
-
-    if (text.isEmpty) {
-      return 0;
-    }
-
-    try {
-      final parts = text.split(':');
-
-      if (parts.length == 2) {
-        final hours = int.tryParse(parts[0]) ?? 0;
-        final minutes = int.tryParse(parts[1]) ?? 0;
-
-        return (hours * 60) + minutes;
-      }
-
-      final decimal = double.tryParse(
-        text.replaceAll(',', '.'),
-      );
-
-      if (decimal != null) {
-        return (decimal * 60).round();
-      }
-    } catch (_) {}
-
-    return 0;
-  }
+  int _timeToMinutes(String value) => WorkDuration.parse(value) ?? 0;
 
   String _minutesToTime(int totalMinutes) {
     if (totalMinutes < 0) {
@@ -220,54 +204,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         '${minutes.toString().padLeft(2, '0')}';
   }
 
-  int _getLogMinutes(TimeLog log) {
-    try {
-      // 1. Prioriza durationFormatted
-      final duration = log.durationFormatted.trim();
+  int _getLogMinutes(TimeLog log) => WorkDuration.minutes(log);
 
-      if (duration.isNotEmpty) {
-        final parsedDuration = _timeToMinutes(duration);
-
-        if (parsedDuration > 0) {
-          return parsedDuration;
-        }
-
-        // Fallback para duração decimal, caso exista
-        final decimal = double.tryParse(
-          duration.replaceAll(',', '.'),
-        );
-
-        if (decimal != null && decimal > 0) {
-          return (decimal * 60).round();
-        }
-      }
-
-      // 2. Usa hours se disponível
-      if (log.hours != null && log.hours! > 0) {
-        return (log.hours! * 60).round();
-      }
-
-      // 3. Último fallback: calcula pelo horário inicial/final
-      final start = log.startTime.trim();
-      final end = log.endTime.trim();
-
-      if (start.isNotEmpty && end.isNotEmpty) {
-        final startMinutes = _timeToMinutes(start);
-        final endMinutes = _timeToMinutes(end);
-
-        if (endMinutes >= startMinutes) {
-          return endMinutes - startMinutes;
-        }
-      }
-
-      return 0;
-    } catch (e) {
-      debugPrint(
-        '⚠️ Erro em _getLogMinutes | TimeLog ${log.id}: $e',
-      );
-      return 0;
-    }
-  }
   // ============================================================
   // VALORES
   // ============================================================
@@ -335,20 +273,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     Color? backgroundColor,
     double radius = 14,
   }) {
-    return BoxDecoration(
-      color: backgroundColor ?? CoresDashboard.tabelaFundo,
-      borderRadius: BorderRadius.circular(radius),
-      border: Border.all(
-        color: borderColor ?? CoresDashboard.tabelaBorda,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: CoresApp.overlay.withValues(alpha: 0.14),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
-        ),
-      ],
-    );
+    final border = Border.all(color: borderColor ?? AppVisuals.edge);
+    if (backgroundColor != null)
+      return BoxDecoration(
+          color: backgroundColor,
+          border: border,
+          borderRadius: BorderRadius.circular(radius));
+    return AppVisuals.panel(radius: radius).copyWith(border: border);
   }
 
   // ============================================================
@@ -362,89 +293,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     required String description,
     Color? accentColor,
   }) {
-    final color = accentColor ?? CoresApp.destaque;
-
-    return Container(
-      constraints: const BoxConstraints(
-        minWidth: 120,
-        minHeight: 72,
-        maxHeight: 78,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 9,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.035),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withValues(alpha: 0.16),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: color.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.55,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: CoresApp.textoPrincipal,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color.withValues(alpha: 0.80),
-                    fontSize: 8,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    return AppMetricCard(
+        icon: icon,
+        label: label,
+        value: value,
+        description: description,
+        accent: accentColor,
+        emphasizeValue: true);
   }
 
   // ============================================================
@@ -459,7 +314,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           width: 5,
           height: 54,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
@@ -472,8 +327,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         ),
         const SizedBox(width: 12),
         Container(
-          width: 44,
-          height: 44,
+          width: 72,
+          height: 72,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: CoresApp.sucesso.withValues(alpha: 0.10),
@@ -482,14 +337,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               color: CoresApp.sucesso.withValues(alpha: 0.20),
             ),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.task_alt_rounded,
             color: CoresApp.sucesso,
-            size: 24,
+            size: 56,
           ),
         ),
         const SizedBox(width: 11),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -499,7 +354,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
-                  fontSize: 20,
+                  fontSize: 30,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.25,
                 ),
@@ -511,7 +366,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
-                  fontSize: 10.5,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -526,24 +381,140 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   // PESQUISA
   // ============================================================
 
+  Widget _buildFilters(List<Map<String, dynamic>> projects) {
+    Widget menu(String label, String field, String? selected,
+        ValueChanged<String?> change) {
+      final values = projects
+          .map((p) => p[field]?.toString() ?? '')
+          .where((v) => v.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+      return PopupMenuButton<String>(
+          tooltip: label,
+          onSelected: (value) => setState(() {
+                change(value.isEmpty ? null : value);
+                _page = 0;
+              }),
+          itemBuilder: (_) => [
+                PopupMenuItem(value: '', child: Text('Todos - $label')),
+                for (final value in values)
+                  PopupMenuItem(value: value, child: Text(value))
+              ],
+          child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: AppVisuals.panel(radius: 12),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(selected ?? label),
+                const SizedBox(width: 10),
+                const Icon(Icons.expand_more, size: 18)
+              ])));
+    }
+
+    return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: LayoutBuilder(builder: (context, c) {
+          final controls = Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                    onPressed: () async {
+                      final range = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          initialDateRange: _periodFilter);
+                      if (range != null && mounted)
+                        setState(() {
+                          _periodFilter = range;
+                          _page = 0;
+                        });
+                    },
+                    icon: const Icon(Icons.date_range),
+                    label: Text(_periodFilter == null
+                        ? 'Per\u00edodo'
+                        : '${_formatDate(_periodFilter!.start)} - ${_formatDate(_periodFilter!.end)}')),
+                menu('Tipo de Servi\u00e7o', 'serviceType', _serviceFilter,
+                    (v) => _serviceFilter = v),
+                menu('L\u00edder', 'leader', _leaderFilter,
+                    (v) => _leaderFilter = v),
+                TextButton.icon(
+                    onPressed: () => setState(() {
+                          _searchQuery = '';
+                          _serviceFilter = null;
+                          _leaderFilter = null;
+                          _periodFilter = null;
+                          _page = 0;
+                        }),
+                    icon: const Icon(Icons.restart_alt),
+                    label: const Text('Limpar')),
+              ]);
+          if (c.maxWidth < 1100)
+            return Column(children: [
+              _buildHeaderSearch(),
+              const SizedBox(height: 8),
+              controls
+            ]);
+          return Row(children: [
+            Expanded(child: _buildHeaderSearch()),
+            const SizedBox(width: 16),
+            controls
+          ]);
+        }));
+  }
+
+  Future<void> _exportCompleted(List<Map<String, dynamic>> projects) async {
+    String cell(dynamic value) {
+      var text = value?.toString() ?? '';
+      if (RegExp(r'^[=+@\-\t\r]').hasMatch(text)) text = "'$text";
+      return '"${text.replaceAll('"', '""')}"';
+    }
+
+    final csv = [
+      ['ID', 'Cliente', 'Servico', 'Lider', 'Horas'],
+      for (final p in projects)
+        [
+          p['id'],
+          p['client'],
+          p['serviceType'],
+          p['leader'],
+          p['estimatedHours']
+        ]
+    ].map((row) => row.map(cell).join(';')).join('\r\n');
+    if (kIsWeb) {
+      downloadBytes(
+          fileName: 'projetos-finalizados.csv',
+          bytes: Uint8List.fromList(utf8.encode('\ufeff$csv')),
+          mimeType: 'text/csv;charset=utf-8');
+    } else {
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Tabela copiada para a area de transferencia.')));
+    }
+  }
+
   Widget _buildHeaderSearch() {
     return TextField(
       onChanged: (value) {
         setState(() {
           _searchQuery = value;
+          _page = 0;
         });
       },
-      style: const TextStyle(
+      style: TextStyle(
         color: CoresApp.textoPrincipal,
-        fontSize: 12,
+        fontSize: 15,
       ),
       decoration: InputDecoration(
         hintText: 'Buscar por ID, cliente, serviço, líder ou etapa...',
         hintStyle: TextStyle(
           color: CoresApp.textoSecundario.withValues(alpha: 0.45),
-          fontSize: 11,
+          fontSize: 14,
         ),
-        prefixIcon: const Icon(
+        prefixIcon: Icon(
           Icons.search_rounded,
           color: CoresApp.destaque,
           size: 18,
@@ -556,7 +527,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     _searchQuery = '';
                   });
                 },
-                icon: const Icon(
+                icon: Icon(
                   Icons.close_rounded,
                   color: CoresApp.textoSecundario,
                   size: 16,
@@ -578,7 +549,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: CoresApp.destaque,
             width: 1.2,
           ),
@@ -622,7 +593,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         label: 'Última Conclusão',
         value: _formatDate(latestFinalized),
         description: 'data registrada',
-        accentColor: CoresDashboard.statusFinalizado,
+        accentColor: AppVisuals.violet,
       ),
       _buildStatCard(
         icon: Icons.filter_alt_rounded,
@@ -631,14 +602,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
         description: _searchQuery.trim().isEmpty
             ? 'todos os projetos'
             : 'resultado da busca',
-        accentColor: CoresApp.destaqueVerde,
+        accentColor: Colors.amber,
       ),
     ];
 
     return Container(
       width: double.infinity,
       decoration: _cardDecoration(
-        backgroundColor: CoresDashboard.tabelaFundo.withValues(alpha: 0.97),
         radius: 15,
       ),
       child: ClipRRect(
@@ -651,7 +621,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               bottom: 0,
               child: Container(
                 width: 5,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -667,9 +637,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               padding: const EdgeInsets.all(15),
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  AppAppearance.watch(context);
                   final double width = constraints.maxWidth;
 
-                  if (width >= 1200) {
+                  if (width >= 900) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -698,8 +669,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        _buildHeaderSearch(),
                       ],
                     );
                   }
@@ -711,6 +680,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       const SizedBox(height: 14),
                       LayoutBuilder(
                         builder: (context, wrapConstraints) {
+                          AppAppearance.watch(context);
                           final cardWidth = (wrapConstraints.maxWidth - 8) / 2;
                           return Wrap(
                             spacing: 8,
@@ -728,8 +698,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           );
                         },
                       ),
-                      const SizedBox(height: 12),
-                      _buildHeaderSearch(),
                     ],
                   );
                 },
@@ -750,7 +718,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       text.toUpperCase(),
       style: TextStyle(
         color: CoresApp.textoSecundario,
-        fontSize: TamanhosApp.tabelaFonteCabecalho,
+        fontSize: 13,
         fontWeight: FontWeight.w800,
         letterSpacing: 0.4,
       ),
@@ -773,7 +741,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         color: color ?? CoresApp.textoSecundario,
-        fontSize: fontSize ?? TamanhosApp.tabelaFonte,
+        fontSize: fontSize ?? 13,
         fontWeight: fontWeight,
       ),
     );
@@ -803,7 +771,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 ? AnimatedRotation(
                     turns: isExpanded ? 0.25 : 0,
                     duration: const Duration(milliseconds: 180),
-                    child: const Icon(
+                    child: Icon(
                       Icons.chevron_right_rounded,
                       color: CoresApp.destaque,
                       size: 18,
@@ -955,37 +923,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               icon: Icons.link_rounded,
               color: CoresApp.destaqueVerde,
               tooltip: 'Abrir arquivo/link',
-              onPressed: () async {
-                if (hasExcel) {
-                  final uri = Uri.tryParse(excelLink);
-
-                  if (uri != null && await canLaunchUrl(uri)) {
-                    await launchUrl(
-                      uri,
-                      mode: LaunchMode.externalApplication,
-                    );
-                    return;
-                  }
-                }
-
-                if (hasFolder) {
-                  Uri? uri;
-
-                  if (folderPath.startsWith('http://') ||
-                      folderPath.startsWith('https://')) {
-                    uri = Uri.tryParse(folderPath);
-                  } else {
-                    uri = Uri.file(folderPath);
-                  }
-
-                  if (uri != null && await canLaunchUrl(uri)) {
-                    await launchUrl(
-                      uri,
-                      mode: LaunchMode.externalApplication,
-                    );
-                  }
-                }
-              },
+              onPressed: () => _openProjectResource(
+                  hasExcel ? excelLink : folderPath, project['id'].toString(),
+                  field: hasExcel ? 'excelLink' : 'folderPath'),
             ),
           _buildActionButton(
             icon: Icons.undo_rounded,
@@ -1326,7 +1266,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             color: CoresApp.textoSecundario,
           ),
         ),
-        const DataCell(
+        DataCell(
           Icon(
             Icons.check_circle_rounded,
             color: CoresApp.sucesso,
@@ -1421,7 +1361,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             searching
                 ? 'Nenhum resultado encontrado'
                 : 'Nenhum trabalho finalizado',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontSize: 15,
               fontWeight: FontWeight.w800,
@@ -1433,7 +1373,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 ? 'Nenhum trabalho concluído corresponde à pesquisa.'
                 : 'Os trabalhos concluídos aparecerão aqui automaticamente.',
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
               fontSize: 10.5,
             ),
@@ -1451,25 +1391,25 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     List<Map<String, dynamic>> completedProjects,
   ) {
     final bool empty = completedProjects.isEmpty;
+    final pages =
+        (completedProjects.length / _pageSize).ceil().clamp(1, 100000);
+    final currentPage = _page.clamp(0, pages - 1);
+    final visible = completedProjects
+        .skip(currentPage * _pageSize)
+        .take(_pageSize)
+        .toList();
 
     return Container(
       width: double.infinity,
       decoration: _cardDecoration(
         radius: TamanhosApp.raioTabela,
-      ).copyWith(
-        border: Border(
-          bottom: BorderSide(
-            color: CoresDashboard.tabelaBorda,
-            width: 1,
-          ),
-        ),
       ),
       child: Column(
         children: [
           Container(
             height: 4,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 colors: [
                   CoresApp.sucesso,
                   CoresApp.destaque,
@@ -1501,8 +1441,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             child: Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 52,
+                  height: 52,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: CoresApp.sucesso.withValues(alpha: 0.10),
@@ -1511,14 +1451,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       color: CoresApp.sucesso.withValues(alpha: 0.15),
                     ),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.task_alt_rounded,
                     color: CoresApp.sucesso,
-                    size: 19,
+                    size: 34,
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1526,7 +1466,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                         'Trabalhos Finalizados',
                         style: TextStyle(
                           color: CoresApp.textoPrincipal,
-                          fontSize: 13,
+                          fontSize: 23,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -1535,7 +1475,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                         'Histórico de projetos concluídos',
                         style: TextStyle(
                           color: CoresApp.textoSecundario,
-                          fontSize: 9.5,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -1556,7 +1496,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.check_circle_outline_rounded,
                         color: CoresApp.sucesso,
                         size: 13,
@@ -1565,9 +1505,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                       Text(
                         '${completedProjects.length} CONCLUÍDO'
                         '${completedProjects.length == 1 ? '' : 'S'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: CoresApp.sucesso,
-                          fontSize: 8,
+                          fontSize: 12,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.4,
                         ),
@@ -1575,6 +1515,11 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                    onPressed: () => _exportCompleted(completedProjects),
+                    icon: const Icon(Icons.download),
+                    label: const Text('Exportar')),
               ],
             ),
           ),
@@ -1596,73 +1541,114 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           scrollDirection: Axis.horizontal,
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: DataTable(
-                              showCheckboxColumn: false,
-                              columnSpacing: 18,
-                              horizontalMargin: 10,
-                              headingRowHeight: 46,
-                              dataRowMinHeight: 30,
-                              dataRowMaxHeight: 38,
-                              dividerThickness: 0.35,
-                              headingRowColor: WidgetStateProperty.all(
-                                CoresDashboard.tabelaCabecalho,
-                              ),
-                              dataRowColor: WidgetStateProperty.resolveWith(
-                                (states) {
-                                  if (states.contains(
-                                    WidgetState.hovered,
-                                  )) {
-                                    return CoresDashboard.tabelaHover;
-                                  }
+                            child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                    minWidth:
+                                        MediaQuery.sizeOf(context).width - 48),
+                                child: DataTable(
+                                  showCheckboxColumn: false,
+                                  columnSpacing: 18,
+                                  horizontalMargin: 10,
+                                  headingRowHeight: 46,
+                                  dataRowMinHeight: 46,
+                                  dataRowMaxHeight: 48,
+                                  dividerThickness: 0.35,
+                                  headingRowColor: WidgetStateProperty.all(
+                                    CoresDashboard.tabelaCabecalho,
+                                  ),
+                                  dataRowColor: WidgetStateProperty.resolveWith(
+                                    (states) {
+                                      if (states.contains(
+                                        WidgetState.hovered,
+                                      )) {
+                                        return CoresDashboard.tabelaHover;
+                                      }
 
-                                  return null;
-                                },
-                              ),
-                              columns: [
-                                DataColumn(
-                                  label: _buildTableHeader('ID'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Nº'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Cliente'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Tipo de Serviço'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Informações'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Status'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Data Início / Fim'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Hs Estimadas'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Líder Prj'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Tipo HS'),
-                                ),
-                                DataColumn(
-                                  label: _buildTableHeader('Ações'),
-                                ),
-                              ],
-                              rows: _generateRows(
-                                completedProjects,
-                              ),
-                            ),
+                                      return null;
+                                    },
+                                  ),
+                                  columns: [
+                                    DataColumn(
+                                      label: _buildTableHeader('ID'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Nº'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Cliente'),
+                                    ),
+                                    DataColumn(
+                                      label:
+                                          _buildTableHeader('Tipo de Serviço'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Informações'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Status'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader(
+                                          'Data Início / Fim'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Hs Estimadas'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Líder Prj'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Tipo HS'),
+                                    ),
+                                    DataColumn(
+                                      label: _buildTableHeader('Ações'),
+                                    ),
+                                  ],
+                                  rows: _generateRows(
+                                    visible,
+                                  ),
+                                )),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(children: [
+                Expanded(
+                    child: Text(
+                        'Total: ${completedProjects.length} projetos finalizados',
+                        overflow: TextOverflow.ellipsis)),
+                const Text('Itens por pagina: '),
+                DropdownButton<int>(
+                    value: _pageSize,
+                    items: [10, 20, 50]
+                        .map((n) =>
+                            DropdownMenuItem(value: n, child: Text('$n')))
+                        .toList(),
+                    onChanged: (n) {
+                      if (n != null)
+                        setState(() {
+                          _pageSize = n;
+                          _page = 0;
+                        });
+                    }),
+                IconButton(
+                    tooltip: 'Anterior',
+                    onPressed: currentPage > 0
+                        ? () => setState(() => _page = currentPage - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left)),
+                Text('${currentPage + 1} / $pages'),
+                IconButton(
+                    tooltip: 'Proxima',
+                    onPressed: currentPage + 1 < pages
+                        ? () => setState(() => _page = currentPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right)),
+              ])),
         ],
       ),
     );
@@ -1671,83 +1657,6 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   // ============================================================
   // CARD DE RESUMO DAS HORAS
   // ============================================================
-
-  Widget _buildHoursSummaryCard({
-    required IconData icon,
-    required String title,
-    required String value,
-    required String subtitle,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.055),
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: color.withValues(alpha: 0.16),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.35,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: CoresApp.textoSecundario,
-                    fontSize: 8.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ============================================================
   // BADGE REGISTRADO
@@ -1848,7 +1757,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 color: CoresApp.destaque.withValues(alpha: 0.14),
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.access_time_rounded,
               color: CoresApp.destaque,
               size: 19,
@@ -1866,7 +1775,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                         taskName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: CoresApp.textoPrincipal,
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -1922,7 +1831,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.notes_rounded,
                           color: CoresApp.textoSecundario,
                           size: 14,
@@ -1933,7 +1842,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             description,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: CoresApp.textoSecundario,
                               fontSize: 9,
                               height: 1.3,
@@ -1982,304 +1891,17 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
   // SEÇÃO DE HORAS
   // ============================================================
 
-  Widget _buildProjectHoursSection(
-    String projectId,
-    User user,
-  ) {
-    return StreamBuilder<List<TimeLog>>(
-      stream: _timeLogStore.streamProjectTimeLogs(
-        user.uid,
-        projectId,
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              vertical: 24,
-              horizontal: 16,
-            ),
-            decoration: BoxDecoration(
-              color: CoresApp.destaque.withValues(alpha: 0.035),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: CoresApp.destaque.withValues(alpha: 0.13),
-              ),
-            ),
-            child: const Center(
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: CoresApp.destaque,
-                ),
-              ),
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: CoresApp.erro.withValues(alpha: 0.045),
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: CoresApp.erro.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.error_outline_rounded,
-                  color: CoresApp.erro,
-                  size: 19,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Não foi possível carregar os horários: ${snapshot.error}',
-                    style: const TextStyle(
-                      color: CoresApp.textoSecundario,
-                      fontSize: 9.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        final logs = snapshot.data ?? <TimeLog>[];
-
-        int totalMinutes = 0;
-        int registeredCount = 0;
-
-        for (final log in logs) {
-          totalMinutes += _getLogMinutes(log);
-
-          if (log.isRegistered) {
-            registeredCount++;
-          }
-        }
-
-        final String totalHours = _minutesToTime(
-          totalMinutes,
-        );
-
-        return Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: CoresApp.destaque.withValues(alpha: 0.025),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(
-              color: CoresApp.destaque.withValues(alpha: 0.14),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(13),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 35,
-                      height: 35,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: CoresApp.destaque.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                      child: const Icon(
-                        Icons.access_time_filled_rounded,
-                        color: CoresApp.destaque,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Horas trabalhadas',
-                            style: TextStyle(
-                              color: CoresApp.textoPrincipal,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Apontamentos cadastrados neste projeto',
-                            style: TextStyle(
-                              color: CoresApp.textoSecundario,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: logs.isNotEmpty
-                            ? CoresApp.destaque.withValues(alpha: 0.09)
-                            : CoresApp.textoSecundario.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${logs.length} apontamento(s)',
-                        style: TextStyle(
-                          color: logs.isNotEmpty
-                              ? CoresApp.destaque
-                              : CoresApp.textoSecundario,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    if (constraints.maxWidth < 600) {
-                      return Column(
-                        children: [
-                          _buildHoursSummaryCard(
-                            icon: Icons.timer_rounded,
-                            title: 'Total trabalhado',
-                            value: totalHours,
-                            subtitle: 'horas registradas no projeto',
-                            color: CoresApp.destaque,
-                          ),
-                          const SizedBox(height: 8),
-                          _buildHoursSummaryCard(
-                            icon: Icons.receipt_long_rounded,
-                            title: 'Apontamentos',
-                            value: '${logs.length}',
-                            subtitle: 'lançamento(s) encontrado(s)',
-                            color: CoresApp.textoSecundario,
-                          ),
-                          const SizedBox(height: 8),
-                          _buildHoursSummaryCard(
-                            icon: Icons.check_circle_rounded,
-                            title: 'Registrados',
-                            value: '$registeredCount',
-                            subtitle: 'apontamento(s) registrado(s)',
-                            color: CoresApp.sucesso,
-                          ),
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: _buildHoursSummaryCard(
-                            icon: Icons.timer_rounded,
-                            title: 'Total trabalhado',
-                            value: totalHours,
-                            subtitle: 'horas registradas no projeto',
-                            color: CoresApp.destaque,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildHoursSummaryCard(
-                            icon: Icons.receipt_long_rounded,
-                            title: 'Apontamentos',
-                            value: '${logs.length}',
-                            subtitle: 'lançamento(s) encontrado(s)',
-                            color: CoresApp.textoSecundario,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildHoursSummaryCard(
-                            icon: Icons.check_circle_rounded,
-                            title: 'Registrados',
-                            value: '$registeredCount',
-                            subtitle: 'apontamento(s) registrado(s)',
-                            color: CoresApp.sucesso,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 13),
-                if (logs.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 15,
-                      vertical: 22,
-                    ),
-                    decoration: BoxDecoration(
-                      color: CoresApp.textoPrincipal.withValues(alpha: 0.018),
-                      borderRadius: BorderRadius.circular(9),
-                      border: Border.all(
-                        color: CoresDashboard.tabelaBorda,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.schedule_outlined,
-                          color: CoresApp.textoSecundario,
-                          size: 26,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Nenhum horário encontrado',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Não existem apontamentos de horas '
-                          'salvos para o projeto $projectId.',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: CoresApp.textoSecundario,
-                            fontSize: 8.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else ...[
-                  const Text(
-                    'Lançamentos de horas',
-                    style: TextStyle(
-                      color: CoresApp.textoPrincipal,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ...logs.map(
-                    (log) => _buildTimeLogCard(log),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  Future<void> _openProjectResource(String reference, String projectId,
+      {required String field}) async {
+    try {
+      await ProjectFileService.openFile(reference,
+          projectId: projectId, field: field);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
   }
 
   // ============================================================
@@ -2299,9 +1921,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       project['startDate'],
     );
 
-    final finalizedAt = _parseDate(
-      project['finalizedAt'],
-    );
+    final finalizedAt = completedProjectEndDate(project, _parseDate);
 
     final subTasks = _getSubTasks(project);
 
@@ -2324,6 +1944,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         final screenHeight = MediaQuery.of(dialogContext).size.height;
 
         return Dialog(
@@ -2393,7 +2015,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 color: CoresApp.sucesso.withValues(alpha: 0.20),
                               ),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.task_alt_rounded,
                               color: CoresApp.sucesso,
                               size: 23,
@@ -2404,7 +2026,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Trabalho finalizado',
                                   style: TextStyle(
                                     color: CoresApp.textoPrincipal,
@@ -2415,7 +2037,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 const SizedBox(height: 3),
                                 Text(
                                   'Projeto $id • Histórico concluído',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: CoresApp.textoSecundario,
                                     fontSize: 10.5,
                                   ),
@@ -2435,7 +2057,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 color: CoresApp.sucesso.withValues(alpha: 0.16),
                               ),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
@@ -2462,7 +2084,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             onPressed: () {
                               Navigator.of(dialogContext).pop();
                             },
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.close_rounded,
                               color: CoresApp.textoSecundario,
                               size: 20,
@@ -2487,10 +2109,11 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           id,
                         ),
                         builder: (context, snapshot) {
+                          AppAppearance.watch(context);
                           if (snapshot.connectionState ==
                                   ConnectionState.waiting &&
                               !snapshot.hasData) {
-                            return const Center(
+                            return Center(
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 color: CoresApp.destaque,
@@ -2506,7 +2129,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                   'Não foi possível carregar os horários:\n'
                                   '${snapshot.error}',
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: CoresApp.erro,
                                     fontSize: 10,
                                   ),
@@ -2517,18 +2140,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
                           final logs = snapshot.data ?? <TimeLog>[];
 
-                          int totalMinutes = 0;
-                          int registeredCount = 0;
-
-                          for (final log in logs) {
-                            totalMinutes += _getLogMinutes(log);
-
-                            if (log.isRegistered) {
-                              registeredCount++;
-                            }
-                          }
-
-                          final totalHours = _minutesToTime(totalMinutes);
+                          final registeredCount =
+                              logs.where((log) => log.isRegistered).length;
 
                           return ListView(
                             padding: const EdgeInsets.all(20),
@@ -2539,6 +2152,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
                               LayoutBuilder(
                                 builder: (context, constraints) {
+                                  AppAppearance.watch(context);
                                   if (constraints.maxWidth < 650) {
                                     return Column(
                                       children: [
@@ -2597,6 +2211,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
                               LayoutBuilder(
                                 builder: (context, constraints) {
+                                  AppAppearance.watch(context);
                                   if (constraints.maxWidth < 650) {
                                     return Column(
                                       children: [
@@ -2615,7 +2230,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                         _buildInfoCard(
                                           icon: Icons.event_available_rounded,
                                           title: 'Finalizado em',
-                                          value: _formatDateTime(
+                                          value: _formatDate(
                                             finalizedAt,
                                           ),
                                         ),
@@ -2645,7 +2260,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                         child: _buildInfoCard(
                                           icon: Icons.event_available_rounded,
                                           title: 'Finalizado em',
-                                          value: _formatDateTime(
+                                          value: _formatDate(
                                             finalizedAt,
                                           ),
                                         ),
@@ -2678,13 +2293,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 ),
                                 child: Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.check_circle_rounded,
                                       color: CoresApp.sucesso,
                                       size: 18,
                                     ),
                                     const SizedBox(width: 8),
-                                    const Text(
+                                    Text(
                                       'TRAB_FIM',
                                       style: TextStyle(
                                         color: CoresApp.sucesso,
@@ -2695,13 +2310,25 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                     const Spacer(),
                                     Text(
                                       '${subTasks.length} etapa(s)',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: CoresApp.textoSecundario,
                                         fontSize: 10,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 18),
+                              CompletedProjectSummaryCard(
+                                summary: CompletedHoursSummary.calculate(
+                                  projectId: id,
+                                  estimatedHours: estimatedHours,
+                                  tasks: subTasks,
+                                  logs: logs,
+                                  parseMinutes: _timeToMinutes,
+                                  logMinutes: _getLogMinutes,
                                 ),
                               ),
 
@@ -2742,14 +2369,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                                 9,
                                               ),
                                             ),
-                                            child: const Icon(
+                                            child: Icon(
                                               Icons.access_time_filled_rounded,
                                               color: CoresApp.destaque,
                                               size: 18,
                                             ),
                                           ),
                                           const SizedBox(width: 9),
-                                          const Expanded(
+                                          Expanded(
                                             child: Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
@@ -2790,7 +2417,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                             ),
                                             child: Text(
                                               '${logs.length} apontamento(s)',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 color: CoresApp.destaque,
                                                 fontSize: 8,
                                                 fontWeight: FontWeight.w800,
@@ -2800,93 +2427,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                         ],
                                       ),
                                       const SizedBox(height: 12),
-                                      LayoutBuilder(
-                                        builder: (
-                                          context,
-                                          constraints,
-                                        ) {
-                                          if (constraints.maxWidth < 600) {
-                                            return Column(
-                                              children: [
-                                                _buildHoursSummaryCard(
-                                                  icon: Icons.timer_rounded,
-                                                  title: 'Total trabalhado',
-                                                  value: totalHours,
-                                                  subtitle:
-                                                      'horas registradas no projeto',
-                                                  color: CoresApp.destaque,
-                                                ),
-                                                const SizedBox(
-                                                  height: 8,
-                                                ),
-                                                _buildHoursSummaryCard(
-                                                  icon: Icons
-                                                      .receipt_long_rounded,
-                                                  title: 'Apontamentos',
-                                                  value: '${logs.length}',
-                                                  subtitle:
-                                                      'lançamento(s) encontrado(s)',
-                                                  color:
-                                                      CoresApp.textoSecundario,
-                                                ),
-                                                const SizedBox(
-                                                  height: 8,
-                                                ),
-                                                _buildHoursSummaryCard(
-                                                  icon: Icons
-                                                      .check_circle_rounded,
-                                                  title: 'Registrados',
-                                                  value: '$registeredCount',
-                                                  subtitle:
-                                                      'apontamento(s) registrado(s)',
-                                                  color: CoresApp.sucesso,
-                                                ),
-                                              ],
-                                            );
-                                          }
-
-                                          return Row(
-                                            children: [
-                                              Expanded(
-                                                child: _buildHoursSummaryCard(
-                                                  icon: Icons.timer_rounded,
-                                                  title: 'Total trabalhado',
-                                                  value: totalHours,
-                                                  subtitle:
-                                                      'horas registradas no projeto',
-                                                  color: CoresApp.destaque,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: _buildHoursSummaryCard(
-                                                  icon: Icons
-                                                      .receipt_long_rounded,
-                                                  title: 'Apontamentos',
-                                                  value: '${logs.length}',
-                                                  subtitle:
-                                                      'lançamento(s) encontrado(s)',
-                                                  color:
-                                                      CoresApp.textoSecundario,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: _buildHoursSummaryCard(
-                                                  icon: Icons
-                                                      .check_circle_rounded,
-                                                  title: 'Registrados',
-                                                  value: '$registeredCount',
-                                                  subtitle:
-                                                      'apontamento(s) registrado(s)',
-                                                  color: CoresApp.sucesso,
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
+                                      Text(
+                                        '${logs.length} apontamentos | $registeredCount registrados',
+                                        style: TextStyle(
+                                            color: CoresApp.textoSecundario,
+                                            fontSize: 11),
                                       ),
-                                      const SizedBox(height: 13),
+                                      const SizedBox(height: 12),
                                       if (logs.isEmpty)
                                         Container(
                                           width: double.infinity,
@@ -2903,7 +2450,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               color: CoresDashboard.tabelaBorda,
                                             ),
                                           ),
-                                          child: const Column(
+                                          child: Column(
                                             children: [
                                               Icon(
                                                 Icons.schedule_outlined,
@@ -2924,7 +2471,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                           ),
                                         )
                                       else ...[
-                                        const Text(
+                                        Text(
                                           'Lançamentos de horas',
                                           style: TextStyle(
                                             color: CoresApp.textoPrincipal,
@@ -2950,13 +2497,13 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 const SizedBox(height: 18),
                                 Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.account_tree_rounded,
                                       color: CoresApp.destaque,
                                       size: 17,
                                     ),
                                     const SizedBox(width: 7),
-                                    const Text(
+                                    Text(
                                       'Etapas do projeto',
                                       style: TextStyle(
                                         color: CoresApp.textoPrincipal,
@@ -2977,7 +2524,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                       ),
                                       child: Text(
                                         '${subTasks.length}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: CoresApp.destaque,
                                           fontSize: 8,
                                           fontWeight: FontWeight.w900,
@@ -3037,7 +2584,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               borderRadius:
                                                   BorderRadius.circular(7),
                                             ),
-                                            child: const Icon(
+                                            child: Icon(
                                               Icons.check_rounded,
                                               color: CoresApp.sucesso,
                                               size: 17,
@@ -3054,7 +2601,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                                   maxLines: 1,
                                                   overflow:
                                                       TextOverflow.ellipsis,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     color:
                                                         CoresApp.textoPrincipal,
                                                     fontSize: 11,
@@ -3065,7 +2612,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                                 Text(
                                                   '${_formatDate(taskStart)} - '
                                                   '${_formatDate(taskEnd)}',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     color: CoresApp
                                                         .textoSecundario,
                                                     fontSize: 9.5,
@@ -3091,7 +2638,26 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                               if (excelLink.trim().isNotEmpty ||
                                   folderPath.trim().isNotEmpty) ...[
                                 const SizedBox(height: 18),
-                                const Row(
+                                if (ProjectArchiveDialog.acceptsFolder(
+                                        folderPath) &&
+                                    ProjectArchiveDialog.allowed)
+                                  OutlinedButton.icon(
+                                      icon: const Icon(
+                                          Icons.drive_file_move_outline),
+                                      label: const Text(
+                                          'Mover pasta para Finalizados'),
+                                      onPressed: () async {
+                                        final result =
+                                            await ProjectArchiveDialog.show(
+                                                context,
+                                                projectId: id,
+                                                folder: folderPath,
+                                                excel: excelLink);
+                                        if (result != null && context.mounted) {
+                                          Navigator.pop(context);
+                                        }
+                                      }),
+                                Row(
                                   children: [
                                     Icon(
                                       Icons.folder_open_rounded,
@@ -3115,6 +2681,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                     context,
                                     constraints,
                                   ) {
+                                    AppAppearance.watch(context);
+
                                     if (constraints.maxWidth < 500) {
                                       return Column(
                                         children: [
@@ -3123,22 +2691,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               icon: Icons.table_view_rounded,
                                               title: 'Arquivo Excel',
                                               subtitle: 'Abrir arquivo/link',
-                                              onPressed: () async {
-                                                final uri = Uri.tryParse(
-                                                  excelLink,
-                                                );
-
-                                                if (uri != null &&
-                                                    await canLaunchUrl(
-                                                      uri,
-                                                    )) {
-                                                  await launchUrl(
-                                                    uri,
-                                                    mode: LaunchMode
-                                                        .externalApplication,
-                                                  );
-                                                }
-                                              },
+                                              onPressed: () =>
+                                                  _openProjectResource(
+                                                      excelLink, id,
+                                                      field: 'excelLink'),
                                             ),
                                           if (excelLink.trim().isNotEmpty &&
                                               folderPath.trim().isNotEmpty)
@@ -3148,34 +2704,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               icon: Icons.folder_rounded,
                                               title: 'Pasta do projeto',
                                               subtitle: 'Abrir pasta',
-                                              onPressed: () async {
-                                                final Uri uri;
-
-                                                if (folderPath.startsWith(
-                                                      'http://',
-                                                    ) ||
-                                                    folderPath.startsWith(
-                                                      'https://',
-                                                    )) {
-                                                  uri = Uri.parse(
-                                                    folderPath,
-                                                  );
-                                                } else {
-                                                  uri = Uri.file(
-                                                    folderPath,
-                                                  );
-                                                }
-
-                                                if (await canLaunchUrl(
-                                                  uri,
-                                                )) {
-                                                  await launchUrl(
-                                                    uri,
-                                                    mode: LaunchMode
-                                                        .externalApplication,
-                                                  );
-                                                }
-                                              },
+                                              onPressed: () =>
+                                                  _openProjectResource(
+                                                      folderPath, id,
+                                                      field: 'folderPath'),
                                             ),
                                         ],
                                       );
@@ -3189,22 +2721,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               icon: Icons.table_view_rounded,
                                               title: 'Arquivo Excel',
                                               subtitle: 'Abrir arquivo/link',
-                                              onPressed: () async {
-                                                final uri = Uri.tryParse(
-                                                  excelLink,
-                                                );
-
-                                                if (uri != null &&
-                                                    await canLaunchUrl(
-                                                      uri,
-                                                    )) {
-                                                  await launchUrl(
-                                                    uri,
-                                                    mode: LaunchMode
-                                                        .externalApplication,
-                                                  );
-                                                }
-                                              },
+                                              onPressed: () =>
+                                                  _openProjectResource(
+                                                      excelLink, id,
+                                                      field: 'excelLink'),
                                             ),
                                           ),
                                         if (excelLink.trim().isNotEmpty &&
@@ -3216,34 +2736,10 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                               icon: Icons.folder_rounded,
                                               title: 'Pasta do projeto',
                                               subtitle: 'Abrir pasta',
-                                              onPressed: () async {
-                                                final Uri uri;
-
-                                                if (folderPath.startsWith(
-                                                      'http://',
-                                                    ) ||
-                                                    folderPath.startsWith(
-                                                      'https://',
-                                                    )) {
-                                                  uri = Uri.parse(
-                                                    folderPath,
-                                                  );
-                                                } else {
-                                                  uri = Uri.file(
-                                                    folderPath,
-                                                  );
-                                                }
-
-                                                if (await canLaunchUrl(
-                                                  uri,
-                                                )) {
-                                                  await launchUrl(
-                                                    uri,
-                                                    mode: LaunchMode
-                                                        .externalApplication,
-                                                  );
-                                                }
-                                              },
+                                              onPressed: () =>
+                                                  _openProjectResource(
+                                                      folderPath, id,
+                                                      field: 'folderPath'),
                                             ),
                                           ),
                                       ],
@@ -3350,7 +2846,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: CoresApp.textoSecundario,
                     fontSize: 9,
                     fontWeight: FontWeight.w600,
@@ -3361,7 +2857,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   value,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: CoresApp.textoPrincipal,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
@@ -3422,7 +2918,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: CoresApp.textoPrincipal,
                       fontSize: 10.5,
                       fontWeight: FontWeight.w800,
@@ -3431,7 +2927,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: CoresApp.textoSecundario,
                       fontSize: 9,
                     ),
@@ -3439,7 +2935,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.open_in_new_rounded,
               color: CoresApp.destaque,
               size: 16,
@@ -3466,6 +2962,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        AppAppearance.watch(context);
         return AlertDialog(
           backgroundColor: CoresDashboard.tabelaFundo,
           shape: RoundedRectangleBorder(
@@ -3481,14 +2978,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   color: CoresApp.destaqueVerde.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.undo_rounded,
                   color: CoresApp.destaqueVerde,
                   size: 19,
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Reabrir trabalho?',
                   style: TextStyle(
@@ -3502,7 +2999,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           ),
           content: Text(
             'O trabalho "$id" será devolvido para a lista de projetos ativos.',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
               fontSize: 11,
             ),
@@ -3512,7 +3009,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               onPressed: () {
                 Navigator.of(context).pop(false);
               },
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -3522,7 +3019,8 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.destaqueVerde,
-                foregroundColor: Colors.black,
+                foregroundColor:
+                    AppPalette.foregroundOn(CoresApp.destaqueVerde),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(9),
@@ -3608,6 +3106,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        AppAppearance.watch(context);
         return AlertDialog(
           backgroundColor: CoresDashboard.tabelaFundo,
           shape: RoundedRectangleBorder(
@@ -3623,14 +3122,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                   color: CoresApp.erro.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.delete_outline_rounded,
                   color: CoresApp.erro,
                   size: 19,
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Excluir do histórico?',
                   style: TextStyle(
@@ -3645,7 +3144,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
           content: Text(
             'O trabalho "$id" será excluído do histórico. '
             'Essa ação não poderá ser desfeita.',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
               fontSize: 11,
             ),
@@ -3655,7 +3154,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               onPressed: () {
                 Navigator.of(context).pop(false);
               },
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -3665,7 +3164,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.erro,
-                foregroundColor: Colors.white,
+                foregroundColor: AppPalette.foregroundOn(CoresApp.erro),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(9),
@@ -3757,6 +3256,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: Cabecalho(
@@ -3779,6 +3279,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
               child: StreamBuilder(
                 stream: widget.firebaseService.getCompletedProjectsStream(),
                 builder: (context, snapshot) {
+                  AppAppearance.watch(context);
                   if (snapshot.connectionState == ConnectionState.waiting &&
                       !snapshot.hasData) {
                     return Center(
@@ -3787,7 +3288,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                         decoration: _cardDecoration(
                           radius: 14,
                         ),
-                        child: const SizedBox(
+                        child: SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(
@@ -3828,14 +3329,14 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                                 color: CoresApp.erro.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(14),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.error_outline_rounded,
                                 color: CoresApp.erro,
                                 size: 28,
                               ),
                             ),
                             const SizedBox(height: 12),
-                            const Text(
+                            Text(
                               'Erro ao carregar trabalhos finalizados',
                               style: TextStyle(
                                 color: CoresApp.textoPrincipal,
@@ -3847,7 +3348,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                             Text(
                               '${snapshot.error}',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: CoresApp.textoSecundario,
                                 fontSize: 11,
                               ),
@@ -3909,7 +3410,9 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
                           latestFinalized: latestFinalized,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 16),
+                      _buildFilters(allProjects),
+                      const SizedBox(height: 16),
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(

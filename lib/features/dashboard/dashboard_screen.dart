@@ -1,5 +1,33 @@
+import 'dialogs/external_comment_date_dialog.dart';
+import 'dialogs/dashboard_alert_preferences_dialog.dart';
+import '../../data/services/dashboard_alert_preferences_store.dart';
+import '../../domain/models/dashboard_alert_preferences.dart';
+import '../reminders/personal_reminders.dart';
+import 'dialogs/stop_timer_review_dialog.dart';
+import '../edesk/internal_ns_dialog.dart';
+import '../projects/widgets/project_toolbar_actions.dart';
+import '../comment_queue/comment_queue_dialog.dart';
+import 'package:gerenciador_horas/shared/widgets/recovery_error.dart';
+import 'package:gerenciador_horas/domain/models/work_duration.dart';
+import 'package:gerenciador_horas/core/platform/local_user_state.dart';
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
+import 'package:gerenciador_horas/data/services/project_update_service.dart';
+import 'package:gerenciador_horas/data/services/project_status_update.dart';
+import '../projects/dialogs/project_archive_dialog.dart';
+import 'widgets/dashboard_alerts_modal.dart';
+import '../../core/config/pilot_feature_access.dart';
+import '../edesk/work_audit_dialog.dart';
+import '../edesk/received_work_dialog.dart';
+import '../../domain/models/deadline_alert.dart';
+import 'comentario/comentario_modal.dart';
+import 'package:gerenciador_horas/core/platform/timer_session_storage.dart';
+import 'package:gerenciador_horas/domain/models/timer_session.dart';
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
@@ -9,9 +37,10 @@ import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
 
-import 'package:gerenciador_horas/features/dashboard/widgets/central_alertas_widget.dart';
+import 'widgets/dashboard_alerts_strip.dart';
 import 'package:gerenciador_horas/features/dashboard/widgets/controle_projetos_widget.dart';
 import 'package:gerenciador_horas/features/dashboard/widgets/grafico_horas_widget.dart';
+import 'widgets/monthly_hours_chart.dart';
 import 'package:gerenciador_horas/features/dashboard/widgets/progresso_projeto_widget.dart';
 import 'package:gerenciador_horas/features/dashboard/widgets/tabela_projetos_widget.dart';
 
@@ -20,6 +49,7 @@ import 'package:gerenciador_horas/shared/widgets/cabecalho.dart';
 
 class DashboardScreen extends StatefulWidget {
   final int selectedIndex;
+  final int entryVersion;
   final ValueChanged<int> onSelectTab;
   final List<WorkFormat> workFormats;
   final ValueChanged<ProjectModel>? onProjectCompleted;
@@ -28,6 +58,7 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     required this.selectedIndex,
+    this.entryVersion = 0,
     required this.onSelectTab,
     required this.workFormats,
     required this.timeLogStore,
@@ -39,6 +70,222 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  String? _filterOwner;
+  String _lastFilterState = '';
+  Map<String, dynamic> get _personalFilters => {
+        'service': _tipoServicoSelecionado,
+        'start': _dataInicioFiltro?.toIso8601String(),
+        'end': _dataFimFiltro?.toIso8601String(),
+        'group': _agrupar,
+        'priority': _ordenarPrioridade,
+        'active': _onlyActive,
+        'status': _statusFiltroDashboard,
+        'onlyActiveCard': _filtroApenasAtivos,
+        'allProjectsCard': _filtroTodosProjetos,
+        'advancedService': _filterOptions.serviceType,
+        'shift': _filterOptions.shift,
+        'date': _filterOptions.selectedDate?.toIso8601String(),
+      };
+  void _restorePersonalFilters() {
+    _filterOwner = FirebaseAuth.instance.currentUser?.uid;
+    final filters = LocalUserState.read(_filterOwner, 'filters.dashboard');
+    if (filters == null) return;
+    _tipoServicoSelecionado =
+        filters['service'] is String ? filters['service'] as String : null;
+    _dataInicioFiltro = DateTime.tryParse(filters['start']?.toString() ?? '');
+    _dataFimFiltro = DateTime.tryParse(filters['end']?.toString() ?? '');
+    _agrupar = filters['group'] is bool ? filters['group'] as bool : true;
+    _ordenarPrioridade =
+        filters['priority'] is bool ? filters['priority'] as bool : false;
+    _onlyActive = filters['active'] is bool ? filters['active'] as bool : true;
+    _statusFiltroDashboard = _statusList.contains(filters['status'])
+        ? filters['status'] as String
+        : null;
+    _filtroApenasAtivos = filters['onlyActiveCard'] is bool
+        ? filters['onlyActiveCard'] as bool
+        : true;
+    _filtroTodosProjetos = filters['allProjectsCard'] is bool
+        ? filters['allProjectsCard'] as bool
+        : false;
+    _filterOptions.serviceType = filters['advancedService'] is String
+        ? filters['advancedService'] as String
+        : null;
+    _filterOptions.selectedDate =
+        DateTime.tryParse(filters['date']?.toString() ?? '');
+    _filterOptions.shift =
+        ['Todos', 'Manh\u00e3', 'Tarde'].contains(filters['shift'])
+            ? filters['shift'] as String
+            : 'Todos';
+    _lastFilterState = jsonEncode(_personalFilters);
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (_filterOwner == null ||
+        FirebaseAuth.instance.currentUser?.uid != _filterOwner) return;
+    final encoded = jsonEncode(_personalFilters);
+    if (encoded == _lastFilterState) return;
+    _lastFilterState = encoded;
+    LocalUserState.write(_filterOwner, 'filters.dashboard', _personalFilters);
+  }
+
+  void _clearPersonalFilters() => setState(() {
+        _tipoServicoSelecionado = null;
+        _dataInicioFiltro = null;
+        _dataFimFiltro = null;
+        _agrupar = true;
+        _ordenarPrioridade = false;
+        _onlyActive = true;
+        _statusFiltroDashboard = null;
+        _filtroProjetos = '';
+        _searchQuery = '';
+        _filtroApenasAtivos = true;
+        _filtroTodosProjetos = false;
+        _filterOptions.clear();
+      });
+
+  int _updateCheckGeneration = 0;
+  final Set<String> _updatingProjectStatuses = {};
+  bool _updateDialogOpen = false;
+  final _alertsKey = GlobalKey();
+  List<PendingProjectUpdate> _pendingCommentAlerts = [];
+  bool _commentAlertsUnavailable = false;
+  DashboardAlertPreferences _alertPreferences = const DashboardAlertPreferences();
+  Future<void> _alertPreferencesReady = Future.value();
+  bool _alertPreferencesLoaded = false;
+  int _alertPreferencesRevision = 0;
+
+  Future<void> _restoreAlertPreferences() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) { _alertPreferencesLoaded = true; return; }
+    final store = DashboardAlertPreferencesStore(uid);
+    _alertPreferences = store.readLocal();
+    final revision = _alertPreferencesRevision;
+    final saved = await store.load();
+    if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid ||
+        revision != _alertPreferencesRevision) return;
+    store.cache(saved);
+    setState(() { _alertPreferences = saved; _alertPreferencesLoaded = true; });
+  }
+
+  Future<void> _configureAlerts() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final selected = await DashboardAlertPreferencesDialog.show(context, _alertPreferences);
+    if (selected == null || !mounted || FirebaseAuth.instance.currentUser?.uid != uid) return;
+    _alertPreferencesRevision++;
+    _updateCheckGeneration++;
+    setState(() {
+      _alertPreferences = selected;
+      _alertPreferencesLoaded = true;
+      if (!selected.comments) { _pendingCommentAlerts = []; _commentAlertsUnavailable = false; }
+    });
+    try {
+      final synced = await DashboardAlertPreferencesStore(uid).save(selected);
+      if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) return;
+      if (!synced) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Preferência salva neste navegador. Não foi possível sincronizar com sua conta agora.')));
+    } catch (_) {
+      if (mounted && FirebaseAuth.instance.currentUser?.uid == uid) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível salvar as preferências de alertas.')));
+      }
+    }
+    if (mounted && FirebaseAuth.instance.currentUser?.uid == uid && selected.active) {
+      unawaited(_checkPendingCommentUpdates(openDialog: false));
+    }
+  }
+
+
+  Future<void> _checkPendingCommentUpdates({bool showEmpty = false, bool openDialog = true}) async {
+    await _alertPreferencesReady;
+    if (!mounted || !_alertPreferences.active) return;
+    final preferences = _alertPreferences;
+    final generation = ++_updateCheckGeneration;
+    bool opened = false;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || widget.selectedIndex != 0 || _updateDialogOpen) return;
+    try {
+      final deadlines = DeadlineAlert.collect(_projects, DateTime.now())
+          .where((e) => preferences.allowsDeadline(e.differenceDays)).toList();
+      List<PendingProjectUpdate> pending = [];
+      bool updatesUnavailable = false;
+      try {
+        if (preferences.comments) {
+          pending = await ProjectUpdateService(uid).pending(_projects, DateTime.now());
+        }
+      } catch (error) {
+        updatesUnavailable = true;
+        debugPrint('Erro ao verificar prazos de comentarios: $error');
+      }
+      if (mounted && generation == _updateCheckGeneration &&
+          FirebaseAuth.instance.currentUser?.uid == uid) {
+        setState(() {
+          _pendingCommentAlerts = pending;
+          _commentAlertsUnavailable = updatesUnavailable;
+        });
+      }
+      if (!openDialog) return;
+      if (!mounted ||
+          generation != _updateCheckGeneration ||
+          widget.selectedIndex != 0 ||
+          FirebaseAuth.instance.currentUser?.uid != uid ||
+          (!showEmpty && pending.isEmpty && deadlines.isEmpty) ||
+          _updateDialogOpen) {
+        return;
+      }
+      if (ModalRoute.of(context)?.isCurrent == false) {
+        final reminders = PersonalReminderScope.of(context);
+        if (reminders?.opened == true) {
+          await reminders!.whenClosed;
+          if (mounted &&
+              generation == _updateCheckGeneration &&
+              widget.selectedIndex == 0 &&
+              FirebaseAuth.instance.currentUser?.uid == uid) {
+            unawaited(_checkPendingCommentUpdates(showEmpty: showEmpty));
+          }
+        }
+        return;
+      }
+      _updateDialogOpen = true;
+      opened = true;
+      final action = await DashboardAlertsModal.show(
+          context, deadlines, pending,
+          updatesUnavailable: updatesUnavailable, preferences: preferences);
+      if (!mounted ||
+          widget.selectedIndex != 0 ||
+          FirebaseAuth.instance.currentUser?.uid != uid) {
+        return;
+      }
+      if (action == 'requests') {
+        widget.onSelectTab(7);
+      } else if (action != null && action.startsWith('external:')) {
+        final saved = await ExternalCommentDateDialog.show(context, action.substring('external:'.length));
+        if (saved == true && mounted) {
+          _updateDialogOpen = false;
+          await _checkPendingCommentUpdates(openDialog: false);
+        }
+      } else if (action != null && action.startsWith('comment:')) {
+        final id = action.substring('comment:'.length);
+        final project =
+            pending.firstWhere((entry) => entry.project.id == id).project;
+        ComentarioModal.show(context, project);
+      } else if (action == 'alerts') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final target = _alertsKey.currentContext;
+          if (mounted && widget.selectedIndex == 0 && target != null) {
+            Scrollable.ensureVisible(target,
+                duration: const Duration(milliseconds: 250));
+          }
+        });
+      }
+    } catch (error) {
+      debugPrint('Erro ao verificar prazos de comentarios: $error');
+    } finally {
+      if (opened) _updateDialogOpen = false;
+    }
+  }
+
   // ============================================================
   // ESTADO DO DASHBOARD
   // ============================================================
@@ -101,6 +348,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
 
   List<ProjectModel> _projects = [];
+  int? _completedProjectCount;
   List<WorkFormat> _workFormatsFirebase = [];
 
   final FirebaseService _firebaseService = FirebaseService();
@@ -135,9 +383,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   TimerState _timerState = TimerState.stopped;
 
   Timer? _timer;
+  bool _timerRestored = false;
+  bool _stoppingTimer = false;
   int _secondsElapsed = 0;
-  bool _startingTimer = false;
-  Future<void>? _stoppingTimer;
 
   // ============================================================
   // INPUT DECORATION
@@ -146,26 +394,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(
+      labelStyle: TextStyle(
         color: CoresApp.textoSecundario,
       ),
       filled: true,
       fillColor: CoresDashboard.fundoSecundario,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(
+        borderSide: BorderSide(
           color: CoresApp.borda,
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(
+        borderSide: BorderSide(
           color: CoresApp.borda,
         ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(
+        borderSide: BorderSide(
           color: CoresApp.primaria,
           width: 1.5,
         ),
@@ -249,24 +497,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
 
-    _loadDataFromFirebase(showLoader: true);
+    _alertPreferencesReady = _restoreAlertPreferences();
+    _restorePersonalFilters();
+    widget.timeLogStore.addListener(_onTimeLogsChanged);
+
+    _loadDataFromFirebase(showLoader: true, checkCommentUpdates: true);
   }
 
   @override
   void didUpdateWidget(covariant DashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedIndex != 0 && widget.selectedIndex == 0) {
-      unawaited(_loadDataFromFirebase());
+    if (oldWidget.timeLogStore != widget.timeLogStore) {
+      oldWidget.timeLogStore.removeListener(_onTimeLogsChanged);
+      widget.timeLogStore.addListener(_onTimeLogsChanged);
     }
+    if (widget.selectedIndex == 0 &&
+        (oldWidget.selectedIndex != 0 ||
+            oldWidget.entryVersion != widget.entryVersion)) {
+      _loadDataFromFirebase(checkCommentUpdates: true);
+    }
+  }
+
+  void _onTimeLogsChanged() {
+    if (mounted && context.mounted) setState(() {});
   }
 
   // ============================================================
   // FOTO DE PERFIL
   // ============================================================
 
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
   @override
   void dispose() {
     _timer?.cancel();
+    widget.timeLogStore.removeListener(_onTimeLogsChanged);
 
     _verticalTableScroll.dispose();
     _horizontalTableScroll.dispose();
@@ -280,7 +547,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadDataFromFirebase({
     bool showLoader = false,
+    bool checkCommentUpdates = false,
   }) async {
+    final visit = widget.entryVersion;
     if (showLoader) {
       setState(() {
         _isLoadingProjects = true;
@@ -291,6 +560,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final results = await Future.wait([
         _firebaseService.getProjects(),
         _firebaseService.getWorkFormats(),
+        _firebaseService.getCompletedProjectCount().then<int?>((count) => count).catchError((_) => null),
       ]);
 
       final loadedProjects = results[0] as List<ProjectModel>;
@@ -303,12 +573,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       await widget.timeLogStore.startListeningToProjects(projectIds);
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
       setState(() {
         _projects = loadedProjects;
+        _completedProjectCount = results[2] as int?;
         _workFormatsFirebase = loadedWorkFormats;
         _isLoadingProjects = false;
 
@@ -316,8 +587,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _selectedTargetId = _projects.first.id;
         }
       });
+      _restoreTimerSession();
+      if (checkCommentUpdates && visit == widget.entryVersion) {
+        unawaited(_checkPendingCommentUpdates());
+      }
     } catch (e) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -327,7 +602,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao carregar dados do Firebase: $e'),
+          content: Text(recoveryError(e, operation: 'carregar os projetos')),
+          action: SnackBarAction(
+              label: 'Tentar novamente',
+              onPressed: () => _loadDataFromFirebase(showLoader: true)),
           backgroundColor: CoresApp.erro,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -419,13 +697,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ///
   /// A contagem continua baseada em DateTime, preservando o comportamento
   /// original e evitando acumular o período em que o trabalho ficou pausado.
+  void _saveTimerSession() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    final target = _activeTimerTargetId;
+    final started = _activeStartTime;
+    writeTimerSession(
+        userId,
+        target == null || started == null
+            ? null
+            : TimerSession(
+                targetId: target,
+                startedAt: started,
+                segmentStartedAt: _segmentStartTime,
+                accumulatedSeconds: _accumulatedWorkedSeconds,
+              ));
+  }
+
+  void _restoreTimerSession() {
+    if (_timerRestored) return;
+    _timerRestored = true;
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    final session = readTimerSession(userId);
+    if (session == null) return;
+    final project = _findProjectByTargetId(session.targetId);
+    if (project == null ||
+        (session.targetId.contains('_') &&
+            _findTaskByTargetId(session.targetId, project) == null)) {
+      writeTimerSession(userId, null);
+      return;
+    }
+    setState(() {
+      _activeTimerTargetId = session.targetId;
+      _selectedTargetId = session.targetId;
+      _activeStartTime = session.startedAt;
+      _segmentStartTime = session.segmentStartedAt;
+      _accumulatedWorkedSeconds = session.accumulatedSeconds;
+      _secondsElapsed = session.elapsedSeconds(DateTime.now());
+      _timerState = session.running ? TimerState.running : TimerState.paused;
+    });
+    if (session.running) _startTimerTicker();
+  }
+
   void _startTimerTicker() {
+    _saveTimerSession();
     _timer?.cancel();
 
     _timer = Timer.periodic(
       const Duration(seconds: 1),
       (timer) {
-        if (!mounted) {
+        if (!mounted || !context.mounted) {
           timer.cancel();
           return;
         }
@@ -446,18 +768,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _startTimer(String targetId) async {
-    if (_startingTimer || !mounted) return;
-    _startingTimer = true;
-    try {
-      if (_stoppingTimer != null) await _stoppingTimer;
-      if (!mounted) return;
-      await _startTimerForTarget(targetId);
-    } finally {
-      _startingTimer = false;
-    }
-  }
-
-  Future<void> _startTimerForTarget(String targetId) async {
+    if (_stoppingTimer) return;
     // ----------------------------------------------------------
     // NOVO TRABALHO
     // ----------------------------------------------------------
@@ -556,7 +867,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
 
   void _pauseTimer() {
-    if (_stoppingTimer != null) return;
     if (_activeTimerTargetId == null) {
       return;
     }
@@ -590,6 +900,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _timer = null;
 
     _timerState = TimerState.paused;
+    _saveTimerSession();
 
     final targetId = _activeTimerTargetId!;
 
@@ -611,170 +922,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // FINALIZAR CRONÔMETRO
   // ============================================================
 
-  Future<void> _stopTimer() {
-    return _stoppingTimer ??= _stopTimerAndRelease();
-  }
-
-  Future<void> _stopTimerAndRelease() async {
+  Future<void> _stopTimer() async {
+    if (_stoppingTimer || _activeTimerTargetId == null) return;
+    final owner = FirebaseAuth.instance.currentUser?.uid;
+    if (owner == null) return;
+    final target = _activeTimerTargetId!;
+    bool authorized() => mounted && FirebaseAuth.instance.currentUser?.uid == owner && _activeTimerTargetId == target;
+    _stoppingTimer = true;
     try {
-      await _stopTimerImpl();
-    } finally {
-      _stoppingTimer = null;
-    }
-  }
-
-  Future<void> _stopTimerImpl() async {
-    _timer?.cancel();
-    _timer = null;
-
-    if (_activeTimerTargetId != null) {
-      final targetId = _activeTimerTargetId!;
-      final endTime = DateTime.now();
-
-      final startTime = _activeStartTime ?? endTime;
-
-      // --------------------------------------------------------
-      // CALCULAR O TEMPO REALMENTE TRABALHADO
-      // --------------------------------------------------------
-
-      int totalSeconds = _accumulatedWorkedSeconds;
-
-      // Se ainda estava trabalhando, fecha o último segmento.
-      //
-      // Se estava pausado, _segmentStartTime é null e nenhum
-      // segundo do período pausado será contabilizado.
-      if (_timerState == TimerState.running && _segmentStartTime != null) {
-        final currentSegmentSeconds =
-            endTime.difference(_segmentStartTime!).inSeconds;
-
-        if (currentSegmentSeconds > 0) {
-          totalSeconds += currentSegmentSeconds;
-        }
+      final ended = DateTime.now();
+      final started = _activeStartTime ?? ended;
+      final wasRunning = _timerState == TimerState.running;
+      var seconds = _accumulatedWorkedSeconds;
+      if (wasRunning && _segmentStartTime != null) {
+        final segment = ended.difference(_segmentStartTime!).inSeconds;
+        if (segment > 0) seconds += segment;
       }
-
-      // Segurança para impedir valores negativos.
-      if (totalSeconds < 0) {
-        totalSeconds = 0;
-      }
-
-      // --------------------------------------------------------
-      // HORÁRIOS
-      // --------------------------------------------------------
-
-      final startFormatted = '${startTime.hour.toString().padLeft(2, '0')}:'
-          '${startTime.minute.toString().padLeft(2, '0')}';
-
-      final endFormatted = '${endTime.hour.toString().padLeft(2, '0')}:'
-          '${endTime.minute.toString().padLeft(2, '0')}';
-
-      // --------------------------------------------------------
-      // NÃO CRIAR APONTAMENTO VAZIO
-      // --------------------------------------------------------
-
-      if (totalSeconds > 0) {
-        final durationFormatted = _formatDuration(
-          totalSeconds,
-        );
-
-        final log = _createTimeLog(
-          targetId: targetId,
-          date: startTime,
-          startTime: startFormatted,
-          endTime: endFormatted,
-          durationFormatted: durationFormatted,
-          isRegistered: false,
-        );
-
-        try {
-          final projectId = targetId.split('_').first;
-
-          final logId = await widget.timeLogStore.addFirebaseLog(
-            projectId,
-            log,
-          );
-
-          log.id = logId;
-          widget.timeLogStore.add(log);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Tempo de trabalho salvo: $durationFormatted.',
-                ),
-                backgroundColor: CoresApp.sucesso,
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
-          }
-        } catch (e) {
-          // Preserve the unsaved segment so stopping can be retried.
-          _accumulatedWorkedSeconds = totalSeconds;
-          _secondsElapsed = totalSeconds;
-          _segmentStartTime = null;
-          _timerState = TimerState.paused;
-          if (mounted) {
-            setState(() {});
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Erro ao salvar o tempo no Firebase: $e',
-                ),
-                backgroundColor: CoresApp.erro,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
-          }
-          return;
-        }
-      }
-
-      // --------------------------------------------------------
-      // IMPORTANTE:
-      //
-      // Ao parar definitivamente, não deixamos TRAB_STOP
-      // como estado do projeto caso o trabalho tenha sido
-      // encerrado.
-      //
-      // Voltamos para TRAB somente se o item estava pausado.
-      // Isso evita deixar um projeto permanentemente marcado
-      // como pausado depois que o apontamento foi encerrado.
-      // --------------------------------------------------------
-
-      if (_timerState == TimerState.paused) {
-        unawaited(
-          _setTimerTargetStatus(
-            targetId,
-            'TRAB',
-          ),
-        );
-      }
-    }
-
-    // ----------------------------------------------------------
-    // RESET DO CRONÔMETRO
-    // ----------------------------------------------------------
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _timerState = TimerState.stopped;
-      _activeTimerTargetId = null;
-      _activeStartTime = null;
+      if (seconds < 0) seconds = 0;
+      _timer?.cancel();
+      _timer = null;
+      _accumulatedWorkedSeconds = seconds;
+      _secondsElapsed = seconds;
       _segmentStartTime = null;
-      _accumulatedWorkedSeconds = 0;
-      _secondsElapsed = 0;
-      _showPostStopButton = true;
-    });
+      _timerState = TimerState.paused;
+      _saveTimerSession();
+      setState(() {});
+      final logId = 'timer_${started.microsecondsSinceEpoch}_$target';
+      final project = _findProjectByTargetId(target);
+      String? savedDuration;
+      final saved = await showDialog<bool>(context: context, barrierDismissible: false,
+        builder: (_) => StopTimerReviewDialog(
+          started: started, stopped: ended, workedSeconds: seconds,
+          target: target, logId: logId, label: project?.client ?? target,
+          authorized: authorized,
+          loadWindow: (day) => widget.timeLogStore.loadRegisteredDay(day, registeredOnly: false, includePreviousDay: true),
+          save: (entry) async {
+            if (!authorized()) throw StateError('A conta ou o trabalho mudou.');
+            final log = _createTimeLog(targetId: target, date: entry.day,
+              startTime: entry.startText, endTime: entry.endText,
+              durationFormatted: entry.durationText, isRegistered: false);
+            log.id = logId;
+            log.description = entry.description;
+            final projectId = target.split('_').first;
+            final storedId = await widget.timeLogStore.addFirebaseLog(projectId, log);
+            if (!authorized()) throw StateError('A conta mudou. Confira o apontamento na conta original.');
+            log.id = storedId;
+            widget.timeLogStore.add(log);
+            savedDuration = entry.durationText;
+          },
+        ));
+      if (!authorized()) return;
+      if (saved != true) {
+        if (wasRunning) {
+          _segmentStartTime = DateTime.now();
+          _timerState = TimerState.running;
+          _startTimerTicker();
+        }
+        _saveTimerSession();
+        setState(() {});
+        return;
+      }
+      unawaited(_setTimerTargetStatus(target, 'TRAB'));
+      setState(() {
+        _timerState = TimerState.stopped;
+        _activeTimerTargetId = null;
+        _activeStartTime = null;
+        _segmentStartTime = null;
+        _accumulatedWorkedSeconds = 0;
+        _secondsElapsed = 0;
+        _showPostStopButton = true;
+      });
+      _saveTimerSession();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Apontamento salvo: $savedDuration.')));
+    } finally {
+      _stoppingTimer = false;
+    }
   }
 
   // ============================================================
@@ -788,31 +1011,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return '$hours:$minutes';
   }
 
-  double _parseTimeToHours(String timeFormatted) {
-    final parts = timeFormatted.split(':');
+  double _parseTimeToHours(String value) =>
+      (WorkDuration.parse(value) ?? 0) / 60;
 
-    if (parts.length < 2) {
-      return 0.0;
-    }
-
-    final hours = double.tryParse(parts[0]) ?? 0.0;
-    final minutes = double.tryParse(parts[1]) ?? 0.0;
-
-    return hours + (minutes / 60.0);
-  }
-
-  String _formatHours(double hours) {
-    int h = hours.toInt();
-    int m = ((hours - h) * 60).round();
-
-    if (m >= 60) {
-      h++;
-      m = 0;
-    }
-
-    return '${h.toString().padLeft(2, '0')}:'
-        '${m.toString().padLeft(2, '0')}';
-  }
+  String _formatHours(double hours) =>
+      WorkDuration.format((hours * 60).round());
 
   String _formatDateShort(DateTime d) {
     return '${d.day.toString().padLeft(2, '0')}/'
@@ -831,9 +1034,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (log.date.year == targetDate.year &&
           log.date.month == targetDate.month &&
           log.date.day == targetDate.day) {
-        totalHours += _parseTimeToHours(
-          log.durationFormatted,
-        );
+        totalHours += WorkDuration.minutes(log) / 60;
       }
     }
 
@@ -875,14 +1076,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int totalMinutos = 0;
 
     for (final log in logsDoDia) {
-      final partes = log.durationFormatted.split(':');
-
-      if (partes.length == 2) {
-        final horas = int.tryParse(partes[0]) ?? 0;
-        final minutos = int.tryParse(partes[1]) ?? 0;
-
-        totalMinutos += (horas * 60) + minutos;
-      }
+      totalMinutos += WorkDuration.minutes(log);
     }
 
     final totalHoras = _formatHours(totalMinutos / 60.0);
@@ -894,11 +1088,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
           backgroundColor: CoresDashboard.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(
+            side: BorderSide(
               color: CoresApp.borda,
             ),
           ),
@@ -920,12 +1116,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0099FF).withValues(alpha: 0.12),
+                  color: AppPalette.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.access_time_rounded,
-                  color: Color(0xFF0099FF),
+                  color: AppPalette.primary,
                   size: 20,
                 ),
               ),
@@ -934,7 +1130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Horas cadastradas',
                       style: TextStyle(
                         color: CoresApp.textoPrincipal,
@@ -945,7 +1141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 2),
                     Text(
                       dataFormatada,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoSecundario,
                         fontSize: 12,
                       ),
@@ -959,16 +1155,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0099FF).withValues(alpha: 0.12),
+                  color: AppPalette.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: const Color(0xFF0099FF).withValues(alpha: 0.25),
+                    color: AppPalette.primary.withValues(alpha: 0.25),
                   ),
                 ),
                 child: Text(
                   totalHoras,
-                  style: const TextStyle(
-                    color: Color(0xFF33BBFF),
+                  style: TextStyle(
+                    color: AppPalette.primary,
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
@@ -988,17 +1184,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           width: 56,
                           height: 56,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
+                            color: AppPalette.text.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.access_time_outlined,
-                            color: Colors.white38,
+                            color: AppPalette.secondary,
                             size: 28,
                           ),
                         ),
                         const SizedBox(height: 14),
-                        const Text(
+                        Text(
                           'Nenhum apontamento cadastrado',
                           style: TextStyle(
                             color: CoresApp.textoPrincipal,
@@ -1007,7 +1203,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        const Text(
+                        Text(
                           'Não existem horas registradas para este dia.',
                           style: TextStyle(
                             color: CoresApp.textoSecundario,
@@ -1033,7 +1229,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.list_alt_rounded,
                               color: CoresApp.destaque,
                               size: 18,
@@ -1041,7 +1237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             const SizedBox(width: 8),
                             Text(
                               '${logsDoDia.length} apontamento(s)',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: CoresApp.textoPrincipal,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -1050,8 +1246,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             const Spacer(),
                             Text(
                               'Total: $totalHoras',
-                              style: const TextStyle(
-                                color: Color(0xFF33BBFF),
+                              style: TextStyle(
+                                color: AppPalette.primary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -1089,13 +1285,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     width: 34,
                                     height: 34,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF0099FF)
+                                      color: AppPalette.primary
                                           .withValues(alpha: 0.10),
                                       borderRadius: BorderRadius.circular(9),
                                     ),
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.schedule_rounded,
-                                      color: Color(0xFF0099FF),
+                                      color: AppPalette.primary,
                                       size: 18,
                                     ),
                                   ),
@@ -1109,7 +1305,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           tarefa.isNotEmpty
                                               ? tarefa
                                               : 'Tarefa não informada',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: CoresApp.textoPrincipal,
                                             fontSize: 13,
                                             fontWeight: FontWeight.bold,
@@ -1120,7 +1316,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           projeto.isNotEmpty
                                               ? projeto
                                               : 'Projeto não informado',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: CoresApp.textoSecundario,
                                             fontSize: 11,
                                             fontWeight: FontWeight.w500,
@@ -1132,7 +1328,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                             descricao,
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               color: CoresApp.textoSecundario,
                                               fontSize: 11,
                                             ),
@@ -1141,16 +1337,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         const SizedBox(height: 7),
                                         Row(
                                           children: [
-                                            const Icon(
+                                            Icon(
                                               Icons.access_time_rounded,
-                                              color: Color(0xFF33BBFF),
+                                              color: AppPalette.primary,
                                               size: 14,
                                             ),
                                             const SizedBox(width: 4),
                                             Text(
                                               '${log.startTime} até ${log.endTime}',
-                                              style: const TextStyle(
-                                                color: Colors.white70,
+                                              style: TextStyle(
+                                                color: AppPalette.secondary,
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -1171,8 +1367,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                               ),
                                               child: Text(
                                                 log.durationFormatted,
-                                                style: const TextStyle(
-                                                  color: Color(0xFF33BBFF),
+                                                style: TextStyle(
+                                                  color: AppPalette.primary,
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -1182,7 +1378,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                               const SizedBox(width: 7),
                                               Text(
                                                 tipo,
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   color:
                                                       CoresApp.textoSecundario,
                                                   fontSize: 10,
@@ -1198,7 +1394,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   PopupMenuButton<String>(
                                     tooltip: 'Opções',
                                     color: CoresDashboard.card,
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.more_vert_rounded,
                                       color: CoresApp.textoSecundario,
                                       size: 19,
@@ -1219,13 +1415,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         value: 'editar',
                                         child: Row(
                                           children: [
-                                            const Icon(
+                                            Icon(
                                               Icons.edit_outlined,
                                               color: CoresApp.destaque,
                                               size: 18,
                                             ),
                                             const SizedBox(width: 8),
-                                            const Text(
+                                            Text(
                                               'Editar',
                                               style: TextStyle(
                                                 color: CoresApp.textoPrincipal,
@@ -1238,13 +1434,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         value: 'excluir',
                                         child: Row(
                                           children: [
-                                            const Icon(
+                                            Icon(
                                               Icons.delete_outline,
                                               color: CoresApp.erro,
                                               size: 18,
                                             ),
                                             const SizedBox(width: 8),
-                                            const Text(
+                                            Text(
                                               'Excluir',
                                               style: TextStyle(
                                                 color: CoresApp.textoPrincipal,
@@ -1268,7 +1464,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.primaria,
-                foregroundColor: CoresApp.textoPrincipal,
+                foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -1302,17 +1498,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return showDialog<DateTime>(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            AppAppearance.watch(context);
             return AlertDialog(
-              backgroundColor: const Color(0xFF1B1B2A),
+              backgroundColor: AppPalette.field,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.16),
+                  color: AppPalette.text.withValues(alpha: 0.16),
                 ),
               ),
-              title: const Row(
+              title: Row(
                 children: [
                   Icon(
                     Icons.calendar_today_outlined,
@@ -1323,7 +1522,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     'Selecionar Data',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppPalette.text,
                       fontSize: 15,
                     ),
                   ),
@@ -1346,10 +1545,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                       padLeft: true,
                     ),
-                    const Text(
+                    Text(
                       '/',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppPalette.text,
                         fontSize: 20,
                       ),
                     ),
@@ -1364,10 +1563,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                       padLeft: true,
                     ),
-                    const Text(
+                    Text(
                       '/',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppPalette.text,
                         fontSize: 20,
                       ),
                     ),
@@ -1387,17 +1586,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(null),
-                  child: const Text(
+                  child: Text(
                     'Cancelar',
                     style: TextStyle(
-                      color: Color(0xFFBDBDC7),
+                      color: AppPalette.secondary,
                     ),
                   ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF35D27F),
-                    foregroundColor: Colors.black,
+                    foregroundColor:
+                        AppPalette.foregroundOn(const Color(0xFF35D27F)),
                   ),
                   onPressed: () {
                     final novaData = DateTime(
@@ -1444,9 +1644,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 5),
           DropdownButton<int>(
             value: value,
-            dropdownColor: const Color(0xFF1B1B2A),
-            style: const TextStyle(
-              color: Colors.white,
+            dropdownColor: AppPalette.field,
+            style: TextStyle(
+              color: AppPalette.text,
               fontSize: 16,
             ),
             items: values.map((item) {
@@ -1485,19 +1685,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (context) {
+        AppAppearance.watch(context);
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            AppAppearance.watch(context);
             return AlertDialog(
               backgroundColor: CoresDashboard.card,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(
+                side: BorderSide(
                   color: CoresApp.borda,
                 ),
               ),
               title: Text(
                 'Editar Subtrabalho (Etapa ${task.subId})',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   color: CoresApp.textoPrincipal,
                   fontWeight: FontWeight.bold,
@@ -1509,7 +1711,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     TextField(
                       controller: subIdController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Número (Nº)'),
@@ -1517,7 +1719,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: serviceTypeController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Tipo de Serviço'),
@@ -1525,7 +1727,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: stageController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Trabalho / Etapa'),
@@ -1533,7 +1735,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: hoursController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration(
@@ -1543,7 +1745,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: hourTypeController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration(
@@ -1559,19 +1761,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               backgroundColor: CoresDashboard.fundoSecundario,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                side: const BorderSide(
+                                side: BorderSide(
                                   color: CoresApp.bordaSuave,
                                 ),
                               ),
                             ),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.calendar_today,
                               color: CoresApp.destaque,
                               size: 16,
                             ),
                             label: Text(
                               'Início: ${_formatDateShort(startDate)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: CoresApp.textoPrincipal,
                                 fontSize: 11,
                               ),
@@ -1601,19 +1803,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               backgroundColor: CoresDashboard.fundoSecundario,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                side: const BorderSide(
+                                side: BorderSide(
                                   color: CoresApp.bordaSuave,
                                 ),
                               ),
                             ),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.calendar_today,
                               color: CoresApp.destaque,
                               size: 16,
                             ),
                             label: Text(
                               'Fim: ${_formatDateShort(endDate)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: CoresApp.textoPrincipal,
                                 fontSize: 11,
                               ),
@@ -1641,7 +1843,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text(
+                  child: Text(
                     'Cancelar',
                     style: TextStyle(
                       color: CoresApp.textoSecundario,
@@ -1651,7 +1853,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CoresApp.primaria,
-                    foregroundColor: CoresApp.textoPrincipal,
+                    foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1728,19 +1930,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (context) {
+        AppAppearance.watch(context);
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            AppAppearance.watch(context);
             return AlertDialog(
               backgroundColor: CoresDashboard.card,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(
+                side: BorderSide(
                   color: CoresApp.borda,
                 ),
               ),
               title: Text(
                 'Adicionar Nova Etapa ao Projeto ${project.id}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   color: CoresApp.textoPrincipal,
                   fontWeight: FontWeight.bold,
@@ -1752,7 +1956,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     TextField(
                       controller: subIdController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration(
@@ -1762,7 +1966,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: stageController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Trabalho / Etapa'),
@@ -1770,7 +1974,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: serviceTypeController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Tipo de Serviço'),
@@ -1778,7 +1982,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: hoursController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration(
@@ -1788,7 +1992,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: hourTypeController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Tipo de Horas'),
@@ -1802,19 +2006,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               backgroundColor: CoresDashboard.fundoSecundario,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                side: const BorderSide(
+                                side: BorderSide(
                                   color: CoresApp.bordaSuave,
                                 ),
                               ),
                             ),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.calendar_today,
                               color: CoresApp.destaque,
                               size: 16,
                             ),
                             label: Text(
                               'Início: ${_formatDateShort(startDate)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: CoresApp.textoPrincipal,
                                 fontSize: 11,
                               ),
@@ -1839,19 +2043,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               backgroundColor: CoresDashboard.fundoSecundario,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                side: const BorderSide(
+                                side: BorderSide(
                                   color: CoresApp.bordaSuave,
                                 ),
                               ),
                             ),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.calendar_today,
                               color: CoresApp.destaque,
                               size: 16,
                             ),
                             label: Text(
                               'Fim: ${_formatDateShort(endDate)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: CoresApp.textoPrincipal,
                                 fontSize: 11,
                               ),
@@ -1877,7 +2081,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text(
+                  child: Text(
                     'Cancelar',
                     style: TextStyle(
                       color: CoresApp.textoSecundario,
@@ -1887,7 +2091,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CoresApp.primaria,
-                    foregroundColor: CoresApp.textoPrincipal,
+                    foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1969,17 +2173,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
           backgroundColor: CoresDashboard.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(
+            side: BorderSide(
               color: CoresApp.borda,
             ),
           ),
           title: Text(
             'Adicionar Horas Manualmente\n($itemTitle)',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               color: CoresApp.textoPrincipal,
               fontWeight: FontWeight.bold,
@@ -1994,7 +2200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: TextField(
                       controller: hoursController,
                       keyboardType: TextInputType.number,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Horas'),
@@ -2005,7 +2211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: TextField(
                       controller: minutesController,
                       keyboardType: TextInputType.number,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Minutos'),
@@ -2018,7 +2224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -2028,7 +2234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.primaria,
-                foregroundColor: CoresApp.textoPrincipal,
+                foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -2083,7 +2289,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   log.id = logId;
                   widget.timeLogStore.add(log);
 
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2102,7 +2308,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2148,9 +2354,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final descriptionController =
         TextEditingController(text: log.description ?? '');
 
+    String? normalizeTime(String value, {bool duration = false}) {
+      final parts = value.trim().split(':');
+      if (parts.length != 2) return null;
+      final h = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      if (h == null ||
+          m == null ||
+          h < 0 ||
+          m < 0 ||
+          m > 59 ||
+          (!duration && h > 23)) return null;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
+
     void calculateDuration() {
-      final startParts = startController.text.split(':');
-      final endParts = endController.text.split(':');
+      final start = normalizeTime(startController.text);
+      final end = normalizeTime(endController.text);
+      if (start == null || end == null) return;
+      final startParts = start.split(':');
+      final endParts = end.split(':');
 
       if (startParts.length == 2 && endParts.length == 2) {
         final sh = int.tryParse(startParts[0]) ?? 0;
@@ -2177,17 +2400,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            AppAppearance.watch(context);
             return AlertDialog(
               backgroundColor: CoresDashboard.card,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(
+                side: BorderSide(
                   color: CoresApp.borda,
                 ),
               ),
-              title: const Text(
+              title: Text(
                 'Editar Horário de Apontamento',
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
@@ -2201,7 +2427,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     TextField(
                       controller: startController,
-                      style: const TextStyle(
+                      keyboardType: TextInputType.datetime,
+                      inputFormatters: [HoraInputFormatter()],
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration(
@@ -2215,7 +2443,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: endController,
-                      style: const TextStyle(
+                      keyboardType: TextInputType.datetime,
+                      inputFormatters: [HoraInputFormatter()],
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration(
@@ -2229,15 +2459,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: durationController,
-                      style: const TextStyle(
+                      keyboardType: TextInputType.datetime,
+                      inputFormatters: [HoraInputFormatter()],
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       decoration: _inputDecoration('Duração (ex: 01:30)'),
                     ),
                     const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.today_outlined, size: 18),
+                        label: const Text('Inserir data de hoje'),
+                        onPressed: () {
+                          final now = DateTime.now();
+                          final today =
+                              '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+                          final previous = descriptionController.text;
+                          final prefix = '$today: - ';
+                          descriptionController.text =
+                              previous.isEmpty ? prefix : '$previous\n$prefix';
+                          descriptionController.selection =
+                              TextSelection.collapsed(
+                                  offset: descriptionController.text.length);
+                        },
+                      ),
+                    ),
                     TextField(
                       controller: descriptionController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: CoresApp.textoPrincipal,
                       ),
                       maxLines: 2,
@@ -2251,7 +2502,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text(
+                  child: Text(
                     'Cancelar',
                     style: TextStyle(
                       color: CoresApp.textoSecundario,
@@ -2261,12 +2512,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CoresApp.primaria,
-                    foregroundColor: CoresApp.textoPrincipal,
+                    foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   onPressed: () async {
+                    final start = normalizeTime(startController.text);
+                    final end = normalizeTime(endController.text);
+                    final duration =
+                        normalizeTime(durationController.text, duration: true);
+                    if (start == null || end == null || duration == null) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                              content:
+                                  Text('Informe horários válidos em HH:mm.')));
+                      return;
+                    }
+                    startController.text = start;
+                    endController.text = end;
+                    durationController.text = duration;
                     // Atualiza os valores locais da instância do log
                     log.startTime = startController.text.trim();
                     log.endTime = endController.text.trim();
@@ -2310,12 +2575,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       // Garante a persistência e atualização correta no Firebase e na Store
                       await widget.timeLogStore.updateFirebaseLog(log);
 
-                      if (!mounted) return;
+                      if (!mounted || !context.mounted) return;
 
                       setState(
                           () {}); // Força a reconstrução do Dashboard para refletir as horas atualizadas
 
-                      if (!dialogContext.mounted) {
+                      if (!mounted ||
+                          !dialogContext.mounted ||
+                          !context.mounted) {
                         return;
                       }
 
@@ -2334,7 +2601,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       );
                     } catch (e) {
-                      if (!dialogContext.mounted) {
+                      if (!mounted ||
+                          !dialogContext.mounted ||
+                          !context.mounted) {
                         return;
                       }
 
@@ -2380,22 +2649,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
           backgroundColor: CoresDashboard.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(
+            side: BorderSide(
               color: CoresApp.borda,
             ),
           ),
-          title: const Text(
+          title: Text(
             'Excluir Apontamento',
             style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontWeight: FontWeight.bold,
             ),
           ),
-          content: const Text(
+          content: Text(
             'Deseja realmente remover esta linha de apontamento?',
             style: TextStyle(
               color: CoresApp.textoSecundario,
@@ -2404,7 +2675,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -2422,7 +2693,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 try {
                   await widget.timeLogStore.deleteFirebaseLog(log);
 
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2441,7 +2712,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2459,7 +2730,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 }
               },
-              child: const Text(
+              child: Text(
                 'Excluir',
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
@@ -2482,15 +2753,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
           backgroundColor: CoresDashboard.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(
+            side: BorderSide(
               color: CoresApp.borda,
             ),
           ),
-          title: const Text(
+          title: Text(
             'Excluir Projeto',
             style: TextStyle(
               color: CoresApp.textoPrincipal,
@@ -2500,14 +2773,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           content: Text(
             'Deseja realmente excluir o projeto '
             '"${project.client}" (${project.id})?',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -2528,8 +2801,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ) ??
                         false)) {
                   await _stopTimer();
+                  if (_activeTimerTargetId != null) return;
                 }
 
+                if (!mounted || !context.mounted) return;
                 setState(() {
                   _projects.removeWhere(
                     (p) => p.id == project.id,
@@ -2547,7 +2822,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 try {
                   await _firebaseService.deleteProject(project.id);
 
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2566,7 +2841,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2584,7 +2859,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 }
               },
-              child: const Text(
+              child: Text(
                 'Excluir',
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
@@ -2608,15 +2883,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
           backgroundColor: CoresDashboard.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(
+            side: BorderSide(
               color: CoresApp.borda,
             ),
           ),
-          title: const Text(
+          title: Text(
             'Excluir Subtrabalho (Etapa)',
             style: TextStyle(
               color: CoresApp.textoPrincipal,
@@ -2626,14 +2903,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           content: Text(
             'Deseja realmente excluir a etapa '
             '"${task.stage}" (Nº ${task.subId})?',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -2652,8 +2929,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 if (_activeTimerTargetId == subTargetId) {
                   await _stopTimer();
+                  if (_activeTimerTargetId != null) return;
                 }
 
+                if (!mounted || !context.mounted) return;
                 setState(() {
                   project.subTasks?.removeWhere(
                     (t) => t.subId == task.subId,
@@ -2671,7 +2950,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 try {
                   await _firebaseService.saveProject(project);
 
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2690,7 +2969,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!mounted || !dialogContext.mounted) {
+                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                     return;
                   }
 
@@ -2708,7 +2987,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 }
               },
-              child: const Text(
+              child: Text(
                 'Excluir',
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
@@ -2739,15 +3018,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // CRIAR NOVO PROJETO
 // ============================================================
 
+  Future<void> _importWorkById() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    await ReceivedWorkDialog.show(context, importById: true,
+        onManual: () async {
+      if (mounted && FirebaseAuth.instance.currentUser?.uid == uid) {
+        await _createNewProject();
+      }
+    });
+    if (mounted && FirebaseAuth.instance.currentUser?.uid == uid) {
+      await _loadDataFromFirebase(showLoader: false);
+    }
+  }
+
   Future<void> _createNewProject() async {
     final ProjectModel? newProject = await showDialog<ProjectModel>(
       context: context,
-      builder: (context) => ProjectFormDialog(
-        workFormats: _workFormatsFirebase.isNotEmpty
-            ? _workFormatsFirebase
-            : widget.workFormats,
-        firebaseService: null,
-      ),
+      builder: (context) {
+        AppAppearance.watch(context);
+        return ProjectFormDialog(
+            workFormats: _workFormatsFirebase.isNotEmpty
+                ? _workFormatsFirebase
+                : widget.workFormats,
+            firebaseService: null);
+      },
     );
 
     if (newProject == null) {
@@ -2777,6 +3071,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       id: newProject.id,
       id2: newProject.id2,
       client: newProject.client,
+      email: newProject.email,
       serviceType: newProject.serviceType,
       stage: newProject.stage,
       task: newProject.task,
@@ -2819,7 +3114,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // ATUALIZAR O DASHBOARD
     // ============================================================
 
-    if (!mounted) {
+    if (!mounted || !context.mounted) {
       return;
     }
 
@@ -2861,7 +3156,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now();
     final points = <DailyHoursPoint>[];
 
-    for (int i = 9; i >= 0; i--) {
+    for (int i = 6; i >= 0; i--) {
       final date = DateTime(
         now.year,
         now.month,
@@ -3066,44 +3361,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required int activeProjects,
     required int totalProjects,
     required int pausedProjects,
-    required int totalTasks,
+    required int? completedProjects,
     required String totalHours,
   }) {
     return Container(
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            CoresDashboard.card.withValues(alpha: 0.98),
-            CoresDashboard.fundoSecundario.withValues(alpha: 0.96),
-          ],
-        ),
-        border: Border.all(
-          color: CoresApp.borda.withValues(alpha: 0.9),
-          width: 0.9,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.20),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
-          ),
-          BoxShadow(
-            color: CoresApp.primaria.withValues(alpha: 0.035),
-            blurRadius: 30,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
+      decoration: AppVisuals.panel(prominent: true, radius: 18),
       child: Column(
         children: [
           Container(
             height: 4,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
@@ -3116,9 +3385,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
             child: LayoutBuilder(
               builder: (context, constraints) {
+                AppAppearance.watch(context);
                 final width = constraints.maxWidth;
 
                 final stats = [
@@ -3148,17 +3418,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   _buildDashboardStat(
                     icon: Icons.task_alt_rounded,
-                    label: 'Tarefas',
-                    value: '$totalTasks',
-                    description: 'etapas',
+                    label: 'Projetos concluídos',
+                    value: completedProjects?.toString() ?? '\u2014',
+                    description: completedProjects == null
+                        ? 'n\u00e3o consultado'
+                        : 'finalizados',
                     color: CoresApp.secundaria,
+                    onTap: () => widget.onSelectTab(3),
                   ),
                   _buildDashboardStat(
                     icon: Icons.schedule_rounded,
                     label: 'Horas',
                     value: totalHours,
                     description: 'registradas',
-                    color: CoresApp.destaque,
+                    color: AppVisuals.violet,
                   ),
                 ];
 
@@ -3231,137 +3504,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDashboardTitle() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 6,
-          height: 64,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                CoresApp.destaque,
-                CoresApp.primaria,
-                CoresApp.secundaria,
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: CoresApp.destaque.withValues(alpha: 0.25),
-                blurRadius: 16,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 15),
-        Container(
-          width: 56,
-          height: 56,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                CoresApp.primaria.withValues(alpha: 0.26),
-                CoresApp.destaque.withValues(alpha: 0.08),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: CoresApp.primaria.withValues(alpha: 0.34),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: CoresApp.primaria.withValues(alpha: 0.13),
-                blurRadius: 18,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.dashboard_customize_rounded,
-            color: CoresApp.destaque,
-            size: 28,
-          ),
-        ),
-        const SizedBox(width: 15),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Gestão de Horas e Projetos',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: CoresApp.textoPrincipal,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.6,
-                ),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'Acompanhe projetos, etapas, horas e produtividade em um único painel.',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: CoresApp.textoSecundario,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  height: 1.35,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-          decoration: BoxDecoration(
-            color: CoresApp.sucesso.withValues(alpha: 0.09),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: CoresApp.sucesso.withValues(alpha: 0.24),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: CoresApp.sucesso,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: CoresApp.sucesso.withValues(alpha: 0.45),
-                      blurRadius: 7,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 7),
-              const Text(
-                'PAINEL ATIVO',
-                style: TextStyle(
-                  color: CoresApp.sucesso,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.7,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return Row(children: [
+      Container(width: 5, height: 48, decoration: AppVisuals.iconTile()),
+      const SizedBox(width: 14),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text('Gest\u00e3o de Projetos e Horas', maxLines: 2, style: TextStyle(color: CoresApp.textoPrincipal, fontSize: 23, height: 1.05, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        Text('Acompanhe projetos, etapas, horas e produtividade em um \u00fanico painel.', maxLines: 2,
+          style: TextStyle(color: CoresApp.textoSecundario, fontSize: 11)),
+      ])),
+    ]);
   }
 
   Widget _buildDashboardStat({
@@ -3373,60 +3525,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? filterStatus,
     bool filterApenasAtivos = false,
     bool filterTodosProjetos = false,
+    VoidCallback? onTap,
   }) {
     final bool isSelected = (filterApenasAtivos && _filtroApenasAtivos) ||
         (filterTodosProjetos && _filtroTodosProjetos) ||
         (filterStatus != null && _statusFiltroDashboard == filterStatus);
 
-    final isClickable =
-        filterStatus != null || filterApenasAtivos || filterTodosProjetos;
+    final isClickable = onTap != null ||
+        filterStatus != null ||
+        filterApenasAtivos ||
+        filterTodosProjetos;
 
     return InkWell(
-      onTap: !isClickable
-          ? null
-          : () {
-              _toggleDashboardStatusFilter(
-                status: filterStatus,
-                apenasAtivos: filterApenasAtivos,
-                todosProjetos: filterTodosProjetos,
-              );
-            },
+      onTap: onTap ??
+          (!isClickable
+              ? null
+              : () {
+                  _toggleDashboardStatusFilter(
+                    status: filterStatus,
+                    apenasAtivos: filterApenasAtivos,
+                    todosProjetos: filterTodosProjetos,
+                  );
+                }),
       borderRadius: BorderRadius.circular(13),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        constraints: const BoxConstraints(minHeight: 70),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isSelected
-                ? [
-                    color.withValues(alpha: 0.19),
-                    color.withValues(alpha: 0.08),
-                  ]
-                : [
-                    CoresDashboard.fundoSecundario.withValues(alpha: 0.98),
-                    CoresDashboard.fundoSecundario.withValues(alpha: 0.78),
-                  ],
-          ),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(
-            color: isSelected
-                ? color.withValues(alpha: 0.72)
-                : color.withValues(alpha: 0.20),
-            width: isSelected ? 1.25 : 0.9,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? color.withValues(alpha: 0.11)
-                  : Colors.black.withValues(alpha: 0.10),
-              blurRadius: isSelected ? 14 : 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+        constraints: const BoxConstraints(minHeight: 58),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration:
+            AppVisuals.panel(accent: color, prominent: isSelected, radius: 13),
         child: Row(
           children: [
             AnimatedContainer(
@@ -3467,7 +3594,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           label.toUpperCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: CoresApp.textoSecundario,
                             fontSize: 8,
                             fontWeight: FontWeight.w800,
@@ -3488,7 +3615,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: CoresApp.textoPrincipal,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
@@ -3541,13 +3668,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        AppAppearance.watch(context);
         final width = constraints.maxWidth;
 
         if (width < 1000) {
           return Column(
             children: [
               _buildDashboardPanel(
+                height: 272,
                 child: ControleProjetosWidget(
+                  onReset: _clearPersonalFilters,
                   agrupar: _agrupar,
                   ordenarPrioridade: _ordenarPrioridade,
                   somenteAtivos: _onlyActive,
@@ -3561,6 +3691,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _filtroApenasAtivos,
                   expandedProjectIds: _expandedProjectIds,
                   onNewProject: _createNewProject,
+                  onImportById: PilotFeatureAccess.allows(
+                          uid: FirebaseAuth.instance.currentUser?.uid,
+                          email: FirebaseAuth.instance.currentUser?.email)
+                      ? _importWorkById
+                      : null,
                   onSynchronize: () {
                     _loadDataFromFirebase(
                       showLoader: false,
@@ -3648,7 +3783,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 12),
               _buildDashboardPanel(
-                child: GraficoHorasWidget(
+                child: MonthlyHoursChart(
+                  logs: _timeLogs,
                   points: dailyHoursPoints,
                   formatHours: _formatHours,
                   onDayTap: _abrirHorasDoDia,
@@ -3659,9 +3795,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
 
         return SizedBox(
-          height: 190,
+          height: 272,
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ========================================================
               // CONTROLE DE PROJETOS
@@ -3670,7 +3806,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 flex: 3,
                 child: _buildDashboardPanel(
+                  height: 272,
                   child: ControleProjetosWidget(
+                    onReset: _clearPersonalFilters,
                     agrupar: _agrupar,
                     ordenarPrioridade: _ordenarPrioridade,
                     somenteAtivos: _onlyActive,
@@ -3682,6 +3820,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         _dataFimFiltro != null,
                     expandedProjectIds: _expandedProjectIds,
                     onNewProject: _createNewProject,
+                    onImportById: PilotFeatureAccess.allows(
+                            uid: FirebaseAuth.instance.currentUser?.uid,
+                            email: FirebaseAuth.instance.currentUser?.email)
+                        ? _importWorkById
+                        : null,
                     onSynchronize: () {
                       _loadDataFromFirebase(
                         showLoader: false,
@@ -3787,7 +3930,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 flex: 4,
                 child: _buildDashboardPanel(
-                  child: GraficoHorasWidget(
+                  child: MonthlyHoursChart(
+                    logs: _timeLogs,
                     points: dailyHoursPoints,
                     formatHours: _formatHours,
                     onDayTap: _abrirHorasDoDia,
@@ -3803,71 +3947,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildDashboardPanel({
     required Widget child,
+    double height = 272,
   }) {
     return Container(
+      height: height,
       width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            CoresDashboard.card.withValues(alpha: 0.995),
-            CoresDashboard.fundoSecundario.withValues(alpha: 0.94),
-          ],
-        ),
-        border: Border.all(
-          color: CoresApp.borda.withValues(alpha: 0.88),
-          width: 0.9,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.20),
-            blurRadius: 24,
-            offset: const Offset(0, 9),
-          ),
-        ],
-      ),
+      decoration: AppVisuals.card.copyWith(boxShadow: AppVisuals.shadows),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 4,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      CoresApp.primaria,
-                      CoresApp.destaque,
-                      CoresApp.secundaria,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 4,
-              left: 0,
-              child: Container(
-                width: 70,
-                height: 24,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      CoresApp.primaria.withValues(alpha: 0.07),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            child,
-          ],
-        ),
+        borderRadius: BorderRadius.circular(AppVisuals.cardRadius),
+        child: child,
       ),
     );
   }
@@ -3889,110 +3977,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ) {
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            CoresDashboard.card.withValues(alpha: 0.995),
-            CoresDashboard.fundoSecundario.withValues(alpha: 0.95),
-          ],
-        ),
-        border: Border.all(
-          color: CoresApp.borda.withValues(alpha: 0.90),
-          width: 0.95,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 28,
-            offset: const Offset(0, 11),
-          ),
-        ],
-      ),
+      decoration: AppVisuals.card.copyWith(boxShadow: AppVisuals.shadows),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
-              decoration: BoxDecoration(
-                color: CoresDashboard.fundoSecundario.withValues(alpha: 0.42),
-                border: Border(
-                  bottom: BorderSide(
-                    color: CoresApp.borda.withValues(alpha: 0.55),
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: CoresApp.primaria.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: CoresApp.primaria.withValues(alpha: 0.22),
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.table_rows_rounded,
-                      color: CoresApp.destaque,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Projetos e tarefas',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Acompanhamento operacional e registro de horas',
-                          style: TextStyle(
-                            color: CoresApp.textoSecundario,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: CoresApp.primaria.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: CoresApp.primaria.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: Text(
-                      '${filteredProjects.length} ${filteredProjects.length == 1 ? 'projeto' : 'projetos'}',
-                      style: const TextStyle(
-                        color: CoresApp.textoSecundario,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            ProjectSectionHeading(
+              projectCount: filteredProjects.length,
+              actions: PilotFeatureAccess.allows(
+                uid: FirebaseAuth.instance.currentUser?.uid,
+                email: FirebaseAuth.instance.currentUser?.email)
+                  ? ProjectToolbarActions(
+                      onQueue: () => CommentQueueDialog.show(context),
+                      onReceived: () => ReceivedWorkDialog.show(context),
+                      onAudit: () => WorkAuditDialog.show(context, _projects),
+                      onInternalNs: () => InternalNsDialog.show(context),
+                    )
+                  : null,
             ),
             TabelaProjetosWidget(
               projects: filteredProjects,
+              auditProjects: _projects,
               statusList: _statusList,
               expandedProjectIds: _expandedProjectIds,
               selectedTargetId: _selectedTargetId,
@@ -4005,6 +4010,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               horizontalController: _horizontalTableScroll,
               verticalController: _verticalTableScroll,
               onSelectTarget: (targetId) {
+                widget.timeLogStore.selectOpenedWork(targetId);
                 setState(() {
                   _selectedTargetId = targetId;
                 });
@@ -4029,7 +4035,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onStopTimer: _stopTimer,
               onManualTime: _showManualTimeDialog,
               onEditLog: _editLogDialog,
-              onSaveLogDescription: _saveLogDescription,
               onDeleteLog: _confirmDeleteLog,
               onRegisterLog: _handleRegisterLog,
               onMarkTaskCompleted: _handleMarkTaskCompleted,
@@ -4046,46 +4051,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // CALLBACKS DA TABELA
   // ============================================================
 
-  Future<void> _saveLogDescription(TimeLog log, String description) async {
-    final previousDescription = log.description;
-    log.description = description;
-    try {
-      await widget.timeLogStore.updateFirebaseLog(log);
-    } catch (_) {
-      log.description = previousDescription;
-      rethrow;
-    }
-  }
-
   Future<void> _handleProjectStatusChanged(
     ProjectModel project,
     String newStatus,
   ) async {
-    setState(() {
-      project.status = newStatus;
-    });
-
+    final owner = FirebaseAuth.instance.currentUser?.uid;
+    if (owner == null) return;
+    if (!mounted || !_updatingProjectStatuses.add(project.id)) return;
     try {
-      if (newStatus == 'TRAB_FIM') {
-        await widget.timeLogStore.registerProjectLogs(
-          project.id,
-        );
-      }
-
-      await _firebaseService.saveProject(
-        project,
+      final folderMoved = await updateProjectStatus(
+        project: project,
+        status: newStatus,
+        registerLogs: () => widget.timeLogStore.registerProjectLogs(project.id),
+        persist: () async {
+          if (FirebaseAuth.instance.currentUser?.uid != owner)
+            throw StateError('A conta mudou.');
+          await _firebaseService.saveProject(project);
+        },
+        offerArchive: () async {
+          if (!mounted ||
+              !context.mounted ||
+              FirebaseAuth.instance.currentUser?.uid != owner ||
+              !ProjectArchiveDialog.allowed ||
+              !ProjectArchiveDialog.acceptsFolder(project.folderPath ?? '')) {
+            return false;
+          }
+          final result = await ProjectArchiveDialog.show(context,
+              projectId: project.id,
+              folder: project.folderPath!,
+              excel: project.excelLink ?? '');
+          if (result == null) return false;
+          project.folderPath = result['folderReference'] as String;
+          project.excelLink = result['excelReference'] as String;
+          return true;
+        },
       );
 
-      if (newStatus == 'TRAB_FIM') {
+      if (newStatus == 'TRAB_FIM' &&
+          mounted &&
+          context.mounted &&
+          FirebaseAuth.instance.currentUser?.uid == owner) {
         widget.onProjectCompleted?.call(
           project,
         );
 
-        if (mounted) {
+        if (mounted && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Projeto ${project.id} finalizado e movido!',
+                folderMoved
+                    ? 'Projeto ${project.id} finalizado. Pasta movida e vínculos atualizados.'
+                    : 'Projeto ${project.id} finalizado.',
               ),
               backgroundColor: CoresApp.sucesso,
               behavior: SnackBarBehavior.floating,
@@ -4097,7 +4113,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && context.mounted) {
+        setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -4111,6 +4128,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
       }
+    } finally {
+      _updatingProjectStatuses.remove(project.id);
     }
   }
 
@@ -4140,7 +4159,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         log,
       );
 
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -4161,7 +4180,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     } catch (e) {
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
 
@@ -4196,7 +4215,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       parent,
     );
 
-    if (mounted) {
+    if (mounted && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -4217,113 +4236,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
 
   Widget _buildAlerts() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            CoresDashboard.card.withValues(alpha: 0.995),
-            CoresDashboard.fundoSecundario.withValues(alpha: 0.95),
-          ],
-        ),
-        border: Border.all(
-          color: CoresApp.borda.withValues(alpha: 0.88),
-          width: 0.9,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 25,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
-              decoration: BoxDecoration(
-                color: CoresDashboard.fundoSecundario.withValues(alpha: 0.42),
-                border: Border(
-                  bottom: BorderSide(
-                    color: CoresApp.borda.withValues(alpha: 0.55),
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: CoresApp.aviso.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: CoresApp.aviso.withValues(alpha: 0.22),
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.notifications_active_rounded,
-                      color: CoresApp.aviso,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Central de alertas',
-                          style: TextStyle(
-                            color: CoresApp.textoPrincipal,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Pendências e situações que precisam de atenção',
-                          style: TextStyle(
-                            color: CoresApp.textoSecundario,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: CoresApp.aviso,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: CoresApp.aviso.withValues(alpha: 0.45),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            CentralAlertasWidget(
-              projects: _projects,
-              formatDateShort: _formatDateShort,
-            ),
-          ],
-        ),
-      ),
-    );
+    if (!_alertPreferencesLoaded || !_alertPreferences.active) {
+      return Align(alignment: Alignment.centerRight,
+        child: TextButton.icon(onPressed: _configureAlerts,
+          icon: const Icon(Icons.notifications_off_outlined, size: 18),
+          label: const Text('Configurar alertas')));
+    }
+    return DashboardAlertsStrip(key: _alertsKey, projects: _projects,
+      updates: _pendingCommentAlerts, updatesUnavailable: _commentAlertsUnavailable,
+      preferences: _alertPreferences, onConfigure: _configureAlerts,
+      onOpen: () => _checkPendingCommentUpdates(showEmpty: true), formatDate: _formatDateShort);
   }
 
   // ============================================================
@@ -4352,7 +4274,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.20),
+              color: Colors.black
+                  .withValues(alpha: AppPalette.dark ? 0.20 : 0.045),
               blurRadius: 26,
               offset: const Offset(0, 10),
             ),
@@ -4372,7 +4295,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               alignment: Alignment.center,
-              child: const SizedBox(
+              child: SizedBox(
                 width: 28,
                 height: 28,
                 child: CircularProgressIndicator(
@@ -4382,7 +4305,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Carregando projetos...',
               style: TextStyle(
                 color: CoresApp.textoPrincipal,
@@ -4391,7 +4314,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 5),
-            const Text(
+            Text(
               'Sincronizando dados com o Firebase',
               style: TextStyle(
                 color: CoresApp.textoSecundario,
@@ -4411,6 +4334,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final filteredProjects = _buildFilteredProjects();
 
     final activeProject = _getActiveProject();
@@ -4431,31 +4355,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         )
         .length;
 
-    final totalTasks = _projects.fold<int>(
-      0,
-      (total, project) => total + (project.subTasks?.length ?? 0),
-    );
+    final completedProjects = _completedProjectCount;
 
     final totalRegisteredMinutes = _timeLogs
         .where(
-      (log) => log.isRegistered,
-    )
+          (log) => log.isRegistered,
+        )
         .fold<int>(
-      0,
-      (total, log) {
-        final parts = log.durationFormatted.split(':');
-
-        if (parts.length != 2) {
-          return total;
-        }
-
-        final hours = int.tryParse(parts[0]) ?? 0;
-
-        final minutes = int.tryParse(parts[1]) ?? 0;
-
-        return total + (hours * 60) + minutes;
-      },
-    );
+          0,
+          (total, log) => total + WorkDuration.minutes(log),
+        );
 
     final totalHours = _formatHours(
       totalRegisteredMinutes / 60.0,
@@ -4464,7 +4373,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
+        preferredSize: const Size.fromHeight(68),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
@@ -4495,7 +4404,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       activeProjects: activeProjects,
                       totalProjects: totalProjects,
                       pausedProjects: pausedProjects,
-                      totalTasks: totalTasks,
+                      completedProjects: completedProjects,
                       totalHours: totalHours,
                     ),
                     const SizedBox(

@@ -1,3 +1,5 @@
+import 'app_palette.dart';
+import 'app_visuals.dart';
 import 'package:flutter/material.dart';
 
 /// ===============================================================
@@ -10,65 +12,63 @@ class CoresApp {
   // FUNDOS (Tons profundos de azul-marinho e slate)
   // =============================================================
 
-  static const Color fundo =
-      Color.fromARGB(255, 49, 62, 96); // Fundo principal ultra-profundo
-  static const Color fundoSecundario =
-      Color(0xFF111827); // Fundo secundário sutil
-  static const Color superficie =
-      Color(0xFF1E293B); // Superfície de cartões padrão
-  static const Color superficieClara =
-      Color.fromARGB(255, 102, 123, 153); // Superfície elevada
-  static const Color superficieEscura =
-      Color(0xFF0F172A); // Superfície de destaque escuro
-  static const Color grafico =
-      Color.fromARGB(255, 18, 24, 35); // Superfície de cartões padrão
+  static Color get fundo =>
+      AppPalette.background; // Fundo principal ultra-profundo
+  static Color get fundoSecundario =>
+      AppPalette.field; // Fundo secundário sutil
+  static Color get superficie =>
+      AppPalette.surface; // Superfície de cartões padrão
+  static Color get superficieClara => AppPalette.raised; // Superfície elevada
+  static Color get superficieEscura =>
+      AppPalette.field; // Superfície de destaque escuro
+  static Color get grafico =>
+      AppPalette.surface; // Superfície de cartões padrão
 
   // =============================================================
   // CORES PRINCIPAIS
   // =============================================================
 
-  static const Color primaria =
-      Color(0xFF0EA5E9); // Azul Ciano moderno e vibrante
-  static const Color secundaria = Color(0xFF38BDF8); // Azul claro complementar
-  static const Color destaque =
-      Color(0xFF00F2FE); // Destaque tecnológico neon suave
+  static Color get primaria =>
+      AppPalette.primary; // Azul Ciano moderno e vibrante
+  static Color get secundaria => AppPalette.primary; // Azul claro complementar
+  static Color get destaque =>
+      AppPalette.accent; // Destaque tecnológico neon suave
 
   // =============================================================
   // TEXTOS
   // =============================================================
 
-  static const Color textoPrincipal =
-      Color(0xFFF8FAFC); // Branco quase puro para máxima leitura
-  static const Color textoSecundario =
-      Color(0xFF94A3B8); // Cinza slate elegante
-  static const Color textoFraco =
-      Color(0xFF64748B); // Cinza sutil para detalhes
-  static const Color textoDesabilitado = Color(0xFF475569);
+  static Color get textoPrincipal =>
+      AppPalette.text; // Branco quase puro para máxima leitura
+  static Color get textoSecundario =>
+      AppPalette.secondary; // Cinza slate elegante
+  static Color get textoFraco => AppPalette.muted; // Cinza sutil para detalhes
+  static Color get textoDesabilitado => AppPalette.muted;
 
   // =============================================================
   // ESTADOS
   // =============================================================
 
-  static const Color sucesso = Color(0xFF10B981); // Verde esmeralda moderno
-  static const Color erro = Color(0xFFEF4444); // Vermelho vivo refinado
-  static const Color aviso = Color(0xFFF59E0B); // Âmbar elegante
-  static const Color informacao = Color(0xFF0EA5E9); // Azul informativo
+  static Color get sucesso => AppPalette.success; // Verde esmeralda moderno
+  static Color get erro => AppPalette.danger; // Vermelho vivo refinado
+  static Color get aviso => AppPalette.warning; // Âmbar elegante
+  static Color get informacao => AppPalette.primary; // Azul informativo
 
   // =============================================================
   // DESTAQUES
   // =============================================================
 
-  static const Color destaqueAmarelo = Color(0xFFFBBF24);
-  static const Color destaqueVermelho = Color(0xFFF87171);
-  static const Color destaqueVerde = Color(0xFF34D399);
-  static const Color destaqueAzul = Color(0xFF38BDF8);
+  static Color get destaqueAmarelo => AppPalette.warning;
+  static Color get destaqueVermelho => AppPalette.danger;
+  static Color get destaqueVerde => AppPalette.success;
+  static Color get destaqueAzul => AppPalette.primary;
 
   // =============================================================
   // BORDAS
   // =============================================================
 
-  static const Color borda = Color(0xFF334155); // Linhas de contorno discretas
-  static const Color bordaSuave = Color(0xFF1E293B);
+  static Color get borda => AppPalette.border; // Linhas de contorno discretas
+  static Color get bordaSuave => AppVisuals.divider;
 
   // =============================================================
   // SOMBRAS / OVERLAYS
@@ -77,7 +77,7 @@ class CoresApp {
   static const Color overlay = Color(0x80000000);
 
   /// Compatibilidade com telas que utilizem fundoEscuro.
-  static const Color fundoEscuro = Color(0xFF0B0F19);
+  static Color get fundoEscuro => AppPalette.background;
 }
 
 /// ===============================================================
@@ -90,55 +90,57 @@ class CoresDashboard {
   // ESTRUTURA
   // =============================================================
 
-  static const Color fundo = Color(0xFF0B0F19);
-  static const Color fundoSecundario = Color(0xFF111827);
-  static const Color card = Color(0xFF1E293B);
-  static const Color cardHover = Color(0xFF273548);
-  static const Color cabecalhoTabela = Color(0xFF0F172A);
+  static Color get fundo => AppPalette.background;
+  static Color get fundoSecundario => AppPalette.field;
+  static Color get card => AppPalette.surface;
+  static Color get cardHover => AppPalette.raised;
+  static Color get cabecalhoTabela => AppPalette.header;
 
   // =============================================================
   // GRÁFICOS
   // =============================================================
 
-  static const Color graficoHoras = Color(0xFF00F2FE);
-  static const Color graficoProjetos = Color(0xFF0EA5E9);
-  static const Color graficoConcluidos = Color(0xFF10B981);
-  static const Color graficoAtrasados = Color(0xFFEF4444);
-  static const Color graficoAndamento = Color(0xFFF59E0B);
+  static Color get graficoHoras => AppPalette.accent;
+  static Color get graficoProjetos => AppPalette.primary;
+  static Color get graficoConcluidos => AppPalette.success;
+  static Color get graficoAtrasados => AppPalette.danger;
+  static Color get graficoAndamento => AppPalette.warning;
 
   // =============================================================
   // STATUS
   // =============================================================
 
-  static const Color statusInicial = Color(0xFFF59E0B);
-  static const Color statusTrabalhando = Color(0xFF34D399);
-  static const Color statusAndamento = Color(0xFF38BDF8);
-  static const Color statusFinalizado = Color(0xFF60A5FA);
+  static Color get statusInicial => AppPalette.warning;
+  static Color get statusTrabalhando => AppPalette.success;
+  static Color get statusAndamento => AppPalette.primary;
+  static Color get statusFinalizado => AppPalette.primary;
 
   // =============================================================
   // TABELA DE PROJETOS
   // =============================================================
 
-  static const Color tabelaFundo = Color(0xFF111827);
-  static const Color tabelaCabecalho = Color(0xFF0F172A);
-  static const Color tabelaLinhaSelecionada = Color(0x330EA5E9);
-  static const Color tabelaLinhaExpandida = Color(0x1A0EA5E9);
-  static const Color tabelaLinhaEtapa = Color(0x140EA5E9);
-  static const Color tabelaLinhaExecucao = Color(0x991E293B);
+  static Color get tabelaFundo => AppPalette.surface;
+  static Color get tabelaCabecalho => AppPalette.header;
+  static Color get tabelaLinhaSelecionada =>
+      AppPalette.primary.withValues(alpha: 0.12);
+  static Color get tabelaLinhaExpandida =>
+      AppPalette.primary.withValues(alpha: 0.045);
+  static Color get tabelaLinhaEtapa => AppPalette.subtle;
+  static Color get tabelaLinhaExecucao => AppPalette.raised;
   static const Color tabelaLinhaRegistrada = Color(0x1A10B981);
-  static const Color tabelaBorda = Color(0x14FFFFFF);
-  static const Color tabelaDivisor = Color(0x1A334155);
-  static const Color tabelaHover = Color(0x0DFFFFFF);
-  static const Color tabelaHover1 = Color(0x267C3AED);
+  static Color get tabelaBorda => AppPalette.border;
+  static Color get tabelaDivisor => AppVisuals.divider;
+  static Color get tabelaHover => AppPalette.subtle;
+  static Color get tabelaHover1 => AppPalette.subtle;
 
   // =============================================================
   // ALERTAS
   // =============================================================
 
-  static const Color alerta = Color(0xFFF59E0B);
-  static const Color atrasado = Color(0xFFEF4444);
-  static const Color proximoVencimento = Color(0xFFF59E0B);
-  static const Color dentroPrazo = Color(0xFF10B981);
+  static Color get alerta => AppPalette.warning;
+  static Color get atrasado => AppPalette.danger;
+  static Color get proximoVencimento => AppPalette.warning;
+  static Color get dentroPrazo => AppPalette.success;
 }
 
 /// ===============================================================
@@ -151,31 +153,31 @@ class CoresTelas {
   // LOGIN / AUTENTICAÇÃO
   // =============================================================
 
-  static const Color fundoLogin = Color(0xFF0B0F19);
-  static const Color painelLogin = Color(0xFF1E293B);
+  static Color get fundoLogin => AppPalette.background;
+  static Color get painelLogin => AppPalette.surface;
 
   // =============================================================
   // FORMULÁRIOS
   // =============================================================
 
-  static const Color campoFormulario = Color(0xFF334155);
-  static const Color campoFormularioFoco = Color(0xFF475569);
+  static Color get campoFormulario => AppPalette.field;
+  static Color get campoFormularioFoco => AppPalette.raised;
 
   // =============================================================
   // MODAIS
   // =============================================================
 
-  static const Color fundoModal = Color(0xFF1E293B);
-  static const Color fundoModalSecundario = Color(0xFF111827);
+  static Color get fundoModal => AppPalette.surface;
+  static Color get fundoModalSecundario => AppPalette.field;
 
   // =============================================================
   // SUPORTE / ATALHOS DE TELA
   // =============================================================
 
-  static const Color fundoSuperficie = Color(0xFF1E293B);
-  static const Color fundoCard = Color(0xFF1E293B);
-  static const Color cabecalhoTabela = Color(0xFF111827);
-  static const Color fundoPrincipal = Color(0xFF0B0F19);
+  static Color get fundoSuperficie => AppPalette.surface;
+  static Color get fundoCard => AppPalette.surface;
+  static Color get cabecalhoTabela => AppPalette.header;
+  static Color get fundoPrincipal => AppPalette.background;
 }
 
 /// ===============================================================
@@ -188,9 +190,9 @@ class TamanhosApp {
   // TABELAS
   // =============================================================
 
-  static const double tabelaFonteCabecalho = 10;
-  static const double tabelaFonte = 10;
-  static const double tabelaFonteSecundaria = 9.5;
+  static const double tabelaFonteCabecalho = 11;
+  static const double tabelaFonte = 11;
+  static const double tabelaFonteSecundaria = 10.5;
   static const double tabelaFonteStatus = 9.5;
   static const double tabelaFonteAcao = 9.5;
   static const double tabelaEspacamentoColunas = 8;

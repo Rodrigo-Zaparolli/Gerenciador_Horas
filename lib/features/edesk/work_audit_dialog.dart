@@ -1,0 +1,503 @@
+import 'work_audit_review.dart';
+import 'phase_audit_table.dart';
+import 'phase_date_sync_dialog.dart';
+import 'phase_date_sync.dart';
+import '../../core/config/work_audit_pilot_access.dart';
+import 'work_audit_result_card.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../../core/config/pilot_feature_access.dart';
+import '../../data/services/edesk_credentials_service.dart';
+import '../../data/services/edesk_endpoint.dart';
+import '../../data/services/edesk_integration.dart';
+import '../../data/services/edesk_python_web.dart';
+import '../../domain/models/project_model.dart';
+import 'work_audit.dart';
+
+class WorkAuditDialog extends StatefulWidget {
+  const WorkAuditDialog(
+      {super.key, required this.projects, this.selectedProject});
+  final List<ProjectModel> projects;
+  final ProjectModel? selectedProject;
+  static Future<void> show(BuildContext context, List<ProjectModel> projects,
+      {ProjectModel? selectedProject}) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (!PilotFeatureAccess.allows(uid: user?.uid, email: user?.email)) {
+      return Future.value();
+    }
+    return showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => WorkAuditDialog(
+            projects: projects, selectedProject: selectedProject));
+  }
+
+  @override
+  State<WorkAuditDialog> createState() => _WorkAuditDialogState();
+}
+
+class _WorkAuditDialogState extends State<WorkAuditDialog> {
+  final _confirmedProjects = <String, ProjectModel>{};
+  List<ProjectModel> get _projects =>
+      [for (final p in widget.projects) _confirmedProjects[p.id] ?? p];
+  ProjectModel? get _selectedProject {
+    final original = widget.selectedProject;
+    return original == null
+        ? null
+        : _confirmedProjects[original.id] ?? original;
+  }
+
+  final _number = TextEditingController(), _search = TextEditingController();
+  final _selected = <String>{};
+  final _fields = <String>{
+    'name',
+    'status',
+    'start',
+    'end',
+    'percentage',
+    'hours',
+    'estimatedHours',
+    'remainingHours',
+    'overrunHours',
+    'completed',
+    'phaseName'
+  };
+  final _results =
+      <({String reference, String? error, List<AuditFieldResult> fields})>[];
+  String _mode = 'selected', _message = '', _progress = '';
+  bool _busy = false, _stop = false;
+  StreamSubscription<User?>? _auth;
+  @override
+  void initState() {
+    super.initState();
+    if (_selectedProject != null) {
+      _selected.add(_selectedProject!.id);
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    final owner = user?.uid;
+    if (WorkAuditPilotAccess.allows(uid: owner, email: user?.email)) {
+      _fields.remove('percentage');
+    }
+    _auth = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user?.uid != owner && mounted) {
+        _stop = true;
+        _results.clear();
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _auth?.cancel();
+    _number.dispose();
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run() async {
+    final owner = FirebaseAuth.instance.currentUser;
+    if (!PilotFeatureAccess.allows(uid: owner?.uid, email: owner?.email)) {
+      return;
+    }
+    List<AuditTarget> targets;
+    try {
+      if (_fields.isEmpty) {
+        throw const FormatException('Selecione ao menos um campo.');
+      }
+      final matching =
+          _projects.where((p) => p.id.trim() == _number.text.trim()).toList();
+      targets = _selectedProject != null
+          ? projectAuditTargets(_projects, selectedProject: _selectedProject)
+          : _mode == 'number'
+              ? matching.isEmpty
+                  ? [AuditTarget(_number.text.trim())]
+                  : projectAuditTargets(matching)
+              : projectAuditTargets(_projects
+                  .where((p) => _mode == 'all'
+                      ? p.status != 'TRAB_FIM' && p.status != 'TRAB_STOP'
+                      : _selected.contains(p.id))
+                  .toList());
+      if (targets.isEmpty ||
+          targets.any((t) => !RegExp(r'^\d+$').hasMatch(t.number))) {
+        throw const FormatException(
+            'Selecione projetos ou informe uma solicitação válida.');
+      }
+    } on FormatException catch (error) {
+      setState(() => _message = error.message);
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _stop = false;
+      _message = '';
+      _results.clear();
+    });
+    try {
+      final credentials = await EdeskCredentialsService().ler();
+      if (credentials == null) {
+        throw StateError(
+            'Configure suas credenciais nas configurações da integração E-Desk.');
+      }
+      final url = await edeskEndpointSettings.currentUrl();
+      for (var index = 0; index < targets.length; index++) {
+        if (_stop || FirebaseAuth.instance.currentUser?.uid != owner?.uid) {
+          break;
+        }
+        final target = targets[index];
+        setState(() => _progress =
+            '${index + 1}/${targets.length} · Solicitação ${target.number}');
+        final operationId = 'audit-${DateTime.now().microsecondsSinceEpoch}';
+        var polling = false;
+        final timer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+          if (polling) return;
+          polling = true;
+          try {
+            final state = await EdeskIntegrationApi.call('/api/edesk/status',
+                baseUrl: url);
+            if (timer.isActive &&
+                mounted &&
+                _busy &&
+                state['operationId'] == operationId) {
+              setState(() => _progress =
+                  '${index + 1}/${targets.length} · Solicitação ${target.number} · ${state['stage'] == 'login' ? 'Aguardando login' : 'Consultando trabalhos'}');
+            }
+          } catch (_) {
+            /* A progress failure does not restart a query. */
+          } finally {
+            polling = false;
+          }
+        });
+        try {
+          final response = await EdeskWebClient(apiUrl: url).execute(
+              requestJson: jsonEncode({
+                'edeskCredenciais': credentials,
+                'solicitacoes': [target.toJson()],
+                'includeHours': _fields.any(
+                    const {'hours', 'remainingHours', 'overrunHours'}.contains),
+                'phaseDates': true
+              }),
+              enviar: false,
+              script: 'edesk_conferencia.py',
+              operationId: operationId);
+          if (!mounted ||
+              FirebaseAuth.instance.currentUser?.uid != owner?.uid) {
+            break;
+          }
+          if (!response.confirmed) {
+            _results.add((
+              reference: target.number,
+              error: response.message,
+              fields: <AuditFieldResult>[]
+            ));
+            // Global setup/connection failures must not launch N failed browsers.
+            _stop = true;
+          } else {
+            final receipt =
+                jsonDecode(response.responseBody) as Map<String, dynamic>;
+            for (final raw in receipt['rows'] as List) {
+              final row = Map<String, dynamic>.from(raw as Map);
+              final work = row['idTrabalho']?.toString() ?? '';
+              _results.add((
+                reference: '${target.number}${work.isEmpty ? '' : '/$work'}',
+                error: auditWorkErrors(row, _fields),
+                fields: compareAuditWork(
+                    target.expected[work] ?? {},
+                    Map<String, dynamic>.from(row['values'] as Map? ?? {}),
+                    _fields)
+              ));
+            }
+          }
+        } finally {
+          timer.cancel();
+        }
+        setState(() {});
+      }
+      if (mounted && FirebaseAuth.instance.currentUser?.uid == owner?.uid) {
+        setState(() => _message = auditSummary(
+            _results.map((result) => result.fields),
+            hasErrors: _results.any((result) => result.error != null),
+            interrupted: _stop));
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message =
+            '${edeskConsultationError(error)} Resultados j\u00e1 obtidos foram mantidos.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _adjustPhase(
+      String reference, List<AuditFieldResult> fields) async {
+    final parts = reference.split('/');
+    final user = FirebaseAuth.instance.currentUser;
+    if (parts.length != 2 ||
+        _busy ||
+        !WorkAuditPilotAccess.allows(uid: user?.uid, email: user?.email)) {
+      return;
+    }
+    final matches = <({ProjectModel project, TaskModel task})>[];
+    for (final project
+        in _selectedProject == null ? _projects : [_selectedProject!]) {
+      for (final task in project.subTasks ?? <TaskModel>[]) {
+        if ((task.edeskSolicitacao?.trim().isNotEmpty == true
+                    ? task.edeskSolicitacao!.trim()
+                    : project.id) ==
+                parts[0] &&
+            task.edeskWorkNumber == parts[1]) {
+          matches.add((project: project, task: task));
+        }
+      }
+    }
+    final values = {for (final f in fields) f.field: f.edesk};
+    if (matches.length != 1 || (values['phaseName'] ?? '').isEmpty) {
+      setState(() => _message =
+          'Associe um \u00fanico trabalho cadastrado a esta fase antes de ajustar as datas.');
+      return;
+    }
+    final match = matches.single;
+    setState(() => _busy = true);
+    try {
+      final changed = await showDialog<PhaseDateSyncResult>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => PhaseDateSyncDialog(
+              project: match.project,
+              task: match.task,
+              request: parts[0],
+              phase: values['phaseName']!,
+              edeskStart: values['start'] ?? '',
+              edeskEnd: values['end'] ?? ''));
+      if (!mounted) return;
+      setState(() {
+        if (changed != null) {
+          _confirmedProjects[match.project.id] =
+              changed.refreshProject(match.project, match.task, parts[0]);
+          for (var i = 0; i < _results.length; i++) {
+            final row = _results[i];
+            if (row.reference == reference) {
+              _results[i] = (
+                reference: row.reference,
+                error: row.error,
+                fields: changed.refreshFields(row.fields)
+              );
+            }
+          }
+          _message = changed.toEdesk
+              ? 'Datas confirmadas no E-Desk. Comparativo atualizado.'
+              : 'Datas salvas no sistema. Comparativo atualizado.';
+        }
+      });
+    } catch (error) {
+      if (mounted) setState(() => _message = edeskConsultationError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _scopeControls() {
+    final visible = _projects.where((p) => '${p.id} ${p.client}'
+        .toLowerCase()
+        .contains(_search.text.toLowerCase()));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      DropdownButtonFormField<String>(
+          initialValue: _mode,
+          decoration: const InputDecoration(labelText: 'O que conferir'),
+          items: const [
+            DropdownMenuItem(
+                value: 'all', child: Text('Todos os projetos ativos')),
+            DropdownMenuItem(
+                value: 'selected', child: Text('Projetos selecionados')),
+            DropdownMenuItem(
+                value: 'number', child: Text('Informar solicitação'))
+          ],
+          onChanged: _busy ? null : (value) => setState(() => _mode = value!)),
+      if (_mode == 'number')
+        TextField(
+            controller: _number,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            decoration:
+                const InputDecoration(labelText: 'Número da solicitação')),
+      if (_mode == 'selected') ...[
+        TextField(
+            controller: _search,
+            enabled: !_busy,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'Pesquisar projeto')),
+        SizedBox(
+            height: 180,
+            child: ListView(children: [
+              for (final p in visible)
+                CheckboxListTile(
+                    dense: true,
+                    title: Text('${p.id} · ${p.client}'),
+                    value: _selected.contains(p.id),
+                    onChanged: _busy
+                        ? null
+                        : (value) => setState(() {
+                              if (value == true) {
+                                _selected.add(p.id);
+                              } else {
+                                _selected.remove(p.id);
+                              }
+                            }))
+            ])),
+      ],
+    ]);
+  }
+
+  Widget _fieldControls() => Wrap(spacing: 10, children: [
+        for (final entry in auditFields.entries)
+          FilterChip(
+              label: Text(entry.value),
+              selected: _fields.contains(entry.key),
+              onSelected: _busy
+                  ? null
+                  : (value) => setState(() {
+                        if (value) {
+                          _fields.add(entry.key);
+                        } else {
+                          _fields.remove(entry.key);
+                        }
+                      }))
+      ]);
+
+  @override
+  Widget build(BuildContext context) {
+    final auditUser = FirebaseAuth.instance.currentUser;
+    final summarized = WorkAuditPilotAccess.allows(
+        uid: auditUser?.uid, email: auditUser?.email);
+    if (summarized) {
+      return WorkAuditReview(
+          project: _selectedProject,
+          results: _results,
+          options: _fieldControls(),
+          scopeControls: _selectedProject == null
+              ? _scopeControls()
+              : const SizedBox.shrink(),
+          busy: _busy,
+          message: _message,
+          progress: _progress,
+          onRun: _run,
+          onClose: () => Navigator.pop(context),
+          onAdjust: _adjustPhase,
+          onStop: _stop ? null : () => setState(() => _stop = true));
+    }
+    return PopScope(
+        canPop: !_busy,
+        child: Dialog(
+            child: SizedBox(
+          width: 1050,
+          height: MediaQuery.sizeOf(context).height * .88,
+          child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Conferir trabalhos no E-Desk',
+                        style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    Text(summarized
+                        ? 'A consulta n\u00e3o altera cadastros. Use Ajustar datas para escolher o destino e confirmar uma altera\u00e7\u00e3o.'
+                        : 'Consulta · Nenhuma alteração será salva no app ou no E-Desk. Campos sem equivalente no app aparecem como “Somente consulta”.'),
+                    const SizedBox(height: 12),
+                    Expanded(
+                        child: SingleChildScrollView(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                          if (_selectedProject == null) _scopeControls(),
+                          const SizedBox(height: 10),
+                          const Text(
+                              'Datas consultadas na aba Fases. Saldo: horas previstas menos horas trabalhadas; excedentes aparecem separadamente.'),
+                          const SizedBox(height: 8),
+                          _fieldControls(),
+                          if (_busy) ...[
+                            const SizedBox(height: 12),
+                            const LinearProgressIndicator(),
+                            const SizedBox(height: 8),
+                            Text(_progress)
+                          ],
+                          if (_message.isNotEmpty)
+                            Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                child: SelectableText(_message)),
+                          if (summarized)
+                            PhaseAuditTable(
+                                results: _results,
+                                busy: _busy,
+                                onAdjust: _adjustPhase),
+                          for (final result in _results)
+                            if (summarized)
+                              WorkAuditResultCard(
+                                  reference: result.reference,
+                                  error: result.error,
+                                  fields: result.fields)
+                            else
+                              Card(
+                                  child: ExpansionTile(
+                                initiallyExpanded: result.error != null ||
+                                    result.fields
+                                        .any((f) => f.state == 'Divergência'),
+                                title: Text(result.reference),
+                                subtitle: Text(result.error ??
+                                    (result.fields.any(
+                                            (f) => f.state == 'Divergência')
+                                        ? 'Divergência encontrada'
+                                        : result.fields.isNotEmpty &&
+                                                result.fields.every(
+                                                    (f) => f.state == 'Igual')
+                                            ? 'Conferido'
+                                            : 'Conferência parcial / dados consultados')),
+                                children: [
+                                  SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: DataTable(columns: const [
+                                        DataColumn(label: Text('Campo')),
+                                        DataColumn(label: Text('App')),
+                                        DataColumn(label: Text('E-Desk')),
+                                        DataColumn(label: Text('Resultado'))
+                                      ], rows: [
+                                        for (final f in result.fields)
+                                          DataRow(cells: [
+                                            DataCell(
+                                                Text(auditFields[f.field]!)),
+                                            DataCell(SelectableText(
+                                                f.app.isEmpty ? '—' : f.app)),
+                                            DataCell(SelectableText(
+                                                f.edesk.isEmpty
+                                                    ? '—'
+                                                    : f.edesk)),
+                                            DataCell(Text(f.state))
+                                          ])
+                                      ]))
+                                ],
+                              )),
+                        ]))),
+                    const SizedBox(height: 12),
+                    Wrap(alignment: WrapAlignment.end, spacing: 12, children: [
+                      TextButton(
+                          onPressed:
+                              _busy ? null : () => Navigator.pop(context),
+                          child: const Text('Fechar')),
+                      if (_busy)
+                        TextButton(
+                            onPressed: _stop
+                                ? null
+                                : () => setState(() => _stop = true),
+                            child: const Text('Parar após esta solicitação')),
+                      FilledButton.icon(
+                          onPressed: _busy ? null : _run,
+                          icon: const Icon(Icons.fact_check_outlined),
+                          label: const Text('Iniciar conferência')),
+                    ]),
+                  ])),
+        )));
+  }
+}

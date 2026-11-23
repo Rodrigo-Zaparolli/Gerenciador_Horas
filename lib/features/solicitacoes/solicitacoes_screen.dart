@@ -1,4 +1,15 @@
+import '../dashboard/dialogs/external_comment_date_dialog.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import '../../data/services/file_download.dart';
+import 'package:gerenciador_horas/shared/widgets/redesign_components.dart';
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/config/plugin_tracking_access.dart';
+import 'package:gerenciador_horas/data/services/project_update_service.dart';
 import 'dart:async';
+import 'tracking_rows.dart';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,7 +43,37 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   List<Map<String, dynamic>> _projetosRows = [];
   List<Map<String, dynamic>> _pluginsRows = [];
 
+  String _requestSearch = '';
+  String? _requestStatus;
+  DateTimeRange? _requestPeriod;
+  int _requestPage = 0;
+  int _requestsPerPage = 10;
   bool _isLoading = true;
+  int _projectSyncVersion = 0;
+  final Map<String, StreamSubscription<ProjectCommentUpdate?>>
+      _commentSubscriptions = {};
+  final Map<String, ProjectCommentUpdate?> _latestComments = {};
+
+  void _watchComments(String id) {
+    if (_commentSubscriptions.containsKey(id)) return;
+    _commentSubscriptions[id] = ProjectUpdateService(_userId, firestore: _db)
+        .watchLastComment(id)
+        .listen((latest) {
+      _latestComments[id] = latest;
+      if (!mounted) return;
+      setState(() {
+        for (final row in [..._projetosRows, ..._pluginsRows]) {
+          if (row['id'] == id) {
+            row['ultimaAtualizacao'] = latest?.date;
+            row['ultimoComentario'] = latest?.text ?? '';
+            row['comentarioId'] = latest?.id;
+          }
+        }
+      });
+    },
+            onError: (Object error) =>
+                debugPrint('Erro ao acompanhar comentarios: $error'));
+  }
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
       _projetosSubscription;
@@ -42,6 +83,8 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   // ============================================================
 
   User? get _currentUser => _auth.currentUser;
+  bool get _canTrackPlugins => PluginTrackingAccess.allows(
+      uid: _currentUser?.uid, email: _currentUser?.email);
 
   String get _userId {
     final user = _currentUser;
@@ -79,6 +122,9 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   @override
   void dispose() {
     _projetosSubscription?.cancel();
+    for (final subscription in _commentSubscriptions.values) {
+      subscription.cancel();
+    }
     super.dispose();
   }
 
@@ -136,6 +182,25 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   Future<void> _sincronizarProjetos(
     QuerySnapshot<Map<String, dynamic>> snapshot,
   ) async {
+    final version = ++_projectSyncVersion;
+    final accountId = _currentUser?.uid;
+    final canTrackPlugins = _canTrackPlugins;
+    if (!mounted || accountId == null) return;
+    final activeDocuments = snapshot.docs
+        .where((doc) => isActiveTrackingProject(doc.data()))
+        .map((doc) => doc.id)
+        .toSet();
+    // A completed/deleted project must disappear immediately, even when a
+    // remaining project's comment lookup is slow or offline.
+    setState(() {
+      final projects = retainActiveTrackingRows(_projetosRows, activeDocuments);
+      final plugins = retainActiveTrackingRows(_pluginsRows, activeDocuments);
+      if (projects.length != _projetosRows.length) _selectedProjetoIndex = null;
+      if (plugins.length != _pluginsRows.length) _selectedPluginIndex = null;
+      _projetosRows = projects;
+      _pluginsRows = plugins;
+      if (activeDocuments.isEmpty) _isLoading = false;
+    });
     try {
       debugPrint('========================================');
       debugPrint('SINCRONIZAÇÃO DE SOLICITAÇÕES');
@@ -143,6 +208,21 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
         'Projetos encontrados: ${snapshot.docs.length}',
       );
 
+      final activeIds = snapshot.docs
+          .where((doc) => isActiveTrackingProject(doc.data()))
+          .map((doc) => doc.data()['id']?.toString().trim().isNotEmpty == true
+              ? doc.data()['id'].toString().trim()
+              : doc.id)
+          .toSet();
+      for (final id in _commentSubscriptions.keys.toList()) {
+        if (!activeIds.contains(id)) {
+          await _commentSubscriptions.remove(id)?.cancel();
+          _latestComments.remove(id);
+        }
+      }
+      final commentResults = await Future.wait(activeIds
+          .map((id) async => MapEntry(id, await _getUltimoComentario(id))));
+      final commentsById = Map.fromEntries(commentResults);
       final List<Map<String, dynamic>> projetosRows = [];
       final List<Map<String, dynamic>> pluginsRows = [];
 
@@ -164,7 +244,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
         // PROJETO FINALIZADO
         // ========================================================
 
-        if (status == 'TRAB_FIM') {
+        if (!isActiveTrackingProject(project)) {
           debugPrint(
             'Projeto ${doc.id} ignorado: TRAB_FIM',
           );
@@ -220,15 +300,13 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
         // ÚLTIMO COMENTÁRIO
         // ========================================================
 
-        final ultimoComentario = await _getUltimoComentario(
-          projectId,
-        );
+        final ultimoComentario = commentsById[projectId];
 
         DateTime? dataUltimaAtualizacao;
 
         if (ultimoComentario != null) {
           dataUltimaAtualizacao = _parseDataFirestore(
-            ultimoComentario['criadoEm'],
+            ultimoComentario['dataHora'],
           );
 
           dataUltimaAtualizacao ??= _parseDataFirestore(
@@ -280,7 +358,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
         // SEPARAÇÃO AUTOMÁTICA
         // ========================================================
 
-        if (ehPlugin) {
+        if (ehPlugin && canTrackPlugins) {
           debugPrint(
             '  -> PLUGIN',
           );
@@ -323,13 +401,24 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
         },
       );
 
-      if (!mounted) {
+      if (!mounted ||
+          version != _projectSyncVersion ||
+          _currentUser?.uid != accountId) {
         return;
       }
 
       setState(() {
         _projetosRows = projetosRows;
         _pluginsRows = pluginsRows;
+        for (final row in [..._projetosRows, ..._pluginsRows]) {
+          final id = row['id'] as String;
+          if (_latestComments.containsKey(id)) {
+            final latest = _latestComments[id];
+            row['ultimaAtualizacao'] = latest?.date;
+            row['ultimoComentario'] = latest?.text ?? '';
+            row['comentarioId'] = latest?.id;
+          }
+        }
 
         if (_selectedProjetoIndex != null &&
             _selectedProjetoIndex! >= projetosRows.length) {
@@ -451,27 +540,8 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
       return '0';
     }
 
-    final hoje = DateTime.now();
-
-    final dataHojeLimpa = DateTime(
-      hoje.year,
-      hoje.month,
-      hoje.day,
-    );
-
-    final dataAtualizacaoLimpa = DateTime(
-      dataAtualizacao.year,
-      dataAtualizacao.month,
-      dataAtualizacao.day,
-    );
-
-    final diferenca = dataHojeLimpa
-        .difference(
-          dataAtualizacaoLimpa,
-        )
-        .inDays;
-
-    return diferenca < 0 ? '0' : diferenca.toString();
+    return ProjectUpdateService.daysSince(dataAtualizacao, DateTime.now())
+        .toString();
   }
 
   // ============================================================
@@ -481,23 +551,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   String _calcularAtualizacaoObrigatoria(
     DateTime dataBase,
   ) {
-    DateTime novaData = dataBase.add(
-      const Duration(days: 12),
-    );
-
-    if (novaData.weekday == DateTime.saturday) {
-      novaData = novaData.subtract(
-        const Duration(days: 1),
-      );
-    } else if (novaData.weekday == DateTime.sunday) {
-      novaData = novaData.add(
-        const Duration(days: 1),
-      );
-    }
-
-    return _formatarData(
-      novaData,
-    );
+    return _formatarData(ProjectUpdateService.nextUpdate(dataBase));
   }
 
   // ============================================================
@@ -602,34 +656,26 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   Future<Map<String, dynamic>?> _getUltimoComentario(
     String projectId,
   ) async {
-    try {
-      final snapshot = await _db
-          .collection('projetos')
-          .doc(projectId)
-          .collection('comentarios_edesk')
-          .orderBy(
-            'criadoEm',
-            descending: true,
-          )
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isEmpty) {
-        return null;
-      }
-
-      return {
-        'id': snapshot.docs.first.id,
-        ...snapshot.docs.first.data(),
-      };
-    } catch (e) {
-      debugPrint(
-        'Erro ao buscar último comentário '
-        'do projeto $projectId: $e',
-      );
-
-      return null;
+    if (!mounted) return null;
+    _watchComments(projectId);
+    final cached = _latestComments[projectId];
+    if (_latestComments.containsKey(projectId)) {
+      return cached == null
+          ? null
+          : {
+              'id': cached.id,
+              'comentario': cached.text,
+              'dataHora': cached.date
+            };
     }
+    final fetched = await ProjectUpdateService(_userId, firestore: _db)
+        .lastComment(projectId);
+    final latest = _latestComments.containsKey(projectId)
+        ? _latestComments[projectId]
+        : fetched;
+    return latest == null
+        ? null
+        : {'id': latest.id, 'comentario': latest.text, 'dataHora': latest.date};
   }
 
   // ============================================================
@@ -649,11 +695,13 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
     final novoValor = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return AlertDialog(
           backgroundColor: CoresDashboard.card,
           title: Text(
             titulo,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontWeight: FontWeight.bold,
             ),
@@ -663,7 +711,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
             child: TextField(
               controller: controller,
               autofocus: true,
-              style: const TextStyle(
+              style: TextStyle(
                 color: CoresApp.textoPrincipal,
               ),
               decoration: InputDecoration(
@@ -684,7 +732,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
+                  borderSide: BorderSide(
                     color: CoresApp.primaria,
                   ),
                 ),
@@ -701,7 +749,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
               onPressed: () {
                 Navigator.of(dialogContext).pop();
               },
-              child: const Text(
+              child: Text(
                 'Cancelar',
                 style: TextStyle(
                   color: CoresApp.textoSecundario,
@@ -805,7 +853,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
       // ========================================================
 
       body: _isLoading
-          ? const Center(
+          ? Center(
               child: CircularProgressIndicator(
                 color: CoresApp.sucesso,
               ),
@@ -818,29 +866,12 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: CoresApp.primaria,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(
-                        width: 8,
-                      ),
-                      const Text(
-                        'Pasta de Solicitações',
-                        style: TextStyle(
-                          color: CoresApp.textoPrincipal,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                  AppPageHero(
+                      title: 'Pasta de Solicitações',
+                      subtitle:
+                          'Acompanhe as solicitações de projetos e plugins.',
+                      icon: Icons.assignment_outlined,
+                      trailing: _buildRequestCounters()),
 
                   const SizedBox(
                     height: 16,
@@ -853,110 +884,59 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: CoresDashboard.card,
-                      borderRadius: BorderRadius.circular(
-                        TamanhosApp.raioTabela,
-                      ),
-                      border: Border.all(
-                        color: CoresDashboard.tabelaBorda,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
+                    decoration: AppVisuals.panel(prominent: true),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.folder_shared_rounded,
-                              size: 16,
-                              color: CoresApp.primaria,
-                            ),
-                            const SizedBox(
-                              width: 6,
-                            ),
-                            const Text(
-                              'Acompanhamento de Projetos',
-                              style: TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(
-                          height: 10,
-                        ),
+                        _requestToolbar(),
+                        const SizedBox(height: 12),
                         _buildTabelaProjetos(),
+                        _requestFooter(),
                       ],
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 20,
-                  ),
+                  if (_canTrackPlugins) const SizedBox(height: 20),
 
                   // ==================================================
                   // PLUGINS
                   // ==================================================
 
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: CoresDashboard.card,
-                      borderRadius: BorderRadius.circular(
-                        TamanhosApp.raioTabela,
-                      ),
-                      border: Border.all(
-                        color: CoresDashboard.tabelaBorda,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.extension_rounded,
-                              size: 16,
-                              color: CoresApp.primaria,
-                            ),
-                            const SizedBox(
-                              width: 6,
-                            ),
-                            const Text(
-                              'Acompanhamento Plugins em Desenvolvimento',
-                              style: TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
+                  if (_canTrackPlugins)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: AppVisuals.panel(prominent: true),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.extension_rounded,
+                                size: 16,
+                                color: CoresApp.primaria,
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(
-                          height: 10,
-                        ),
-                        _buildTabelaPlugins(),
-                      ],
+                              const SizedBox(
+                                width: 6,
+                              ),
+                              Text(
+                                'Acompanhamento Plugins em Desenvolvimento',
+                                style: TextStyle(
+                                  color: CoresApp.textoPrincipal,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(
+                            height: 10,
+                          ),
+                          _buildTabelaPlugins(),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -965,6 +945,274 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   // ============================================================
   // TABELA PROJETOS
   // ============================================================
+
+  List<Map<String, dynamic>> get _visibleRequests {
+    final query = _requestSearch.trim().toLowerCase();
+    return _projetosRows.where((row) {
+      if (query.isNotEmpty &&
+          !'${row['id']} ${row['cliente']} ${row['solicitacao']}'
+              .toLowerCase()
+              .contains(query)) return false;
+      if (_requestStatus != null && row['status'] != _requestStatus)
+        return false;
+      final period = _requestPeriod;
+      if (period != null) {
+        final date = row['planEnd'];
+        if (date is! DateTime) return false;
+        final day = DateTime(date.year, date.month, date.day);
+        if (day.isBefore(period.start) || day.isAfter(period.end)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  int get _safeRequestPage => _requestPage.clamp(
+      0, (_visibleRequests.length - 1).clamp(0, 100000000) ~/ _requestsPerPage);
+  List<Map<String, dynamic>> get _pagedRequests => _visibleRequests
+      .skip(_safeRequestPage * _requestsPerPage)
+      .take(_requestsPerPage)
+      .toList();
+  Future<void> _chooseRequestPeriod() async {
+    final period = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+        initialDateRange: _requestPeriod);
+    if (period != null && mounted)
+      setState(() {
+        _requestPeriod = period;
+        _requestPage = 0;
+      });
+  }
+
+  Future<void> _exportRequests() async {
+    String cell(dynamic value) {
+      final raw = value?.toString() ?? '';
+      final safe = RegExp(r'^[=+@\-\t\r]').hasMatch(raw) ? "'$raw" : raw;
+      return '"${safe.replaceAll('"', '""')}"';
+    }
+
+    final text = <List<dynamic>>[
+      ['Solicitação', 'Cliente', 'Vencimento', 'Status', 'Líder'],
+      for (final row in _visibleRequests)
+        [
+          row['id'],
+          row['cliente'],
+          row['planEnd'] is DateTime ? _formatarData(row['planEnd']) : '',
+          _formatarStatusProjeto(row['status']?.toString() ?? ''),
+          row['lider']
+        ],
+    ].map((row) => row.map(cell).join(';')).join('\r\n');
+    if (kIsWeb) {
+      downloadBytes(
+          fileName: 'solicitacoes.csv',
+          bytes: Uint8List.fromList(utf8.encode('\ufeff$text')),
+          mimeType: 'text/csv;charset=utf-8');
+    } else {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Tabela copiada para a área de transferência.')));
+    }
+  }
+
+  Widget _requestToolbar() => LayoutBuilder(builder: (context, c) {
+        final heading = Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.folder_outlined, color: CoresApp.destaque, size: 34),
+          const SizedBox(width: 12),
+          Flexible(
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('Acompanhamento de Projetos',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: CoresApp.textoPrincipal,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700)),
+                Text('Solicitações de projetos e suas atualizações.',
+                    style: TextStyle(
+                        color: CoresApp.textoSecundario, fontSize: 12)),
+              ])),
+        ]);
+        final tools = Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                  width: c.maxWidth >= 1000
+                      ? (c.maxWidth -
+                              760 -
+                              ((_requestStatus != null ||
+                                      _requestPeriod != null)
+                                  ? 58
+                                  : 0))
+                          .clamp(180.0, 440.0)
+                      : (c.maxWidth - 20).clamp(180.0, 440.0),
+                  child: TextField(
+                      onChanged: (v) => setState(() {
+                            _requestSearch = v;
+                            _requestPage = 0;
+                          }),
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.search),
+                          hintText:
+                              'Buscar por cliente, solicitação ou número...'))),
+              PopupMenuButton<String>(
+                  onSelected: (v) => setState(() {
+                        _requestStatus = v == 'all' ? null : v;
+                        _requestPage = 0;
+                      }),
+                  itemBuilder: (_) => [
+                        const PopupMenuItem(
+                            value: 'all', child: Text('Todos os status')),
+                        for (final status in [
+                          'INI_PRO',
+                          'TRAB',
+                          'EA',
+                          'TRAB_STOP',
+                          'TRAB_FIM'
+                        ])
+                          PopupMenuItem(
+                              value: status,
+                              child: Text(_formatarStatusProjeto(status)))
+                      ],
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: AppVisuals.panel(radius: 10),
+                      child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.filter_alt_outlined, size: 18),
+                            SizedBox(width: 7),
+                            Text('Filtrar')
+                          ]))),
+              OutlinedButton.icon(
+                  onPressed: _chooseRequestPeriod,
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: Text(
+                      _requestPeriod == null ? 'Período' : 'Período definido')),
+              OutlinedButton.icon(
+                  onPressed: _exportRequests,
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: const Text('Exportar')),
+              if (_requestStatus != null || _requestPeriod != null)
+                IconButton(
+                    tooltip: 'Limpar filtros',
+                    onPressed: () => setState(() {
+                          _requestStatus = null;
+                          _requestPeriod = null;
+                          _requestPage = 0;
+                        }),
+                    icon: const Icon(Icons.filter_alt_off_outlined)),
+            ]);
+        if (c.maxWidth >= 1000)
+          return Row(children: [
+            Expanded(child: heading),
+            const SizedBox(width: 18),
+            tools
+          ]);
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [heading, const SizedBox(height: 12), tools]);
+      });
+  Widget _requestFooter() {
+    final total = _visibleRequests.length;
+    final pages = ((total + _requestsPerPage - 1) ~/ _requestsPerPage)
+        .clamp(1, 100000000);
+    return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 6,
+            children: [
+              Text('Total: $total solicitações',
+                  style:
+                      TextStyle(color: CoresApp.textoPrincipal, fontSize: 14)),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('Itens por página: '),
+                DropdownButton<int>(
+                    value: _requestsPerPage,
+                    items: [
+                      for (final size in [5, 10, 20, 50])
+                        DropdownMenuItem(value: size, child: Text('$size'))
+                    ],
+                    onChanged: (v) {
+                      if (v != null)
+                        setState(() {
+                          _requestsPerPage = v;
+                          _requestPage = 0;
+                        });
+                    }),
+                IconButton(
+                    tooltip: 'Página anterior',
+                    onPressed: _safeRequestPage > 0
+                        ? () =>
+                            setState(() => _requestPage = _safeRequestPage - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left)),
+                Text('${_safeRequestPage + 1} / $pages'),
+                IconButton(
+                    tooltip: 'Próxima página',
+                    onPressed: _safeRequestPage < pages - 1
+                        ? () =>
+                            setState(() => _requestPage = _safeRequestPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right)),
+              ]),
+            ]));
+  }
+
+  Widget _buildRequestCounters() {
+    final rows = [..._projetosRows, if (_canTrackPlugins) ..._pluginsRows];
+    final stopped = rows.where((r) => r['status'] == 'TRAB_STOP').length;
+    final running = rows.where((r) => r['status'] == 'TRAB').length;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = rows.where((r) {
+      final date = r['planEnd'];
+      if (date is! DateTime) return false;
+      final days =
+          DateTime(date.year, date.month, date.day).difference(today).inDays;
+      return days >= 0 && days <= 7;
+    }).length;
+    return SizedBox(
+        width: 830,
+        child: Row(children: [
+          Expanded(
+              child: AppMetricCard(
+                  icon: Icons.folder_outlined,
+                  label: 'Solicita\u00e7\u00f5es',
+                  value: '${rows.length}',
+                  description: 'no per\u00edodo')),
+          const SizedBox(width: 10),
+          Expanded(
+              child: AppMetricCard(
+                  icon: Icons.pause_circle_outline,
+                  label: 'Paradas',
+                  value: '$stopped',
+                  accent: CoresApp.sucesso)),
+          const SizedBox(width: 10),
+          Expanded(
+              child: AppMetricCard(
+                  icon: Icons.play_arrow_outlined,
+                  label: 'Em andamento',
+                  value: '$running')),
+          const SizedBox(width: 10),
+          Expanded(
+              child: AppMetricCard(
+                  icon: Icons.event_outlined,
+                  label: 'Vencem em 7 dias',
+                  value: '$due',
+                  accent: AppVisuals.violet)),
+        ]));
+  }
 
   Widget _buildTabelaProjetos() {
     return Container(
@@ -990,7 +1238,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
           headingRowColor: WidgetStateProperty.all(
             CoresDashboard.cabecalhoTabela,
           ),
-          columns: const [
+          columns: [
             DataColumn(
               label: Text(
                 'Cliente + Solicitação',
@@ -1073,9 +1321,10 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
             ),
           ],
           rows: List.generate(
-            _projetosRows.length,
-            (index) {
-              final row = _projetosRows[index];
+            _pagedRequests.length,
+            (visibleIndex) {
+              final row = _pagedRequests[visibleIndex];
+              final index = _projetosRows.indexOf(row);
 
               final cliente = row['cliente']?.toString() ?? '';
 
@@ -1252,6 +1501,8 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                         ),
                       ),
                     ),
+                    showEditIcon: true,
+                    onTap: () => ExternalCommentDateDialog.show(context, row['id'].toString()),
                   ),
 
                   // ==================================================
@@ -1325,7 +1576,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                             const SizedBox(
                               width: 4,
                             ),
-                            const Icon(
+                            Icon(
                               Icons.edit_outlined,
                               size: 14,
                               color: CoresApp.primaria,
@@ -1349,6 +1600,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
   // ============================================================
 
   Widget _buildTabelaPlugins() {
+    if (!_canTrackPlugins) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1372,7 +1624,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
           headingRowColor: WidgetStateProperty.all(
             CoresDashboard.cabecalhoTabela,
           ),
-          columns: const [
+          columns: [
             DataColumn(
               label: Text(
                 'Solicitação + Cliente',
@@ -1688,6 +1940,8 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                         ),
                       ),
                     ),
+                    showEditIcon: true,
+                    onTap: () => ExternalCommentDateDialog.show(context, row['id'].toString()),
                   ),
 
                   // ==================================================
@@ -1761,7 +2015,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                             const SizedBox(
                               width: 4,
                             ),
-                            const Icon(
+                            Icon(
                               Icons.edit_outlined,
                               size: 14,
                               color: CoresApp.primaria,
@@ -1815,7 +2069,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                             const SizedBox(
                               width: 4,
                             ),
-                            const Icon(
+                            Icon(
                               Icons.edit_outlined,
                               size: 14,
                               color: CoresApp.primaria,
@@ -1868,7 +2122,7 @@ class _SolicitacoesScreenState extends State<SolicitacoesScreen> {
                             const SizedBox(
                               width: 4,
                             ),
-                            const Icon(
+                            Icon(
                               Icons.edit_outlined,
                               size: 14,
                               color: CoresApp.primaria,

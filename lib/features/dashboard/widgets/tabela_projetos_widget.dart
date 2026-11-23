@@ -1,16 +1,43 @@
+import 'project_table_viewport.dart';
+import 'dart:convert';
+import '../../projects/dialogs/checklist_dates_button.dart';
+import '../../projects/dialogs/checklist_hours_button.dart';
+import '../../../domain/models/work_duration.dart';
+import '../../../data/services/project_link_edit.dart';
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart' show Firebase;
+import '../../../core/config/pilot_feature_access.dart';
+import '../../projects/widgets/project_actions_pilot.dart';
+import '../../edesk/work_audit_dialog.dart';
+import '../../edesk/adv_work_dialog.dart';
+import '../../projects/dialogs/spreadsheet_phase_send_dialog.dart';
+import '../../projects/dialogs/project_spreadsheet_dialog.dart';
+import '../../projects/dialogs/project_documents_dialog.dart';
+import 'package:gerenciador_horas/features/project_emails/project_email_modal.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
+import '../../projects/widgets/edesk_phase_send_button.dart';
 import 'dart:async';
-import 'dart:io';
+import 'package:gerenciador_horas/core/platform/local_files.dart';
+import 'package:gerenciador_horas/data/services/project_file_service.dart';
+import 'package:gerenciador_horas/data/services/browser_local_files_service.dart';
+import '../../projects/widgets/project_reference_field.dart';
+import '../../projects/widgets/local_file_setup_dialog.dart';
+import 'package:gerenciador_horas/core/config/web_config.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gerenciador_horas/data/services/edesk_service.dart';
 import 'package:gerenciador_horas/data/services/firebase_service.dart';
+import 'package:gerenciador_horas/data/services/project_storage_service.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/core/theme/cores_app.dart';
 import 'package:gerenciador_horas/features/dashboard/comentario/comentario_modal.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:gerenciador_horas/features/projects/widgets/project_storage_files_dialog.dart';
 
 class HoraInputFormatter extends TextInputFormatter {
   @override
@@ -32,7 +59,12 @@ class HoraInputFormatter extends TextInputFormatter {
       }
 
       if (minutes.length > 2) {
-        minutes = minutes.substring(0, 2);
+        // O separador inserido automaticamente não pode consumir o próximo
+        // dígito: ao continuar 2:50 com 0, a duração passa a ser 25:00.
+        final digits = '$hours$minutes';
+        if (digits.length > 6) return oldValue;
+        hours = digits.substring(0, digits.length - 2);
+        minutes = digits.substring(digits.length - 2);
       }
 
       text = '$hours:$minutes';
@@ -55,8 +87,39 @@ class HoraInputFormatter extends TextInputFormatter {
   }
 }
 
+// Draw the envelope without a font glyph so cached icon fonts cannot hide it.
+class _ProjectEmailIconPainter extends CustomPainter {
+  const _ProjectEmailIconPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.09
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final rect = Rect.fromLTRB(size.width * 0.08, size.height * 0.2,
+        size.width * 0.92, size.height * 0.8);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(size.width * 0.09)), paint);
+    final flap = Path()
+      ..moveTo(rect.left + size.width * 0.02, rect.top + size.height * 0.04)
+      ..lineTo(size.width * 0.5, size.height * 0.52)
+      ..lineTo(rect.right - size.width * 0.02, rect.top + size.height * 0.04);
+    canvas.drawPath(flap, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ProjectEmailIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class TabelaProjetosWidget extends StatefulWidget {
   final List<ProjectModel> projects;
+  final List<ProjectModel>? auditProjects;
   final List<String> statusList;
   final Set<String> expandedProjectIds;
   final String? selectedTargetId;
@@ -79,7 +142,7 @@ class TabelaProjetosWidget extends StatefulWidget {
   final ValueChanged<ProjectModel> onDeleteProject;
   final ValueChanged<ProjectModel> onAddSubTask;
 
-  final void Function(ProjectModel, String) onProjectStatusChanged;
+  final Future<void> Function(ProjectModel, String) onProjectStatusChanged;
   final void Function(TaskModel, String) onSubTaskStatusChanged;
 
   final void Function(ProjectModel, TaskModel) onEditSubTask;
@@ -91,18 +154,17 @@ class TabelaProjetosWidget extends StatefulWidget {
   final ValueChanged<String> onManualTime;
 
   final ValueChanged<TimeLog> onEditLog;
-  final Future<void> Function(TimeLog, String) onSaveLogDescription;
   final ValueChanged<TimeLog> onDeleteLog;
   final ValueChanged<TimeLog> onRegisterLog;
   final ValueChanged<TaskModel> onMarkTaskCompleted;
 
   final String Function(int) formatDuration;
   final FirebaseService firebaseService;
-  final EdeskService? edeskService;
 
   const TabelaProjetosWidget({
     super.key,
     required this.projects,
+    this.auditProjects,
     required this.statusList,
     required this.expandedProjectIds,
     required this.selectedTargetId,
@@ -129,13 +191,11 @@ class TabelaProjetosWidget extends StatefulWidget {
     required this.onStopTimer,
     required this.onManualTime,
     required this.onEditLog,
-    required this.onSaveLogDescription,
     required this.onDeleteLog,
     required this.onRegisterLog,
     required this.onMarkTaskCompleted,
     required this.formatDuration,
     required this.firebaseService,
-    this.edeskService,
   });
 
   @override
@@ -329,12 +389,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     return AnimatedBuilder(
       animation: _deadlineBlinkController,
       builder: (context, child) {
+        AppAppearance.watch(context);
         final t = _deadlineBlinkController.value;
         final backgroundOpacity = 0.10 + (t * 0.28);
         final borderOpacity = 0.35 + (t * 0.55);
         final textColor = Color.lerp(
           CoresApp.erro,
-          Colors.white,
+          AppPalette.text,
           t,
         )!;
 
@@ -418,7 +479,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/'
         '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year.toString().substring(2)}';
+        '${date.year.toString().padLeft(4, '0')}';
   }
 
   void _handleRegisterLog(TimeLog log) {
@@ -481,6 +542,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding:
@@ -599,13 +662,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                           hintText:
                               'Adicione observações ou informações importantes sobre este projeto...',
                           hintStyle: TextStyle(
-                            color: CoresApp.textoSecundario
-                                .withValues(alpha: 0.55),
+                            color: CoresApp.textoSecundario.withValues(alpha: 0.55),
                             fontSize: 11,
                           ),
                           filled: true,
-                          fillColor: CoresTelas.campoFormulario
-                              .withValues(alpha: 0.55),
+                          fillColor:
+                              CoresTelas.campoFormulario.withValues(alpha: 0.55),
                           contentPadding: const EdgeInsets.all(14),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -660,18 +722,19 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () async {
+                          final previousInfo = project.observacao;
                           project.observacao = controller.text.trim();
 
                           try {
                             await widget.firebaseService.salvarProjeto(project);
-                            if (!mounted) return;
                             widget.onEditProject(project);
+                            if (mounted) setState(() {});
 
                             if (dialogContext.mounted) {
                               Navigator.of(dialogContext).pop();
                             }
 
-                            if (mounted) {
+                            if (mounted && context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: const Text(
@@ -683,7 +746,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                               );
                             }
                           } catch (e) {
-                            if (mounted) {
+                            project.observacao = previousInfo;
+                            if (mounted && context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text('Erro ao salvar: $e'),
@@ -695,7 +759,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: CoresApp.destaque,
-                          foregroundColor: Colors.white,
+                          foregroundColor: AppPalette.foregroundOn(CoresApp.destaque),
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 18,
@@ -728,6 +792,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     bool isExpanded,
     bool emAlerta,
   ) {
+    final hasUsefulInfo = (project.observacao ?? '').trim().isNotEmpty;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -775,7 +840,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         ),
         const SizedBox(width: 4),
         IconButton(
-          tooltip: 'Informação útil',
+          tooltip: hasUsefulInfo
+              ? 'Informações úteis cadastradas'
+              : 'Adicionar informações úteis',
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(
@@ -784,7 +851,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           ),
           icon: Icon(
             Icons.more_horiz_rounded,
-            color: CoresApp.textoSecundario,
+            color: hasUsefulInfo
+                ? AppPalette.readableText(CoresApp.destaqueAmarelo)
+                : CoresApp.textoSecundario,
             size: 20,
           ),
           onPressed: () => _openProjectInfoDialog(project),
@@ -917,8 +986,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     showDialog(
       context: context,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            AppAppearance.watch(context);
             if (isLoadingFormats) {
               widget.firebaseService.getChecklistFormats().then((formats) {
                 if (dialogContext.mounted) {
@@ -1029,7 +1101,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: CoresApp.destaque,
-                            foregroundColor: Colors.black,
+                            foregroundColor: AppPalette.foregroundOn(CoresApp.destaque),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 14,
@@ -1048,10 +1120,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                   }
 
                                   if (chosenFormat != null) {
-                                    project.checklist =
-                                        List<Map<String, dynamic>>.from(
-                                            project.checklist);
-
                                     for (final formatItem
                                         in chosenFormat.items) {
                                       final name = formatItem['name']
@@ -1074,16 +1142,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                       await widget.firebaseService
                                           .salvarProjeto(project);
 
-                                      if (!mounted) return;
-
                                       widget.onEditProject(project);
 
                                       setDialogState(() {
                                         selectedFormatId = null;
                                       });
 
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(this.context)
+                                      if (mounted && context.mounted) {
+                                        ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           SnackBar(
                                             content: const Text(
@@ -1094,8 +1160,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                         );
                                       }
                                     } catch (e) {
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(this.context)
+                                      if (mounted && context.mounted) {
+                                        ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           SnackBar(
                                             content: Text(
@@ -1139,7 +1205,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: CoresApp.destaque,
-                            foregroundColor: Colors.black,
+                            foregroundColor: AppPalette.foregroundOn(CoresApp.destaque),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 12,
@@ -1149,10 +1215,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                             final text = newItemController.text.trim();
 
                             if (text.isNotEmpty) {
-                              project.checklist =
-                                  List<Map<String, dynamic>>.from(
-                                      project.checklist);
-
                               final nextOrder =
                                   (project.checklist.length + 1).toString();
 
@@ -1165,18 +1227,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                               newItemController.clear();
 
                               try {
-                                await widget.firebaseService
-                                    .salvarProjeto(project);
-
-                                if (!mounted) return;
+                                await widget.firebaseService.salvarProjeto(project);
 
                                 widget.onEditProject(project);
 
                                 setDialogState(() {});
                               } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(this.context)
-                                      .showSnackBar(
+                                if (mounted && context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text('Erro ao salvar item: $e'),
                                       backgroundColor: CoresApp.erro,
@@ -1260,15 +1318,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                               await widget.firebaseService
                                                   .salvarProjeto(project);
 
-                                              if (!mounted) return;
-
                                               widget.onEditProject(project);
 
                                               setDialogState(() {});
                                             } catch (e) {
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(
-                                                        this.context)
+                                              if (mounted && context.mounted) {
+                                                ScaffoldMessenger.of(context)
                                                     .showSnackBar(
                                                   SnackBar(
                                                     content: Text(
@@ -1284,7 +1339,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                         ),
                                         Checkbox(
                                           activeColor: CoresApp.destaque,
-                                          checkColor: Colors.black,
+                                          checkColor: AppPalette.onPrimary,
                                           value: isCompleted,
                                           onChanged: (bool? value) async {
                                             setDialogState(() {
@@ -1296,13 +1351,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                               await widget.firebaseService
                                                   .salvarProjeto(project);
 
-                                              if (!mounted) return;
-
                                               widget.onEditProject(project);
                                             } catch (e) {
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(
-                                                        this.context)
+                                              if (mounted && context.mounted) {
+                                                ScaffoldMessenger.of(context)
                                                     .showSnackBar(
                                                   SnackBar(
                                                     content: Text(
@@ -1374,10 +1426,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                         backgroundColor: CoresApp.destaque,
                       ),
                       onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text(
+                      child: Text(
                         'Fechar',
                         style: TextStyle(
-                          color: Colors.black,
+                          color: AppPalette.onPrimary,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1399,6 +1451,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
   ///Abre o modal de editar
 //////////////////////
   void _showLinksDialog(ProjectModel project) {
+    final linkEdit = ProjectLinkEdit(project);
+    project = linkEdit.draft;
     final idController = TextEditingController(text: project.id);
     final clientController = TextEditingController(text: project.client);
     final folderController =
@@ -1415,16 +1469,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     final linksScrollController = ScrollController();
 
     bool atualizandoFasesEdesk = false;
+    bool savingLinks = false;
 
     // ============================================================
-    // FASE SELECIONADA PARA ENVIO AO E-DESK
-    // ============================================================
-    //
-    // A seleção existe apenas enquanto o modal estiver aberto.
-    // Ela não é persistida no Firebase e não altera o TaskModel.
-    // O usuário pode enviar todas as fases ou escolher várias.
-    bool enviarTodasFasesEdesk = false;
-    final fasesSelecionadasEdesk = <int>{};
+    // Seleção temporária; permite enviar várias fases sem alterar os dados.
+    final Set<int> fasesSelecionadasEdesk = {};
 
     // ============================================================
     // ETAPAS TEMPORÁRIAS
@@ -1496,8 +1545,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            AppAppearance.watch(context);
             // =============================================================
             // CARREGA AS CONFIGURAÇÕES DO FIREBASE AO ABRIR O MODAL
             // =============================================================
@@ -1594,7 +1646,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                               Icons.close_rounded,
                               color: CoresApp.textoSecundario,
                             ),
-                            onPressed: () {
+                            onPressed: savingLinks ? null : () {
                               Navigator.of(context).pop();
                             },
                           ),
@@ -1756,7 +1808,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                               Row(
                                 children: [
                                   Expanded(
-                                    child: TextField(
+                                    child: ProjectReferenceField(
                                       controller: folderController,
                                       style: TextStyle(
                                         color: CoresApp.textoPrincipal,
@@ -1776,6 +1828,38 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                               ),
                                               tooltip: 'Criar Pasta do Projeto',
                                               onPressed: () async {
+                                                if (kIsWeb) {
+                                                  try {
+                                                    if (idController.text
+                                                            .trim()
+                                                            .isEmpty ||
+                                                        clientController.text
+                                                            .trim()
+                                                            .isEmpty) {
+                                                      throw StateError(
+                                                          'Informe o ID e o Cliente antes de criar a pasta.');
+                                                    }
+                                                    final reference =
+                                                        await BrowserLocalFiles
+                                                            .pickFolder(
+                                                                createName:
+                                                                    '${idController.text.trim()} - ${clientController.text.trim()}');
+                                                    if (reference == null ||
+                                                        !dialogContext.mounted) {
+                                                      return;
+                                                    }
+                                                    setDialogState(() =>
+                                                        folderController.text =
+                                                            reference);
+                                                  } catch (error) {
+                                                    ScaffoldMessenger.of(
+                                                            dialogContext)
+                                                        .showSnackBar(SnackBar(
+                                                            content: Text(
+                                                                '$error')));
+                                                  }
+                                                  return;
+                                                }
                                                 try {
                                                   final pastaBase =
                                                       await FilePicker.platform
@@ -1794,9 +1878,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
                                                   if (idProjeto.isEmpty ||
                                                       cliente.isEmpty) {
-                                                    if (mounted) {
+                                                    if (dialogContext.mounted) {
                                                       ScaffoldMessenger.of(
-                                                              this.context)
+                                                              context)
                                                           .showSnackBar(
                                                         const SnackBar(
                                                           content: Text(
@@ -1828,21 +1912,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                       limparNomePasta(
                                                     '$idProjeto - $cliente',
                                                   );
-                                                  final separador =
-                                                      Platform.pathSeparator;
                                                   final caminhoPasta =
-                                                      '$pastaBase$separador$nomePasta';
+                                                      await createLocalFolder(
+                                                          pastaBase, nomePasta);
 
-                                                  final pastaProjeto =
-                                                      Directory(caminhoPasta);
-                                                  if (!await pastaProjeto
-                                                      .exists()) {
-                                                    await pastaProjeto.create(
-                                                      recursive: true,
-                                                    );
-                                                  }
-
-                                                  if (!dialogContext.mounted) {
+                                                  if (!mounted || !dialogContext.mounted || !context.mounted) {
                                                     return;
                                                   }
                                                   setDialogState(() {
@@ -1853,9 +1927,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                   debugPrint(
                                                     'Erro ao criar pasta do projeto: $e',
                                                   );
-                                                  if (mounted) {
+                                                  if (dialogContext.mounted) {
                                                     ScaffoldMessenger.of(
-                                                            this.context)
+                                                            context)
                                                         .showSnackBar(
                                                       SnackBar(
                                                         content: Text(
@@ -1875,6 +1949,32 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                               ),
                                               tooltip: 'Selecionar Pasta',
                                               onPressed: () async {
+                                                if (kIsWeb) {
+                                                  try {
+                                                    final reference =
+                                                        await BrowserLocalFiles
+                                                            .pickFolder();
+                                                    if (reference != null &&
+                                                        dialogContext.mounted) {
+                                                      setDialogState(() =>
+                                                          folderController
+                                                                  .text =
+                                                              reference);
+                                                    }
+                                                  } catch (error) {
+                                                    if (dialogContext.mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              dialogContext)
+                                                          .showSnackBar(SnackBar(
+                                                              content: Text(error
+                                                                  .toString()
+                                                                  .replaceFirst(
+                                                                      'Bad state: ',
+                                                                      ''))));
+                                                    }
+                                                  }
+                                                  return;
+                                                }
                                                 try {
                                                   final selectedDirectory =
                                                       await FilePicker.platform
@@ -1905,7 +2005,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: TextField(
+                                    child: ProjectReferenceField(
                                       controller: excelController,
                                       style: TextStyle(
                                         color: CoresApp.textoPrincipal,
@@ -1922,29 +2022,38 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                           ),
                                           tooltip: 'Selecionar Arquivo',
                                           onPressed: () async {
-                                            final result = await FilePicker
-                                                .platform
-                                                .pickFiles(
-                                              type: FileType.custom,
-                                              allowedExtensions: [
-                                                'xlsx',
-                                                'xls',
-                                                'xlsm',
-                                                'csv',
-                                                'doc',
-                                                'docx',
-                                                'pdf',
-                                                'txt',
-                                              ],
-                                            );
-
-                                            if (result != null &&
-                                                result.files.single.path !=
-                                                    null) {
+                                            try {
+                                              final reference =
+                                                  await ProjectFileService
+                                                      .pickFile(
+                                                          idController.text);
+                                              if (reference == null ||
+                                                  !dialogContext.mounted) {
+                                                return;
+                                              }
                                               setDialogState(() {
                                                 excelController.text =
-                                                    result.files.single.path!;
+                                                    reference;
+                                                if (kIsWeb &&
+                                                    WebConfig.storageEnabled &&
+                                                    folderController.text
+                                                        .trim()
+                                                        .isEmpty) {
+                                                  folderController.text =
+                                                      ProjectFileService
+                                                          .cloudFolder(
+                                                              idController
+                                                                  .text);
+                                                }
                                               });
+                                            } catch (error) {
+                                              if (dialogContext.mounted) {
+                                                ScaffoldMessenger.of(
+                                                        dialogContext)
+                                                    .showSnackBar(SnackBar(
+                                                        content:
+                                                            Text('$error')));
+                                              }
                                             }
                                           },
                                         ),
@@ -1978,7 +2087,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          'Atualize os dados e escolha quais fases enviar ao E-Desk.',
+                                          'Marque as fases desejadas ou escolha enviar todas no botão ao lado.',
                                           style: TextStyle(
                                             color: CoresApp.textoSecundario,
                                             fontSize: 11,
@@ -1994,334 +2103,261 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 // ATUALIZAR FASES E-DESK
 // ======================================
 
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: atualizandoFasesEdesk
-                                          ? Colors.blue.withValues(alpha: 0.08)
-                                          : Colors.blue.withValues(alpha: 0.12),
-                                      foregroundColor: Colors.blueAccent,
-                                      disabledForegroundColor: Colors.blueAccent
-                                          .withValues(alpha: 0.75),
-                                      elevation: 0,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        side: BorderSide(
-                                          color: Colors.blueAccent.withValues(
-                                            alpha: atualizandoFasesEdesk
-                                                ? 0.25
-                                                : 0.45,
+                                  ChecklistDatesButton(
+                                    enabled: !savingLinks && !atualizandoFasesEdesk && tempSubTasks.isNotEmpty,
+                                    sourceToken: () => jsonEncode([idController.text, excelController.text, serviceTypeController.text,
+                                      for (final task in tempSubTasks) [task.startDate.toIso8601String(), task.planStart?.toIso8601String(), task.planEnd?.toIso8601String()]]),
+                                    stages: () => [for (final task in tempSubTasks) task.stage],
+                                    load: () => loadProjectChecklistHours(projectId: project.id,
+                                      reference: excelController.text.trim(), previousReference: linkEdit.previousExcel ?? '',
+                                      serviceType: serviceTypeController.text.trim()),
+                                    apply: (periods) => setDialogState(() {
+                                      for (final item in periods.entries) {
+                                        final task = tempSubTasks[item.key];
+                                        task.startDate = item.value[0];
+                                        task.planStart = item.value[0];
+                                        task.planEnd = item.value[1];
+                                      }
+                                    }),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  EdeskPhaseSendButton(
+                                    total: tempSubTasks.length,
+                                    selectedCount:
+                                        fasesSelecionadasEdesk.length,
+                                    busy: atualizandoFasesEdesk,
+                                    onSend: (enviarTodas) async {
+                                      // ============================================
+                                      // VALIDAÇÕES
+                                      // ============================================
+
+                                      final id = idController.text.trim();
+                                      final cliente =
+                                          clientController.text.trim();
+
+                                      if (id.isEmpty) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Informe o ID da solicitação antes de atualizar o E-Desk.',
+                                            ),
+                                            backgroundColor: CoresApp.erro,
                                           ),
-                                        ),
-                                      ),
-                                    ),
+                                        );
+                                        return;
+                                      }
 
-                                    // ============================================================
-                                    // BOTÃO DESABILITADO ENQUANTO A AUTOMAÇÃO ESTÁ EXECUTANDO
-                                    // ============================================================
+                                      if (cliente.isEmpty) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Informe o cliente antes de atualizar o E-Desk.',
+                                            ),
+                                            backgroundColor: CoresApp.erro,
+                                          ),
+                                        );
+                                        return;
+                                      }
 
-                                    onPressed: atualizandoFasesEdesk
-                                        ? null
-                                        : () async {
-                                            // ============================================
-                                            // VALIDAÇÕES
-                                            // ============================================
+                                      if (tempSubTasks.isEmpty) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Este projeto não possui etapas para enviar ao E-Desk.',
+                                            ),
+                                            backgroundColor: CoresApp.erro,
+                                          ),
+                                        );
+                                        return;
+                                      }
 
-                                            final id = idController.text.trim();
-                                            final cliente =
-                                                clientController.text.trim();
+                                      // ============================================
+                                      // Define o conjunto exato enviado nesta operação.
+                                      List<int> indices;
+                                      try {
+                                        indices = edeskPhaseIndices(
+                                            tempSubTasks.length,
+                                            fasesSelecionadasEdesk,
+                                            all: enviarTodas);
+                                      } on StateError catch (error) {
+                                        ScaffoldMessenger.of(dialogContext)
+                                            .showSnackBar(SnackBar(
+                                                content: Text(error.message)));
+                                        return;
+                                      }
+                                      final List<Map<String, String>> fases =
+                                          [];
+                                      for (final index in indices) {
+                                        final sub = tempSubTasks[index];
+                                        if (sub.stage.trim().isEmpty) {
+                                          ScaffoldMessenger.of(dialogContext)
+                                              .showSnackBar(SnackBar(
+                                                  content: Text(
+                                                      'A fase ${index + 1} não possui um nome válido.')));
+                                          return;
+                                        }
+                                        fases.add({
+                                          'nome': sub.stage.trim(),
+                                          'dataInicial':
+                                              _formatDate(sub.startDate),
+                                          'dataFinal': sub.planEnd == null
+                                              ? ''
+                                              : _formatDate(sub.planEnd!)
+                                        });
+                                      }
+                                      // ============================================
+                                      // LOG
+                                      // ============================================
 
-                                            if (id.isEmpty) {
-                                              ScaffoldMessenger.of(this.context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: const Text(
-                                                    'Informe o ID da solicitação antes de atualizar o E-Desk.',
-                                                  ),
-                                                  backgroundColor:
-                                                      CoresApp.erro,
-                                                ),
-                                              );
+                                      debugPrint('');
+                                      debugPrint(
+                                        '========== ATUALIZAÇÃO FASES E-DESK ==========',
+                                      );
+                                      debugPrint(
+                                        '[E-DESK] Solicitação: $id',
+                                      );
+                                      debugPrint(
+                                        '[E-DESK] Cliente: $cliente',
+                                      );
+                                      debugPrint(
+                                        '[E-DESK] Quantidade de fases: ${fases.length}',
+                                      );
+
+                                      for (final fase in fases) {
+                                        debugPrint(
+                                          '[E-DESK] '
+                                          '${fase['nome']} | '
+                                          'Inicial=${fase['dataInicial']} | '
+                                          'Final=${fase['dataFinal']}',
+                                        );
+                                      }
+
+                                      debugPrint(
+                                        '================================================',
+                                      );
+
+                                      // ============================================
+                                      // MOSTRA O SPINNER IMEDIATAMENTE
+                                      // ============================================
+
+                                      setDialogState(() {
+                                        atualizandoFasesEdesk = true;
+                                      });
+
+                                      try {
+                                        final resultado = await EdeskService()
+                                            .atualizarFasesViaPython(
+                                          id: id,
+                                          cliente: cliente,
+                                          fases: fases,
+
+                                          // ==================================================
+                                          // QUANDO O PYTHON REALMENTE TERMINAR
+                                          // ==================================================
+
+                                          onConcluido: (sucesso, mensagem) {
+                                            if (!mounted || !dialogContext.mounted || !context.mounted) {
                                               return;
                                             }
-
-                                            if (cliente.isEmpty) {
-                                              ScaffoldMessenger.of(this.context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: const Text(
-                                                    'Informe o cliente antes de atualizar o E-Desk.',
-                                                  ),
-                                                  backgroundColor:
-                                                      CoresApp.erro,
-                                                ),
-                                              );
-                                              return;
-                                            }
-
-                                            if (tempSubTasks.isEmpty) {
-                                              ScaffoldMessenger.of(this.context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: const Text(
-                                                    'Este projeto não possui etapas para enviar ao E-Desk.',
-                                                  ),
-                                                  backgroundColor:
-                                                      CoresApp.erro,
-                                                ),
-                                              );
-                                              return;
-                                            }
-
-                                            // ============================================
-                                            // VALIDA A FASE ESCOLHIDA PARA O E-DESK
-                                            // ============================================
-
-                                            final etapasParaEnviar =
-                                                tempSubTasks
-                                                    .asMap()
-                                                    .entries
-                                                    .where((entry) =>
-                                                        enviarTodasFasesEdesk ||
-                                                        fasesSelecionadasEdesk
-                                                            .contains(
-                                                                entry.key))
-                                                    .map((entry) => entry.value)
-                                                    .toList();
-                                            if (etapasParaEnviar.isEmpty) {
-                                              ScaffoldMessenger.of(this.context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: const Text(
-                                                    'Selecione pelo menos uma fase ou escolha enviar todas as fases.',
-                                                  ),
-                                                  backgroundColor:
-                                                      CoresApp.erro,
-                                                ),
-                                              );
-                                              return;
-                                            }
-
-                                            // ============================================
-                                            // MONTA AS FASES ESCOLHIDAS NA ORDEM DO PROJETO
-                                            // ============================================
-
-                                            if (etapasParaEnviar.any((sub) =>
-                                                sub.stage.trim().isEmpty)) {
-                                              ScaffoldMessenger.of(this.context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: const Text(
-                                                    'Uma das fases escolhidas não possui um nome válido.',
-                                                  ),
-                                                  backgroundColor:
-                                                      CoresApp.erro,
-                                                ),
-                                              );
-                                              return;
-                                            }
-
-                                            final List<Map<String, String>>
-                                                fases = [
-                                              for (final sub
-                                                  in etapasParaEnviar)
-                                                {
-                                                  'nome': sub.stage.trim(),
-                                                  'dataInicial': _formatDate(
-                                                    sub.startDate,
-                                                  ),
-                                                  'dataFinal':
-                                                      sub.planEnd != null
-                                                          ? _formatDate(
-                                                              sub.planEnd!,
-                                                            )
-                                                          : '',
-                                                },
-                                            ];
-
-                                            // ============================================
-                                            // LOG
-                                            // ============================================
-
-                                            debugPrint('');
-                                            debugPrint(
-                                              '========== ATUALIZAÇÃO FASES E-DESK ==========',
-                                            );
-                                            debugPrint(
-                                              '[E-DESK] Solicitação: $id',
-                                            );
-                                            debugPrint(
-                                              '[E-DESK] Cliente: $cliente',
-                                            );
-                                            debugPrint(
-                                              '[E-DESK] Quantidade de fases: ${fases.length}',
-                                            );
-
-                                            for (final fase in fases) {
-                                              debugPrint(
-                                                '[E-DESK] '
-                                                '${fase['nome']} | '
-                                                'Inicial=${fase['dataInicial']} | '
-                                                'Final=${fase['dataFinal']}',
-                                              );
-                                            }
-
-                                            debugPrint(
-                                              '================================================',
-                                            );
-
-                                            // ============================================
-                                            // MOSTRA O SPINNER IMEDIATAMENTE
-                                            // ============================================
 
                                             setDialogState(() {
-                                              atualizandoFasesEdesk = true;
+                                              atualizandoFasesEdesk = false;
                                             });
 
-                                            try {
-                                              final resultado =
-                                                  await (widget.edeskService ??
-                                                          EdeskService())
-                                                      .atualizarFasesViaPython(
-                                                id: id,
-                                                cliente: cliente,
-                                                fases: fases,
-
-                                                // ==================================================
-                                                // QUANDO O PYTHON REALMENTE TERMINAR
-                                                // ==================================================
-
-                                                onConcluido:
-                                                    (sucesso, mensagem) {
-                                                  if (!dialogContext.mounted) {
-                                                    return;
-                                                  }
-
-                                                  setDialogState(() {
-                                                    atualizandoFasesEdesk =
-                                                        false;
-                                                  });
-
-                                                  ScaffoldMessenger.of(
-                                                          dialogContext)
-                                                      .showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        mensagem,
-                                                      ),
-                                                      backgroundColor: sucesso
-                                                          ? CoresApp.sucesso
-                                                          : CoresApp.erro,
-                                                      duration: const Duration(
-                                                        seconds: 5,
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                              );
-
-                                              debugPrint(
-                                                '[E-DESK] Resultado inicial: '
-                                                'confirmed=${resultado.confirmed} | '
-                                                'status=${resultado.statusCode} | '
-                                                'message=${resultado.message}',
-                                              );
-
-                                              // ==================================================
-                                              // ERRO AO INICIAR O PROCESSO
-                                              //
-                                              // Se o Python nem chegou a iniciar, o callback acima
-                                              // não será chamado.
-                                              // ==================================================
-
-                                              if (!resultado.confirmed) {
-                                                if (!dialogContext.mounted) {
-                                                  return;
-                                                }
-
-                                                setDialogState(() {
-                                                  atualizandoFasesEdesk = false;
-                                                });
-
-                                                ScaffoldMessenger.of(
-                                                        dialogContext)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      resultado.message,
-                                                    ),
-                                                    backgroundColor:
-                                                        CoresApp.erro,
-                                                    duration: const Duration(
-                                                      seconds: 5,
-                                                    ),
-                                                  ),
-                                                );
-                                              }
-                                            } catch (e) {
-                                              debugPrint(
-                                                '[E-DESK] Erro ao atualizar fases: $e',
-                                              );
-
-                                              if (!dialogContext.mounted) {
-                                                return;
-                                              }
-
-                                              setDialogState(() {
-                                                atualizandoFasesEdesk = false;
-                                              });
-
-                                              ScaffoldMessenger.of(
-                                                      dialogContext)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    'Erro ao atualizar fases no E-Desk: $e',
-                                                  ),
-                                                  backgroundColor:
-                                                      CoresApp.erro,
-                                                  duration: const Duration(
-                                                    seconds: 5,
-                                                  ),
+                                            ScaffoldMessenger.of(dialogContext)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  mensagem,
                                                 ),
-                                              );
-                                            }
+                                                backgroundColor: sucesso
+                                                    ? CoresApp.sucesso
+                                                    : CoresApp.erro,
+                                                duration: const Duration(
+                                                  seconds: 5,
+                                                ),
+                                              ),
+                                            );
                                           },
+                                        );
 
-                                    // ============================================================
-                                    // ÍCONE
-                                    // ============================================================
+                                        if (!mounted || !dialogContext.mounted || !context.mounted) return;
+                                        setDialogState(() =>
+                                            atualizandoFasesEdesk = false);
+                                        if (resultado.statusCode == 499) return;
+                                        if (resultado.confirmed) {
+                                          ScaffoldMessenger.of(dialogContext)
+                                              .showSnackBar(SnackBar(
+                                            content: Text(resultado.message),
+                                            backgroundColor: CoresApp.sucesso,
+                                          ));
+                                        }
+                                        debugPrint(
+                                          '[E-DESK] Resultado inicial: '
+                                          'confirmed=${resultado.confirmed} | '
+                                          'status=${resultado.statusCode} | '
+                                          'message=${resultado.message}',
+                                        );
 
-                                    icon: atualizandoFasesEdesk
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.blueAccent,
+                                        // ==================================================
+                                        // ERRO AO INICIAR O PROCESSO
+                                        //
+                                        // Se o Python nem chegou a iniciar, o callback acima
+                                        // não será chamado.
+                                        // ==================================================
+
+                                        if (!resultado.confirmed) {
+                                          if (!mounted || !dialogContext.mounted || !context.mounted) {
+                                            return;
+                                          }
+
+                                          setDialogState(() {
+                                            atualizandoFasesEdesk = false;
+                                          });
+
+                                          ScaffoldMessenger.of(dialogContext)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                resultado.message,
+                                              ),
+                                              backgroundColor: CoresApp.erro,
+                                              duration: const Duration(
+                                                seconds: 5,
+                                              ),
                                             ),
-                                          )
-                                        : const Icon(
-                                            Icons.sync_rounded,
-                                            size: 18,
+                                          );
+                                        }
+                                      } catch (e) {
+                                        debugPrint(
+                                          '[E-DESK] Erro ao atualizar fases: $e',
+                                        );
+
+                                        if (!mounted || !dialogContext.mounted || !context.mounted) {
+                                          return;
+                                        }
+
+                                        setDialogState(() {
+                                          atualizandoFasesEdesk = false;
+                                        });
+
+                                        ScaffoldMessenger.of(dialogContext)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Erro ao atualizar fases no E-Desk: $e',
+                                            ),
+                                            backgroundColor: CoresApp.erro,
+                                            duration: const Duration(
+                                              seconds: 5,
+                                            ),
                                           ),
-
-                                    // ============================================================
-                                    // TEXTO
-                                    // ============================================================
-
-                                    label: Text(
-                                      atualizandoFasesEdesk
-                                          ? 'Atualizando...'
-                                          : 'Atualizar Fases E-Desk',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                        );
+                                      }
+                                    },
                                   ),
                                   const SizedBox(width: 8),
 
@@ -2331,8 +2367,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: CoresApp.destaque
-                                          .withValues(alpha: 0.15),
+                                      backgroundColor:
+                                          CoresApp.destaque.withValues(alpha: 0.15),
                                       foregroundColor: CoresApp.destaque,
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(
@@ -2352,7 +2388,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                       size: 18,
                                     ),
                                     label: const Text(
-                                      'Adicionar Nova Etapa',
+                                      'Nova etapa',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -2424,53 +2460,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                               // LISTA DE ETAPAS
                               // ========================================
 
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 8,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 280,
-                                    child: DropdownButtonFormField<bool>(
-                                      key: const ValueKey('edesk-phase-mode'),
-                                      isExpanded: true,
-                                      initialValue: enviarTodasFasesEdesk,
-                                      decoration: _dialogInputDecoration(
-                                          label: 'Fases para enviar ao E-Desk'),
-                                      dropdownColor: CoresTelas.campoFormulario,
-                                      style: TextStyle(
-                                          color: CoresApp.textoPrincipal,
-                                          fontSize: 12),
-                                      items: const [
-                                        DropdownMenuItem(
-                                            value: false,
-                                            child: Text(
-                                                'Enviar fases selecionadas')),
-                                        DropdownMenuItem(
-                                            value: true,
-                                            child:
-                                                Text('Enviar todas as fases')),
-                                      ],
-                                      onChanged: atualizandoFasesEdesk
-                                          ? null
-                                          : (value) {
-                                              if (value == null) return;
-                                              setDialogState(() =>
-                                                  enviarTodasFasesEdesk =
-                                                      value);
-                                            },
-                                    ),
-                                  ),
-                                  Text(
-                                    '${enviarTodasFasesEdesk ? tempSubTasks.length : fasesSelecionadasEdesk.length} de ${tempSubTasks.length} fases para enviar',
-                                    key: const ValueKey('edesk-phase-count'),
-                                    style: TextStyle(
-                                        color: CoresApp.textoSecundario,
-                                        fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
@@ -2586,6 +2575,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                           BuildContext context,
                                                           Widget? child,
                                                         ) {
+                                                          AppAppearance.watch(
+                                                              context);
+
                                                           return Theme(
                                                             data:
                                                                 ThemeData.dark()
@@ -2602,11 +2594,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                                     .fundoModal,
                                                                 onSurface: CoresApp
                                                                     .textoPrincipal,
-                                                              ),
-                                                              dialogTheme: DialogThemeData(
-                                                                  backgroundColor:
-                                                                      CoresTelas
-                                                                          .fundoModal),
+                                                              ), dialogTheme: DialogThemeData(backgroundColor: CoresTelas
+                                                                      .fundoModal),
                                                             ),
                                                             child: Localizations
                                                                 .override(
@@ -2655,18 +2644,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                             MainAxisAlignment
                                                                 .spaceBetween,
                                                         children: [
-                                                          Expanded(
-                                                              child: Text(
+                                                          Text(
                                                             'Início: ${_formatDate(sub.startDate)}',
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
                                                             style: TextStyle(
                                                               color: CoresApp
                                                                   .textoPrincipal,
                                                               fontSize: 11,
                                                             ),
-                                                          )),
+                                                          ),
                                                           Icon(
                                                             Icons
                                                                 .calendar_today_rounded,
@@ -2705,6 +2690,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                           BuildContext context,
                                                           Widget? child,
                                                         ) {
+                                                          AppAppearance.watch(
+                                                              context);
+
                                                           return Theme(
                                                             data:
                                                                 ThemeData.dark()
@@ -2721,11 +2709,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                                     .fundoModal,
                                                                 onSurface: CoresApp
                                                                     .textoPrincipal,
-                                                              ),
-                                                              dialogTheme: DialogThemeData(
-                                                                  backgroundColor:
-                                                                      CoresTelas
-                                                                          .fundoModal),
+                                                              ), dialogTheme: DialogThemeData(backgroundColor: CoresTelas
+                                                                      .fundoModal),
                                                             ),
                                                             child: Localizations
                                                                 .override(
@@ -2772,18 +2757,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                             MainAxisAlignment
                                                                 .spaceBetween,
                                                         children: [
-                                                          Expanded(
-                                                              child: Text(
+                                                          Text(
                                                             'Fim: ${sub.planEnd != null ? _formatDate(sub.planEnd!) : '-'}',
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
                                                             style: TextStyle(
                                                               color: CoresApp
                                                                   .textoPrincipal,
                                                               fontSize: 11,
                                                             ),
-                                                          )),
+                                                          ),
                                                           Icon(
                                                             Icons
                                                                 .calendar_today_rounded,
@@ -2803,27 +2784,25 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                 // FASE PARA ENVIO AO E-DESK
                                                 // ========================================
                                                 //
-                                                // A escolha é temporária e vale somente
-                                                // para o envio realizado neste modal.
+                                                // Selecione uma ou várias fases para o envio.
                                                 Tooltip(
                                                   message:
                                                       'Selecionar esta fase para enviar ao E-Desk',
                                                   child: SizedBox(
                                                     width: 44,
                                                     child: Checkbox(
-                                                      key: ValueKey(
-                                                          'edesk-phase-$index'),
-                                                      value: enviarTodasFasesEdesk ||
+                                                      value:
                                                           fasesSelecionadasEdesk
                                                               .contains(index),
+                                                      activeColor:
+                                                          Colors.blueAccent,
                                                       onChanged:
-                                                          atualizandoFasesEdesk ||
-                                                                  enviarTodasFasesEdesk
+                                                          atualizandoFasesEdesk
                                                               ? null
-                                                              : (checked) =>
+                                                              : (value) {
                                                                   setDialogState(
                                                                       () {
-                                                                    if (checked ==
+                                                                    if (value ==
                                                                         true) {
                                                                       fasesSelecionadasEdesk
                                                                           .add(
@@ -2833,9 +2812,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                                                           .remove(
                                                                               index);
                                                                     }
-                                                                  }),
-                                                      activeColor:
-                                                          Colors.blueAccent,
+                                                                  });
+                                                                },
                                                     ),
                                                   ),
                                                 ),
@@ -3024,7 +3002,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           TextButton(
-                            onPressed: () => Navigator.of(
+                            onPressed: savingLinks ? null : () => Navigator.of(
                               dialogContext,
                             ).pop(),
                             child: Text(
@@ -3038,7 +3016,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: CoresApp.destaque,
-                              foregroundColor: Colors.black,
+                              foregroundColor: AppPalette.foregroundOn(CoresApp.destaque),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 18,
                                 vertical: 12,
@@ -3061,7 +3039,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                 fontSize: 12,
                               ),
                             ),
-                            onPressed: () async {
+                            onPressed: savingLinks ? null : () async {
                               // ======================================
                               // ATUALIZA HORAS DAS ETAPAS
                               // ======================================
@@ -3097,16 +3075,6 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                     tempSubTasks.first.startDate;
                               }
 
-                              project.folderPath =
-                                  folderController.text.trim().isEmpty
-                                      ? null
-                                      : folderController.text.trim();
-
-                              project.excelLink =
-                                  excelController.text.trim().isEmpty
-                                      ? null
-                                      : excelController.text.trim();
-
                               project.leader = leaderController.text.trim();
 
                               project.hourType = hourTypeController.text.trim();
@@ -3115,29 +3083,35 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                               // SALVA
                               // ======================================
 
+                              if (savingLinks) return;
+                              setDialogState(() => savingLinks = true);
+                              final previousFolderPath = linkEdit.previousFolder;
+                              final previousExcelLink = linkEdit.previousExcel;
                               try {
-                                await widget.firebaseService
-                                    .salvarProjeto(project);
+                                final excelLink =
+                                    ProjectFileService.editedReference(
+                                        excelController.text,
+                                        previousExcelLink);
+                                project.folderPath =
+                                    ProjectFileService.editedReference(
+                                        folderController.text,
+                                        previousFolderPath);
+                                project.excelLink = excelLink;
 
-                                if (!mounted) return;
+                                await linkEdit.save(widget.firebaseService);
 
                                 widget.onEditProject(
                                   project,
                                 );
 
-                                if (mounted) {
+                                if (mounted && context.mounted) {
                                   setState(() {});
                                 }
 
                                 if (dialogContext.mounted) {
-                                  Navigator.of(
+                                  ScaffoldMessenger.of(
                                     dialogContext,
-                                  ).pop();
-                                }
-
-                                if (mounted) {
-                                  ScaffoldMessenger.of(this.context)
-                                      .showSnackBar(
+                                  ).showSnackBar(
                                     SnackBar(
                                       content: const Text(
                                         'Trabalho salvo com sucesso no banco de dados!',
@@ -3145,14 +3119,20 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                                       backgroundColor: CoresApp.sucesso,
                                     ),
                                   );
+                                  Navigator.of(dialogContext).pop();
                                 }
                               } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(this.context)
-                                      .showSnackBar(
+                                if (dialogContext.mounted) {
+                                  setDialogState(() => savingLinks = false);
+                                }
+                                var errorMessage = '$e';
+                                if (dialogContext.mounted) {
+                                  ScaffoldMessenger.of(
+                                    dialogContext,
+                                  ).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        'Erro ao salvar no Firebase: $e',
+                                        'Erro ao salvar no Firebase: $errorMessage',
                                       ),
                                       backgroundColor: CoresApp.erro,
                                     ),
@@ -3269,12 +3249,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           onSelectChanged: (_) => widget.onSelectTarget(project.id),
           color: WidgetStateProperty.resolveWith<Color?>(
             (states) {
-              if (states.contains(WidgetState.hovered)) {
-                return CoresDashboard.tabelaHover1;
-              }
-
               if (isRowSelected) {
                 return CoresDashboard.tabelaLinhaSelecionada;
+              }
+              if (states.contains(WidgetState.hovered)) {
+                return CoresDashboard.tabelaHover1;
               }
 
               if (isExpanded) {
@@ -3295,7 +3274,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             ),
             DataCell(
               _buildCellText(
-                project.id2,
+                project.id2.trim().isEmpty || project.id2.trim() == '0'
+                    ? '—'
+                    : project.id2,
                 color: CoresApp.textoSecundario,
               ),
             ),
@@ -3311,7 +3292,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             DataCell(
               _buildCellText(
                 project.serviceType,
-                color: emAlerta ? Colors.white70 : CoresApp.textoSecundario,
+                color:
+                    emAlerta ? AppPalette.secondary : CoresApp.textoSecundario,
               ),
             ),
             DataCell(
@@ -3326,19 +3308,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 status: project.status,
                 onChanged: (newStatus) async {
                   if (newStatus != null) {
-                    project.status = newStatus;
-
                     try {
-                      await widget.firebaseService.salvarProjeto(project);
-
-                      if (!mounted) return;
-
-                      widget.onProjectStatusChanged(
+                      await widget.onProjectStatusChanged(
                         project,
                         newStatus,
                       );
                     } catch (e) {
-                      if (!mounted) return;
+                      if (!mounted || !context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -3373,7 +3349,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             DataCell(
               _buildCellText(
                 project.leader,
-                color: emAlerta ? Colors.white70 : CoresApp.textoSecundario,
+                color:
+                    emAlerta ? AppPalette.secondary : CoresApp.textoSecundario,
               ),
             ),
             DataCell(
@@ -3382,7 +3359,9 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 children: [
                   _buildCellText(
                     project.hourType,
-                    color: emAlerta ? Colors.white70 : CoresApp.textoSecundario,
+                    color: emAlerta
+                        ? AppPalette.secondary
+                        : CoresApp.textoSecundario,
                   ),
                   const SizedBox(width: 8),
                   IconButton(
@@ -3479,16 +3458,30 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                     color: CoresApp.textoSecundario.withValues(alpha: 0.65),
                   ),
                 ),
-                const DataCell(
-                  SizedBox.shrink(),
-                ),
                 DataCell(
-                  _buildCellText(
-                    sub.stage,
-                    color: _getStageColor(sub.status),
-                    fontWeight: sub.status != 'TRAB_FIM'
-                        ? FontWeight.w700
-                        : FontWeight.normal,
+                  SizedBox(
+                    width: 210,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Tooltip(
+                            message: sub.stage,
+                            child: _buildCellText(
+                              sub.stage,
+                              color: _getStageColor(sub.status),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildSubTaskActionControls(
+                          project: project,
+                          task: sub,
+                          targetId: subTargetId,
+                          title: 'Etapa ${sub.subId} - ${sub.stage}',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 DataCell(
@@ -3501,14 +3494,12 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                         try {
                           await widget.firebaseService.salvarProjeto(project);
 
-                          if (!mounted) return;
-
                           widget.onSubTaskStatusChanged(
                             sub,
                             newStatus,
                           );
                         } catch (e) {
-                          if (!mounted) return;
+                          if (!mounted || !context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
@@ -3530,21 +3521,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                   ),
                 ),
                 DataCell(
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildCellText(
-                        sub.estimatedHours,
-                        color: CoresApp.textoSecundario,
-                      ),
-                      const SizedBox(width: 6),
-                      _buildSubTaskActionControls(
-                        project: project,
-                        task: sub,
-                        targetId: subTargetId,
-                        title: 'Etapa ${sub.subId} - ${sub.stage}',
-                      ),
-                    ],
+                  _buildCellText(
+                    sub.estimatedHours,
+                    color: CoresApp.textoSecundario,
+                  ),
+                ),
+                DataCell(
+                  _buildCellText(
+                    project.leader,
+                    color: CoresApp.textoSecundario,
                   ),
                 ),
                 DataCell(
@@ -3688,10 +3673,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
               color: CoresApp.destaque,
               borderRadius: BorderRadius.circular(5),
             ),
-            child: const Text(
+            child: Text(
               'EA',
               style: TextStyle(
-                color: Colors.black,
+                color: AppPalette.onPrimary,
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
               ),
@@ -3712,8 +3697,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
               ),
               child: Text(
                 'EM EXECUÇÃO  $startTimeFormatted | $durationFormatted',
-                style: const TextStyle(
-                  color: Colors.black,
+                style: TextStyle(
+                  color: AppPalette.onPrimary,
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
                 ),
@@ -3792,13 +3777,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                   try {
                     await widget.firebaseService.salvarProjeto(project);
 
-                    if (!mounted) return;
-
                     widget.onMarkTaskCompleted(
                       task,
                     );
 
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -3809,7 +3792,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                       );
                     }
                   } catch (e) {
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -3908,7 +3891,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 fontSize: TamanhosApp.tabelaFonte,
               ),
               decoration: InputDecoration(
-                hintText: 'Comentário do registro...',
+                hintText: 'Comentário (opcional)...',
                 hintStyle: TextStyle(
                   color: CoresApp.textoSecundario.withValues(alpha: 0.5),
                   fontSize: 11,
@@ -3943,10 +3926,14 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 ),
               ),
               onSubmitted: (value) async {
-                try {
-                  await widget.onSaveLogDescription(log, value.trim());
-                  if (!mounted) return;
+                log.description = value.trim();
 
+                try {
+                  await widget.firebaseService.salvarProjeto(project);
+
+                  widget.onEditLog(log);
+
+                  if (!mounted || !context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: const Text(
@@ -3959,7 +3946,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                     ),
                   );
                 } catch (e) {
-                  if (!mounted) return;
+                  if (!mounted || !context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
@@ -4017,7 +4004,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CoresApp.primaria,
-                    foregroundColor: CoresApp.textoPrincipal,
+                    foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 9,
                       vertical: 5,
@@ -4082,7 +4069,13 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                   size: 18,
                 ),
                 tooltip: 'Excluir Apontamento',
-                onPressed: () => widget.onDeleteLog(log),
+                onPressed: () {
+                  setState(() {
+                    _localTimeLogs.remove(log);
+                  });
+
+                  widget.onDeleteLog(log);
+                },
               ),
             ],
           ),
@@ -4114,6 +4107,45 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
     final hasExcel =
         project.excelLink != null && project.excelLink!.trim().isNotEmpty;
 
+    final user = Firebase.apps.isEmpty ? null : FirebaseAuth.instance.currentUser;
+    if (PilotFeatureAccess.allows(uid: user?.uid, email: user?.email)) {
+      void run(VoidCallback action) {
+        final current = FirebaseAuth.instance.currentUser;
+        if (current?.uid != user?.uid || !PilotFeatureAccess.allows(uid: current?.uid, email: current?.email)) return;
+        onActionSelected?.call();
+        action();
+      }
+      return ProjectActionsPilot(hasFolder: hasFolder, hasExcel: hasExcel,
+        onDocuments: () => run(() => ProjectDocumentsDialog.show(context, project)),
+        onReport: project.serviceType.toLowerCase().contains('consultoria') || project.serviceType.toLowerCase().contains('plugin')
+            ? () => run(() => ProjectDocumentsDialog.show(context, project, initialMode: 'report')) : null,
+        projectId: project.id, client: project.client, serviceType: project.serviceType,
+        onPhases: () => run(() { showSpreadsheetPhaseSend(context, project: project,
+          authorized: () => FirebaseAuth.instance.currentUser?.uid == user?.uid); }),
+        onFolder: () => run(() async {
+          try {
+            final reference = project.folderPath!;
+            if (ProjectStorageService.isStorageReference(reference)) {
+              await showProjectStorageFilesDialog(context, folderReference: reference);
+            } else {
+              await ProjectFileService.openFile(reference, projectId: project.id, field: 'folderPath');
+            }
+          } catch (e) { if (mounted && context.mounted) showLocalFileError(context, e, resource: 'a pasta'); }
+        }),
+        onExcel: () => run(() async {
+          try { await ProjectFileService.openFile(project.excelLink!, projectId: project.id, field: 'excelLink'); }
+          catch (e) { if (mounted && context.mounted) showLocalFileError(context, e, resource: 'a planilha'); }
+        }),
+        onEditSpreadsheet: () => run(() { ProjectSpreadsheetDialog.show(context, project); }),
+        onEditWork: () => run(() => _showLinksDialog(project)),
+        onChecklist: () => run(() => _showCheckListDialog(project)),
+        onComment: () => run(() { ComentarioModal.show(context, project); }),
+        onEmail: () => run(() { ProjectEmailModal.show(context, project); }),
+        onAdv: () => run(() { AdvWorkDialog.show(context, project); }),
+        onPluginNs: () => run(() { AdvWorkDialog.showPluginNs(context, project); }),
+        onAudit: () => run(() { WorkAuditDialog.show(context, widget.auditProjects ?? widget.projects, selectedProject: project); }));
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 3,
@@ -4142,37 +4174,20 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 ? () async {
                     onActionSelected?.call();
                     try {
-                      final folderDir = Directory(
-                        project.folderPath!,
-                      );
-
-                      if (await folderDir.exists()) {
-                        await Process.run(
-                          'explorer',
-                          [project.folderPath!],
-                        );
-                      } else {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                'A pasta informada não existe mais no disco.',
-                              ),
-                              backgroundColor: CoresApp.erro,
-                            ),
-                          );
+                      final reference = project.folderPath!;
+                      if (ProjectStorageService.isStorageReference(reference)) {
+                        if (kIsWeb && !WebConfig.storageEnabled) {
+                          throw StateError(
+                              'O armazenamento de anexos não está configurado.');
                         }
+                        await showProjectStorageFilesDialog(context,
+                            folderReference: reference);
+                      } else {
+                        await ProjectFileService.openFile(reference, projectId: project.id, field: 'folderPath');
                       }
                     } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Erro ao abrir pasta: $e',
-                            ),
-                            backgroundColor: CoresApp.erro,
-                          ),
-                        );
+                      if (mounted && context.mounted) {
+                        showLocalFileError(context, e, resource: 'a pasta');
                       }
                     }
                   }
@@ -4194,54 +4209,10 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 ? () async {
                     onActionSelected?.call();
                     try {
-                      final link = project.excelLink!;
-
-                      if (link.startsWith('http://') ||
-                          link.startsWith('https://')) {
-                        final uri = Uri.parse(link);
-
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(
-                            uri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        }
-                      } else {
-                        final file = File(link);
-
-                        if (await file.exists()) {
-                          await Process.run(
-                            'cmd',
-                            [
-                              '/c',
-                              'start',
-                              '',
-                              link,
-                            ],
-                          );
-                        } else {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'O arquivo informado não existe mais no disco.',
-                                ),
-                                backgroundColor: CoresApp.erro,
-                              ),
-                            );
-                          }
-                        }
-                      }
+                      await ProjectFileService.openFile(project.excelLink!, projectId: project.id, field: 'excelLink');
                     } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Erro ao abrir arquivo/link: $e',
-                            ),
-                            backgroundColor: CoresApp.erro,
-                          ),
-                        );
+                      if (mounted && context.mounted) {
+                        showLocalFileError(context, e, resource: 'o arquivo ou planilha');
                       }
                     }
                   }
@@ -4251,7 +4222,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             visualDensity: VisualDensity.compact,
             icon: Icon(
               Icons.edit_rounded,
-              color: CoresApp.destaqueAmarelo,
+              color: AppPalette.secondary,
               size: TamanhosApp.iconeAcao,
             ),
             tooltip: 'Editar Trabalho',
@@ -4264,7 +4235,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             visualDensity: VisualDensity.compact,
             icon: Icon(
               Icons.checklist_rounded,
-              color: CoresApp.destaque,
+              color: AppPalette.secondary,
               size: TamanhosApp.iconeAcao,
             ),
             tooltip: 'Checklist',
@@ -4283,12 +4254,24 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             tooltip: 'Enviar Comentário E-desk',
             icon: Icon(
               Icons.comment_rounded,
-              color: CoresApp.destaque,
+              color: AppPalette.secondary,
               size: TamanhosApp.iconeAcao,
             ),
             onPressed: () {
               onActionSelected?.call();
               ComentarioModal.show(context, project);
+            },
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'E-mails do projeto',
+            icon: CustomPaint(
+              size: Size.square(TamanhosApp.iconeAcao),
+              painter: _ProjectEmailIconPainter(AppPalette.secondary),
+            ),
+            onPressed: () {
+              onActionSelected?.call();
+              ProjectEmailModal.show(context, project);
             },
           ),
         ],
@@ -4350,7 +4333,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
         ],
         _buildActionIconButton(
           icon: Icons.more_time_rounded,
-          color: CoresApp.destaque,
+          color: AppPalette.secondary,
           tooltip: 'Adicionar Horas Manualmente',
           onPressed: () => widget.onManualTime(
             title,
@@ -4364,6 +4347,8 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             final bool? confirmar = await showDialog<bool>(
               context: context,
               builder: (BuildContext dialogContext) {
+                AppAppearance.watch(dialogContext);
+
                 return AlertDialog(
                   backgroundColor: CoresTelas.fundoModal,
                   shape: RoundedRectangleBorder(
@@ -4412,7 +4397,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: CoresApp.erro,
-                        foregroundColor: Colors.white,
+                        foregroundColor: AppPalette.foregroundOn(CoresApp.erro),
                       ),
                       onPressed: () => Navigator.of(
                         dialogContext,
@@ -4440,13 +4425,11 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
             try {
               await widget.firebaseService.salvarProjeto(project);
 
-              if (!mounted) return;
-
               widget.onEditProject(
                 project,
               );
 
-              if (mounted) {
+              if (mounted && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: const Text(
@@ -4457,7 +4440,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
                 );
               }
             } catch (e) {
-              if (mounted) {
+              if (mounted && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -4499,6 +4482,7 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final rows = _generateRows(widget.projects);
 
     return Container(
@@ -4512,21 +4496,15 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
           color: CoresDashboard.tabelaBorda,
           width: TamanhosApp.espessuraBorda,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: CoresApp.overlay,
-            blurRadius: 18,
-            offset: const Offset(0, 7),
-          ),
-        ],
+        boxShadow: AppVisuals.shadows,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            height: 4,
+            height: 1,
             decoration: BoxDecoration(
-              color: CoresApp.destaque,
+              color: AppVisuals.divider,
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(
                   TamanhosApp.raioTabela,
@@ -4534,87 +4512,62 @@ class _TabelaProjetosWidgetState extends State<TabelaProjetosWidget>
               ),
             ),
           ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: 350,
-              maxHeight: 700,
-            ),
-            child: Scrollbar(
-              controller: widget.verticalController,
-              thumbVisibility: true,
-              trackVisibility: true,
-              child: SingleChildScrollView(
-                controller: widget.verticalController,
-                scrollDirection: Axis.vertical,
-                child: Scrollbar(
-                  controller: widget.horizontalController,
-                  thumbVisibility: true,
-                  trackVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: widget.horizontalController,
-                    scrollDirection: Axis.horizontal,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 1500),
-                      child: DataTable(
-                        showCheckboxColumn: false,
-                        columnSpacing: 16.0,
-                        horizontalMargin: 16.0,
-                        headingRowHeight: 48,
-                        dataRowMinHeight: 28,
-                        dataRowMaxHeight: 36,
-                        dividerThickness: 0.35,
-                        headingRowColor: WidgetStateProperty.all(
-                          CoresDashboard.tabelaCabecalho,
-                        ),
-                        dataRowColor: WidgetStateProperty.resolveWith(
-                          (states) {
-                            if (states.contains(
-                              WidgetState.hovered,
-                            )) {
-                              return CoresDashboard.tabelaHover;
-                            }
-
-                            return null;
-                          },
-                        ),
-                        columns: [
-                          DataColumn(
-                            label: _buildTableHeader('ID'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Nº'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Cliente'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Tipo de Serviço'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Ações'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Status'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Data Início / Fim'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Hs Estimadas'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Líder Prj'),
-                          ),
-                          DataColumn(
-                            label: _buildTableHeader('Tipo HS'),
-                          ),
-                        ],
-                        rows: rows,
-                      ),
-                    ),
-                  ),
-                ),
+          ProjectTableViewport(
+            child: DataTable(
+              showCheckboxColumn: false,
+              columnSpacing: 16.0,
+              horizontalMargin: 16.0,
+              headingRowHeight: 32,
+              dataRowMinHeight: 32,
+              dataRowMaxHeight: 40,
+              dividerThickness: 0.35,
+              headingRowColor: WidgetStateProperty.all(
+                CoresDashboard.tabelaCabecalho,
               ),
+              dataRowColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(
+                    WidgetState.hovered,
+                  )) {
+                    return CoresDashboard.tabelaHover;
+                  }
+
+                  return null;
+                },
+              ),
+              columns: [
+                DataColumn(
+                  label: _buildTableHeader('ID'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Nº'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Cliente'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Tipo de Serviço'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Etapa / Ações'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Status'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Data Início / Fim'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Hs Estimadas'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Líder Prj'),
+                ),
+                DataColumn(
+                  label: _buildTableHeader('Tipo HS'),
+                ),
+              ],
+              rows: rows,
             ),
           ),
         ],

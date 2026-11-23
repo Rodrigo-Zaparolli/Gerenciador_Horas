@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:gerenciador_horas/core/utils/version_comparison.dart';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -11,6 +11,8 @@ import 'package:url_launcher/url_launcher.dart';
 // ============================================================================
 
 Future<void> verificarAtualizacaoAutomatica(BuildContext context) async {
+  if (kIsWeb) return;
+
   debugPrint('============================================================');
   debugPrint('[UPDATE] Iniciando verificação de atualização...');
   debugPrint('============================================================');
@@ -148,9 +150,19 @@ Future<void> verificarAtualizacaoAutomatica(BuildContext context) async {
     // 8. COMPARAÇÃO DAS VERSÕES
     // ========================================================================
     //
-    // Somente uma versao de lancamento mais recente oferece atualizacao.
+    // Neste momento mantemos a mesma regra do código original:
+    //
+    // versão remota diferente da versão instalada = atualização disponível.
+    //
+    // Depois que confirmarmos o funcionamento, podemos melhorar isso para
+    // uma comparação semântica:
+    //
+    // 1.0.2 > 1.0.1
+    //
+    // evitando que versões mais antigas sejam interpretadas como atualização.
+    // ========================================================================
 
-    if (!isNewerRelease(latestVersion, currentVersion)) {
+    if (latestVersion == currentVersion) {
       debugPrint('[UPDATE] Aplicativo já está atualizado.');
       debugPrint('[UPDATE] Nenhuma atualização necessária.');
       debugPrint(

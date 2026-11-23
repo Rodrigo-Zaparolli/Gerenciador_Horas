@@ -103,6 +103,19 @@ def interpretar_referencia(referencia):
 # DIRETÓRIO DE TRABALHO / DEBUG
 # ============================================================
 
+def resolver_nome_aba(nome_aba, abas):
+    """Preserve exact sheet choices; support the confirmed legacy Maker name."""
+    requested = str(nome_aba).strip().casefold()
+    exact = [name for name in abas if str(name).strip().casefold() == requested]
+    if len(exact) == 1:
+        return exact[0]
+    if requested == 'professional checklist-processo' and not exact:
+        maker = [name for name in abas if str(name).strip().casefold() == 'maker checklist-processo']
+        if len(maker) == 1:
+            return maker[0]
+    raise ValueError(f"Aba '{nome_aba}' não encontrada. Abas disponíveis: {', '.join(abas)}")
+
+
 def obter_diretorio_debug():
     """
     O aplicativo instalado pode estar em Program Files.
@@ -258,61 +271,50 @@ def renderizar_intervalo_excel(
 
     excel = None
     workbook = None
+    clipboard_original = None
+    clipboard_saved = False
+    clipboard_sequence = None
 
     try:
+        clipboard_original = pythoncom.OleGetClipboard()
+        clipboard_saved = True
         log(
             "Abrindo Microsoft Excel em segundo plano "
             "para renderização real do intervalo."
         )
 
-        excel = win32com.client.DispatchEx(
-            "Excel.Application"
-        )
+        try:
+            excel = win32com.client.DispatchEx('Excel.Application')
+        except Exception as error:
+            raise RuntimeError('Não foi possível iniciar o Microsoft Excel neste computador. Abra o Excel manualmente e conclua eventuais telas de ativação ou configuração; depois tente novamente.') from error
 
         excel.Visible = False
         excel.DisplayAlerts = False
         excel.ScreenUpdating = True
         excel.EnableEvents = False
         excel.AskToUpdateLinks = False
+        excel.AutomationSecurity = 3
 
-        workbook = excel.Workbooks.Open(
-            str(caminho_arquivo),
-            UpdateLinks=0,
-            ReadOnly=True,
-            IgnoreReadOnlyRecommended=True,
-            AddToMru=False,
-        )
-
-        worksheet = None
-
-        for indice in range(
-            1,
-            workbook.Worksheets.Count + 1,
-        ):
-            candidata = workbook.Worksheets(indice)
-
-            if str(candidata.Name).strip().lower() == str(
-                nome_aba
-            ).strip().lower():
-                worksheet = candidata
-                break
-
-        if worksheet is None:
-            abas = [
-                str(workbook.Worksheets(i).Name)
-                for i in range(
-                    1,
-                    workbook.Worksheets.Count + 1,
-                )
-            ]
-
-            raise ValueError(
-                f"Aba '{nome_aba}' não encontrada. "
-                f"Abas disponíveis: {', '.join(abas)}"
+        try:
+            workbook = excel.Workbooks.Open(
+                str(caminho_arquivo),
+                UpdateLinks=0,
+                ReadOnly=True,
+                IgnoreReadOnlyRecommended=True,
+                AddToMru=False,
             )
+        except Exception as error:
+            raise RuntimeError('O Excel iniciou, mas não conseguiu abrir a planilha vinculada. Confira se o arquivo está disponível neste PC e se exige senha ou está bloqueado.') from error
+
+        abas = [str(workbook.Worksheets(i).Name) for i in range(1, workbook.Worksheets.Count + 1)]
+        nome_resolvido = resolver_nome_aba(nome_aba, abas)
+        worksheet = workbook.Worksheets(nome_resolvido)
 
         worksheet.Activate()
-        intervalo = worksheet.Range(endereco)
+        try:
+            intervalo = worksheet.Range(endereco)
+        except Exception as error:
+            raise RuntimeError(f'O Excel abriu a guia {nome_aba}, mas não conseguiu acessar o intervalo {endereco}. Confira o campo Tabela do Excel.') from error
 
         log(
             "Renderizando pelo Excel: "
@@ -325,6 +327,7 @@ def renderizar_intervalo_excel(
             win32clipboard.OpenClipboard()
             try:
                 win32clipboard.EmptyClipboard()
+                clipboard_sequence = win32clipboard.GetClipboardSequenceNumber()
             finally:
                 win32clipboard.CloseClipboard()
         except Exception as erro:
@@ -345,6 +348,7 @@ def renderizar_intervalo_excel(
                     Appearance=XL_SCREEN,
                     Format=XL_BITMAP,
                 )
+                clipboard_sequence = win32clipboard.GetClipboardSequenceNumber()
 
                 # Dá tempo para o Excel publicar CF_DIB no Clipboard.
                 time.sleep(0.25 + (tentativa * 0.10))
@@ -352,6 +356,7 @@ def renderizar_intervalo_excel(
                 imagem = ler_dib_do_clipboard()
 
                 if imagem is not None:
+                    clipboard_sequence = win32clipboard.GetClipboardSequenceNumber()
                     ultimo_erro = None
                     log(
                         "Imagem real do Excel capturada diretamente "
@@ -423,21 +428,6 @@ def renderizar_intervalo_excel(
                 "A imagem capturada do Excel ficou vazia."
             )
 
-        debug_dir = obter_diretorio_debug()
-        png_path = debug_dir / "excel_preview.png"
-
-        try:
-            png_path.write_bytes(png)
-            log(
-                "PNG real do Excel salvo em: "
-                f"{png_path}"
-            )
-        except Exception as erro:
-            log(
-                "Aviso ao salvar PNG de debug: "
-                f"{erro}"
-            )
-
         log(
             "Imagem real do Excel: "
             f"{imagem.width}x{imagem.height} "
@@ -456,6 +446,16 @@ def renderizar_intervalo_excel(
         )
 
     finally:
+        try:
+            restore_clipboard = clipboard_saved and clipboard_sequence == win32clipboard.GetClipboardSequenceNumber()
+        except Exception:
+            restore_clipboard = False
+        if restore_clipboard:
+            try:
+                pythoncom.OleSetClipboard(clipboard_original)
+                pythoncom.OleFlushClipboard()
+            except Exception:
+                pass
         if workbook is not None:
             try:
                 workbook.Close(

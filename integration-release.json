@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "version": "81",
+  "status": "released",
+  "changes": [
+    "Checklist: painel adicional do Treinamento Catalog, com vinculo independente de planilha, aba e intervalo.",
+    "Pendencias do Checklist-Catalog na lateral, com pesquisa, filtros e salvamento isolado por arquivo.",
+    "Requer atualizar e reiniciar a integracao local v81 para ler e salvar o checklist do Catalog.",
+    "Empacotamento inclui os modulos exigidos pelo servidor local."
+  ]
+}

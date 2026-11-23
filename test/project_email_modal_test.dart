@@ -1,0 +1,335 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gerenciador_horas/core/platform/local_user_state.dart';
+import 'package:gerenciador_horas/data/services/recoverable_draft.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_theme.dart';
+import 'package:gerenciador_horas/domain/models/project_model.dart';
+import 'package:gerenciador_horas/features/project_emails/email_document.dart';
+import 'package:gerenciador_horas/features/project_emails/email_draft_store.dart';
+import 'package:gerenciador_horas/features/project_emails/project_email_modal.dart';
+import 'package:gerenciador_horas/features/project_emails/products_image_field.dart';
+import 'package:gerenciador_horas/features/project_emails/email_body_preview.dart';
+import 'package:gerenciador_horas/features/project_emails/email_recipient_fields.dart';
+import 'products_image_field_test.dart' show png;
+
+class MemoryEmailStore implements EmailDraftStore {
+  @override
+  String? currentUserId = 'owner-a';
+  final drafts = <String, Map<String, dynamic>>{};
+  final templates = <String, Map<String, dynamic>>{};
+  bool failReads = false;
+  @override
+  Future<Map<String, dynamic>?> loadDraft(
+      String owner, String project, ProjectEmailKind kind) async {
+    if (failReads) throw StateError('Offline');
+    return drafts['$owner/$project/${kind.name}'];
+  }
+
+  @override
+  Future<Map<String, dynamic>?> loadTemplate(
+      String owner, ProjectEmailKind kind) async {
+    if (failReads) throw StateError('Offline');
+    return templates['$owner/${kind.name}'];
+  }
+
+  @override
+  Future<void> saveDraft(String owner, String project, ProjectEmailKind kind,
+      Map<String, dynamic> data) async {
+    drafts['$owner/$project/${kind.name}'] = data;
+  }
+
+  @override
+  Future<void> saveTemplate(
+      String owner, ProjectEmailKind kind, Map<String, dynamic> data) async {
+    templates['$owner/${kind.name}'] = data;
+  }
+}
+
+Future<void> openMessageEditor(WidgetTester tester) async {
+  final field = find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Mensagem — editável');
+  if (field.evaluate().isEmpty) {
+    final heading = find.text('Editar mensagem');
+    await tester.ensureVisible(heading);
+    await tester.tap(heading);
+    await tester.pumpAndSettle();
+  }
+  await tester.ensureVisible(field);
+}
+
+void main() {
+  setUp(() => LocalUserState.memory = {});
+  tearDown(() => LocalUserState.memory = null);
+  WidgetController.hitTestWarningShouldBeFatal = true;
+  final project = ProjectModel(
+      id: '2256824',
+      id2: '',
+      client: 'Cliente de teste',
+      serviceType: 'Enterprise',
+      stage: '',
+      task: '',
+      status: 'TRAB',
+      startDate: DateTime(2026, 10, 10),
+      estimatedHours: '08:00',
+      leader: '',
+      hourType: 'Hs Cobradas');
+  testWidgets('email stays editable without voice controls', (tester) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryEmailStore();
+    store.drafts['owner-a/2256824/initial'] = {'body': 'Mensagem existente.', 'contacts': [], 'recipientsConfigured': true};
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ProjectEmailModal(project: project, store: store))));
+    await tester.pumpAndSettle();
+    expect(find.text('Ditar por voz'), findsNothing);
+    final message = find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Mensagem — editável');
+    await openMessageEditor(tester);
+    await tester.enterText(message, 'Mensagem revisada.');
+    await tester.tap(find.text('Salvar neste projeto'));
+    await tester.pumpAndSettle();
+    expect(store.drafts['owner-a/2256824/initial']!['body'], 'Mensagem revisada.');
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('finalization excludes draft contacts not verified in the current workbook', (tester) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryEmailStore();
+    for (final kind in ['initial', 'finalization']) {
+      store.drafts['owner-a/2256824/$kind'] = {
+        'contacts': [], 'recipientsConfigured': true,
+      };
+    }
+    store.drafts['owner-a/2256824/internal'] = {
+      'contacts': [
+        EmailContact(name: 'Cliente importado', email: 'cliente@example.com',
+          group: 'Cliente', destination: 'Para').toJson(),
+        EmailContact(name: 'Relacionamento', email: 'er@example.com',
+          role: 'Exec. de Relacionamento', destination: 'Cc').toJson(),
+      ],
+    };
+    await tester.pumpWidget(MaterialApp(theme: AppTheme.light,
+      home: Scaffold(body: ProjectEmailModal(project: project, store: store))));
+    await tester.pumpAndSettle();
+    final model = find.widgetWithText(ChoiceChip, ProjectEmailKind.finalization.label);
+    await tester.ensureVisible(model);
+    await tester.tap(model);
+    await tester.pumpAndSettle();
+    final addTo = find.byTooltip('Adicionar em Para');
+    await tester.ensureVisible(addTo);
+    await tester.tap(addTo);
+    await tester.pumpAndSettle();
+    expect(find.text('Cliente importado \u2014 cliente@example.com'), findsNothing);
+    expect(find.text('Relacionamento \u2014 er@example.com'), findsNothing);
+    expect(tester.widget<EmailRecipientFields>(find.byType(EmailRecipientFields)).contacts, isEmpty);
+    expect(store.drafts['owner-a/2256824/finalization']!['contacts'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('all models exclude local draft contacts without current workbook verification', (tester) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryEmailStore();
+    for (final kind in [ProjectEmailKind.initial, ProjectEmailKind.internal, ProjectEmailKind.finalization]) {
+      store.drafts['owner-a/2256824/${kind.name}'] = {
+        'contacts': [], 'recipientsConfigured': true,
+      };
+    }
+    RecoverableDraft.save('owner-a', 'email.2256824.internal', {
+      'contacts': [EmailContact(name: 'Contato da planilha', email: 'planilha@example.com',
+        group: 'Cliente').toJson()], 'recipientsConfigured': true,
+    });
+    await tester.pumpWidget(MaterialApp(theme: AppTheme.light,
+      home: Scaffold(body: ProjectEmailModal(project: project, store: store))));
+    await tester.pumpAndSettle();
+    for (final kind in [ProjectEmailKind.initial, ProjectEmailKind.internal, ProjectEmailKind.finalization]) {
+      final model = find.widgetWithText(ChoiceChip, kind.label);
+      await tester.ensureVisible(model);
+      await tester.tap(model);
+      await tester.pumpAndSettle();
+      final add = find.byTooltip('Adicionar em Para');
+      await tester.ensureVisible(add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(find.text('Contato da planilha — planilha@example.com'), findsNothing);
+      // Close the menu without selecting: availability must not select recipients.
+      await tester.tapAt(const Offset(1430, 10));
+      await tester.pumpAndSettle();
+    }
+    expect(store.drafts.values.every((draft) => (draft['contacts'] as List).isEmpty), true);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('unsaved text survives reopening without sending or cloud save',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryEmailStore();
+    Widget modal() => MaterialApp(
+        theme: AppTheme.light,
+        home:
+            Scaffold(body: ProjectEmailModal(project: project, store: store)));
+    final client = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Mensagem — editável');
+    await tester.pumpWidget(modal());
+    await tester.pumpAndSettle();
+    await openMessageEditor(tester);
+    await tester.enterText(client, 'Texto não salvo na nuvem');
+    await tester.pumpAndSettle();
+    expect(store.drafts, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    store.failReads = true;
+    await tester.pumpWidget(modal());
+    await tester.pumpAndSettle();
+    await openMessageEditor(tester);
+    expect(tester.widget<TextField>(client).controller!.text,
+        'Texto não salvo na nuvem');
+    expect(find.textContaining('Rascunho recuperado'), findsOneWidget);
+    expect(store.drafts, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+      'proposal print survives save and account draft reload and can be removed',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryEmailStore();
+    const key = 'owner-a/2256824/internal';
+    store.drafts[key] = {
+      'fields': {'cliente': 'Cliente'},
+      'contacts': [],
+      'productsImage': base64Encode(png)
+    };
+    Widget modal() => MaterialApp(
+        theme: AppTheme.light,
+        home:
+            Scaffold(body: ProjectEmailModal(project: project, store: store)));
+    Future<void> selectInternal() async {
+      await tester.ensureVisible(find.text('Encerramento Interno'));
+      await tester.tap(find.text('Encerramento Interno'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Produtos adquiridos — print'));
+      await tester.tap(find.text('Produtos adquiridos — print'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byType(ProductsImageField));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.pumpWidget(modal());
+    await tester.pumpAndSettle();
+    await selectInternal();
+    expect(
+        tester
+            .widget<ProductsImageField>(find.byType(ProductsImageField))
+            .image,
+        orderedEquals(png));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Salvar neste projeto'));
+    await tester.pumpAndSettle();
+    expect(store.drafts[key]!['productsImage'], base64Encode(png));
+    await tester.pumpWidget(const SizedBox());
+    LocalUserState.memory!.clear();
+    await tester.pumpWidget(modal());
+    await tester.pumpAndSettle();
+    await selectInternal();
+    expect(
+        tester
+            .widget<ProductsImageField>(find.byType(ProductsImageField))
+            .image,
+        orderedEquals(png));
+    await tester.ensureVisible(find.text('Remover print'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remover print'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Salvar neste projeto'));
+    await tester.pumpAndSettle();
+    expect(store.drafts[key]!['productsImage'], isNull);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('internal summary remains editable in the message and saves without duplication', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryEmailStore();
+    const key = 'owner-a/2256824/internal';
+    store.drafts[key] = {'fields': {'cliente': 'Cliente'}, 'contacts': [],
+      'body': 'Mensagem personalizada preservada.\n\nAtt,\nRodrigo'};
+    await tester.pumpWidget(MaterialApp(theme: AppTheme.light,
+      home: Scaffold(body: ProjectEmailModal(project: project, store: store))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Encerramento Interno'));
+    await tester.pumpAndSettle();
+    final message = find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Mensagem — editável');
+    await openMessageEditor(tester);
+    await tester.enterText(message, 'Mensagem personalizada preservada.\n\nResumo da implantação:\nTreinamento concluído.\n\nAtt,\nRodrigo');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(message).controller!.text, contains('Resumo da implantação:\nTreinamento concluído.'));
+    await tester.enterText(message, 'Mensagem personalizada preservada.\n\nResumo da implantação:\nImplantação concluída conforme a proposta.\n\nAtt,\nRodrigo');
+    await tester.pumpAndSettle();
+    final body = tester.widget<TextField>(message).controller!.text;
+    expect(body, startsWith('Mensagem personalizada preservada.'));
+    expect(body, contains('Implantação concluída conforme a proposta.'));
+    expect(body, isNot(contains('Treinamento concluído.')));
+    expect(body, endsWith('Att,\nRodrigo'));
+    await tester.tap(find.text('Salvar neste projeto'));
+    await tester.pumpAndSettle();
+    expect(store.drafts[key]!['body'], body);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  for (final theme in AppVisualTheme.values) {
+    for (final size in [const Size(1440, 900), const Size(390, 844)]) {
+      testWidgets(
+          'Email modal ${theme.name} ${size.width}: saved draft isolated by owner/project/model',
+          (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final store = MemoryEmailStore();
+        AppAppearance.instance.value = theme;
+        await tester.pumpWidget(MaterialApp(
+            theme:
+                theme.mode == ThemeMode.dark ? AppTheme.dark : AppTheme.light,
+            home: Scaffold(
+                body: ProjectEmailModal(project: project, store: store))));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final clientField = find.byWidgetPredicate(
+            (w) => w is TextField && w.decoration?.labelText == 'Mensagem — editável');
+        await openMessageEditor(tester);
+        await tester.enterText(clientField, 'Cliente ajustado');
+        await tester.tap(find.text('Salvar neste projeto'));
+        await tester.pumpAndSettle();
+        expect(store.drafts['owner-a/2256824/initial']!['body'],
+            'Cliente ajustado');
+        await tester.ensureVisible(find.text('Encerramento Externo'));
+        await tester.tap(find.text('Encerramento Externo'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(EmailBodyPreview), findsOneWidget);
+        await tester.ensureVisible(find.text('Contato Inicial'));
+        await tester.tap(find.text('Contato Inicial'));
+        await tester.pumpAndSettle();
+        await openMessageEditor(tester);
+        expect((tester.widget<TextField>(clientField).controller!).text,
+            'Cliente ajustado');
+        store.currentUserId = 'owner-b';
+        await tester.tap(find.text('Salvar neste projeto'));
+        await tester.pumpAndSettle();
+        expect(store.drafts.length, 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+}

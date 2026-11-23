@@ -1,3 +1,4 @@
+import 'package:gerenciador_horas/domain/models/history_period.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,27 +7,105 @@ import 'package:flutter/foundation.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
 
 class TimeLogStore extends ChangeNotifier {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  TimeLogStore({FirebaseFirestore? firestore, FirebaseAuth? auth})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
+
+  String? _openedWorkTarget;
+  String? _openedWorkOwner;
+  String? get openedWorkTarget => _openedWorkOwner == _userId ? _openedWorkTarget : null;
+  void selectOpenedWork(String target) {
+    _openedWorkOwner = _userId;
+    _openedWorkTarget = target;
+  }
 
   List<TimeLog> _logs = [];
-  int _listeningGeneration = 0;
-  bool _disposed = false;
 
   List<TimeLog> get logs => List.unmodifiable(_logs);
 
   final Map<String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
       _subscriptions = {};
 
+  String? _subscriptionOwner;
+  int _subscriptionGeneration = 0;
+  Set<String> _activeProjectIds = {};
+  final _querySignatures = <String, String>{};
+  final _legacyDateProjects = <String>{};
+  final _fullyLoadedProjects = <String>{};
+  Set<String> _completedProjectIds = {};
+  Timer? _scopeRefresh;
+  HistoryPeriod? _historyPeriod;
+  int lastSubscriptionChanges = 0;
+  Object? loadError;
+  bool _disposed = false;
+  Future<void> setHistoryPeriod(DateTime? start, DateTime? end) async {
+    final next = start != null && end != null ? HistoryPeriod(start, end) : null;
+    if (next?.signature == _historyPeriod?.signature) return;
+    _historyPeriod = next;
+    await startListeningToProjects(_activeProjectIds.toList());
+  }
+  Future<void> retryListening() async {
+    loadError = null;
+    await stopListening();
+    await startListeningToProjects(_activeProjectIds.toList());
+  }
+
   String? get _userId => _auth.currentUser?.uid;
+
+  /// Fresh server reads, independent of the history/search currently displayed.
+  /// Any failed query aborts the preparation instead of sending a partial day.
+  Future<List<TimeLog>> loadRegisteredDay(DateTime day, {bool registeredOnly = true, bool includePreviousDay = false}) async {
+    final uid = _userId;
+    if (uid == null || _disposed) throw StateError('Entre novamente no app.');
+    void checkOwner() {
+      if (_disposed || uid != _userId) {
+        throw StateError('A conta foi alterada. Prepare o envio novamente.');
+      }
+    }
+    final start = DateTime(day.year, day.month, day.day - (includePreviousDay ? 1 : 0));
+    final end = DateTime(day.year, day.month, day.day + 1);
+    final user = _firestore.collection('users').doc(uid);
+    final collections = await Future.wait([
+      user.collection('projects').get(const GetOptions(source: Source.server)),
+      user.collection('completed_projects').get(const GetOptions(source: Source.server)),
+    ]).timeout(const Duration(seconds: 20));
+    checkOwner();
+    final ids = <String>{
+      ...collections[0].docs.map((doc) => doc.id),
+      ...collections[1].docs.map((doc) => (doc.data()['id']?.toString().trim().isNotEmpty ?? false)
+          ? doc.data()['id'].toString().trim() : doc.id),
+      if (_subscriptionOwner == uid) ..._activeProjectIds,
+    }.toList()..sort();
+    final result = <TimeLog>[];
+    for (var offset = 0; offset < ids.length; offset += 6) {
+      final batch = ids.skip(offset).take(6);
+      final parts = await Future.wait(batch.map((id) async {
+        Query<Map<String, dynamic>> query = user.collection('projects').doc(id).collection('time_logs');
+        if (_subscriptionOwner == uid && _fullyLoadedProjects.contains(id) && !_legacyDateProjects.contains(id)) {
+          query = query.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+              .where('date', isLessThan: Timestamp.fromDate(end));
+        }
+        final snapshot = await query.get(const GetOptions(source: Source.server));
+        checkOwner();
+        // A missing date must never silently become "today" for a send.
+        return snapshot.docs.where((doc) => doc.data()['date'] is Timestamp || doc.data()['createdAt'] is Timestamp)
+            .map((doc) => _timeLogFromDocument(id, doc))
+            .where((log) => (!registeredOnly || log.isRegistered) && !log.date.isBefore(start) && log.date.isBefore(end)).toList();
+      })).timeout(const Duration(seconds: 20));
+      checkOwner();
+      result.addAll(parts.expand((part) => part));
+    }
+    result.sort((a, b) => a.startTime.compareTo(b.startTime));
+    return result;
+  }
 
   // ============================================================
   // AUXILIAR: IDENTIFICA O ID DO PROJETO DE UM LOG
   // ============================================================
 
   String _getProjectIdFromLog(TimeLog log) {
-    final projectId = log.projectId?.trim() ?? '';
-    if (projectId.isNotEmpty) return projectId;
     final targetId = log.targetId.trim();
 
     if (targetId.isEmpty) {
@@ -355,6 +434,7 @@ class TimeLogStore extends ChangeNotifier {
     DateTime date = DateTime.now();
 
     final dynamic dateValue = data['date'];
+    if (dateValue is! Timestamp) _legacyDateProjects.add(projectId);
     final dynamic createdAt = data['createdAt'];
 
     if (dateValue is Timestamp) {
@@ -390,7 +470,6 @@ class TimeLogStore extends ChangeNotifier {
 
     final log = TimeLog(
       id: doc.id,
-      projectId: projectId,
       targetId: targetId.isNotEmpty ? targetId : projectId,
       hours: hours,
       description: description,
@@ -436,8 +515,9 @@ class TimeLogStore extends ChangeNotifier {
           .doc(userId)
           .collection('completed_projects')
           .get();
+      if (userId != _userId) return {};
 
-      return snapshot.docs
+      _completedProjectIds = snapshot.docs
           .map((doc) {
             final data = doc.data();
 
@@ -451,12 +531,14 @@ class TimeLogStore extends ChangeNotifier {
           })
           .where((id) => id.isNotEmpty)
           .toSet();
+      return _completedProjectIds;
     } catch (e) {
       debugPrint(
         'TimeLogStore: erro ao buscar projetos finalizados: $e',
       );
 
-      return <String>{};
+      loadError = e;
+      return _completedProjectIds;
     }
   }
 
@@ -467,12 +549,17 @@ class TimeLogStore extends ChangeNotifier {
   Future<void> startListeningToProjects(
     List<String> projectIds,
   ) async {
-    final stopping = stopListening();
-    final generation = _listeningGeneration;
-    await stopping;
-    if (_disposed || generation != _listeningGeneration) return;
-
+    if (_disposed) return;
+    final generation = ++_subscriptionGeneration;
     final userId = _userId;
+    if (_subscriptionOwner != userId) {
+      await stopListening();
+      _logs = [];
+      _legacyDateProjects.clear();
+      _fullyLoadedProjects.clear();
+      _completedProjectIds = {};
+      _subscriptionOwner = userId;
+    }
 
     if (userId == null || userId.trim().isEmpty) {
       debugPrint(
@@ -484,12 +571,24 @@ class TimeLogStore extends ChangeNotifier {
     final Set<String> ids =
         projectIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
 
+    _activeProjectIds = projectIds.toSet();
     final completedProjectIds = await _getCompletedProjectIds();
-    if (_disposed || generation != _listeningGeneration || userId != _userId) {
-      return;
-    }
 
+    if (_disposed || generation != _subscriptionGeneration || userId != _userId) return;
+    _activeProjectIds = projectIds.toSet();
     ids.addAll(completedProjectIds);
+    final desired = <String, String>{
+      for (final id in ids) id: _legacyDateProjects.contains(id) || !_fullyLoadedProjects.contains(id) ? 'all' : _historyPeriod?.signature ?? 'all'
+    };
+    final changes = SubscriptionChanges(_querySignatures, desired);
+    lastSubscriptionChanges = changes.add.length;
+    for (final id in changes.remove) {
+      final old = _subscriptions.remove(id);
+      _querySignatures.remove(id);
+      await old?.cancel();
+      if (generation != _subscriptionGeneration) return;
+    }
+    _logs.removeWhere((log) => !ids.contains(_getProjectIdFromLog(log)));
 
     debugPrint(
       'TimeLogStore: iniciando escuta de '
@@ -497,31 +596,34 @@ class TimeLogStore extends ChangeNotifier {
       '(${completedProjectIds.length} finalizados).',
     );
 
-    for (final id in ids) {
-      final subscription = _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('projects')
-          .doc(id)
-          .collection('time_logs')
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (_disposed || generation != _listeningGeneration) return;
-          _replaceProjectLogs(
-            projectId: id,
-            snapshot: snapshot,
-          );
-        },
-        onError: (error) {
-          debugPrint(
-            'Erro ao escutar logs do projeto $id: $error',
-          );
-        },
-      );
-
-      _subscriptions[id] = subscription;
+    for (final id in changes.add) {
+      final period = _legacyDateProjects.contains(id) || !_fullyLoadedProjects.contains(id) ? null : _historyPeriod;
+      Query<Map<String, dynamic>> query = _firestore.collection('users').doc(userId).collection('projects').doc(id).collection('time_logs');
+      if (period != null) {
+        query = query.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(period.start))
+            .where('date', isLessThan: Timestamp.fromDate(period.endExclusive));
+      }
+      final signature = desired[id]!;
+      _querySignatures[id] = signature;
+      _subscriptions[id] = query.snapshots().listen((snapshot) {
+        if (_disposed || _userId != userId || _querySignatures[id] != signature) return;
+        _replaceProjectLogs(projectId: id, snapshot: snapshot, period: period);
+        if (period == null) {
+          _fullyLoadedProjects.add(id);
+          if (_historyPeriod != null && !_legacyDateProjects.contains(id)) {
+            _scopeRefresh?.cancel();
+            _scopeRefresh = Timer(const Duration(milliseconds: 250), () {
+              if (!_disposed) unawaited(startListeningToProjects(_activeProjectIds.toList()));
+            });
+          }
+        }
+      }, onError: (Object error) {
+        if (_disposed || _userId != userId) return;
+        loadError = error;
+        notifyListeners();
+      });
     }
+    debugPrint('TimeLogStore: $lastSubscriptionChanges subscriptions refreshed, period=${_historyPeriod?.signature ?? "all"}');
   }
 
   // ============================================================
@@ -531,12 +633,13 @@ class TimeLogStore extends ChangeNotifier {
   void _replaceProjectLogs({
     required String projectId,
     required QuerySnapshot<Map<String, dynamic>> snapshot,
+    HistoryPeriod? period,
   }) {
     final otherLogs = _logs.where(
       (log) {
         final baseProjectId = _getProjectIdFromLog(log);
 
-        return baseProjectId != projectId;
+        return baseProjectId != projectId || (period != null && (!period.contains(log.date) || _legacyDateProjects.contains(projectId)));
       },
     ).toList();
 
@@ -722,10 +825,10 @@ class TimeLogStore extends ChangeNotifier {
         ? log.id.trim()
         : DateTime.now().microsecondsSinceEpoch.toString();
 
-    final double? resolvedHours = _resolveHours(
-      rawHours: log.hours,
-      durationFormatted: log.durationFormatted,
-    );
+    final double? resolvedHours = log.hours ??
+        _durationToHours(
+          log.durationFormatted,
+        );
 
     final docRef = _firestore
         .collection('users')
@@ -740,7 +843,7 @@ class TimeLogStore extends ChangeNotifier {
         'targetId': log.targetId,
         'projectId': id,
         'hours': resolvedHours,
-        'description': log.description,
+        'description': log.description?.trim() ?? '',
         'isRegistered': log.isRegistered,
         'date': Timestamp.fromDate(log.date),
         'startTime': log.startTime,
@@ -820,7 +923,6 @@ class TimeLogStore extends ChangeNotifier {
       (item) => item.id == targetLogId,
     );
 
-    log.id = targetLogId;
     if (index != -1) {
       _logs[index].isRegistered = true;
     } else {
@@ -943,10 +1045,10 @@ class TimeLogStore extends ChangeNotifier {
       );
     }
 
-    final double? resolvedHours = _resolveHours(
-      rawHours: log.hours,
-      durationFormatted: log.durationFormatted,
-    );
+    final double? resolvedHours = log.hours ??
+        _durationToHours(
+          log.durationFormatted,
+        );
 
     await _firestore
         .collection('users')
@@ -960,7 +1062,7 @@ class TimeLogStore extends ChangeNotifier {
         'targetId': log.targetId,
         'projectId': projectId,
         'hours': resolvedHours,
-        'description': log.description,
+        'description': log.description?.trim() ?? '',
         'isRegistered': log.isRegistered,
         'date': Timestamp.fromDate(log.date),
         'startTime': log.startTime,
@@ -1071,18 +1173,20 @@ class TimeLogStore extends ChangeNotifier {
   // ============================================================
 
   Future<void> stopListening() async {
-    _listeningGeneration++;
-    final subscriptions = _subscriptions.values.toList();
-    _subscriptions.clear();
-    for (final subscription in subscriptions) {
+    _scopeRefresh?.cancel();
+    for (final subscription in _subscriptions.values) {
       await subscription.cancel();
     }
+
+    _subscriptions.clear();
+    _querySignatures.clear();
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _listeningGeneration++;
+    _scopeRefresh?.cancel();
+    _subscriptionGeneration++;
     for (final subscription in _subscriptions.values) {
       subscription.cancel();
     }

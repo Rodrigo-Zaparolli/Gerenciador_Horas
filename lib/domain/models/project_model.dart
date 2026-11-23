@@ -34,6 +34,18 @@ class TaskModel {
   // ID codificado do trabalho no E-Desk, quando disponível.
   // É mantido separado para futuras integrações/validações.
   String? edeskIdTrabalho;
+  String? edeskPhaseName;
+
+  String get phaseSendName => edeskPhaseName?.trim().isNotEmpty == true
+      ? edeskPhaseName!.trim() : stage.trim();
+
+  /// The editable work number is authoritative; older records may retain a
+  /// stale E-Desk link after this number was changed in the project editor.
+  String get edeskWorkNumber {
+    final number = subId.trim();
+    if (RegExp(r'^\d+$').hasMatch(number)) return number;
+    return edeskIdTrabalho?.trim() ?? '';
+  }
 
   TaskModel({
     required this.subId,
@@ -49,6 +61,7 @@ class TaskModel {
     this.edeskSolicitacao,
     this.edeskUrl,
     this.edeskIdTrabalho,
+    this.edeskPhaseName,
   });
 
   Map<String, dynamic> toJson() {
@@ -66,6 +79,7 @@ class TaskModel {
       'edeskSolicitacao': edeskSolicitacao,
       'edeskUrl': edeskUrl,
       'edeskIdTrabalho': edeskIdTrabalho,
+      'edeskPhaseName': edeskPhaseName,
     };
   }
 
@@ -110,11 +124,13 @@ class TaskModel {
 
       edeskUrl: json['edeskUrl']?.toString(),
       edeskIdTrabalho: json['edeskIdTrabalho']?.toString(),
+      edeskPhaseName: json['edeskPhaseName']?.toString(),
     );
   }
 }
 
 class ProjectModel {
+  String? email;
   String id;
   String id2;
   String client;
@@ -152,6 +168,7 @@ class ProjectModel {
     this.checklist = const [],
     this.excelLink,
     this.folderPath,
+    this.email,
   });
 
   Map<String, dynamic> toJson() {
@@ -172,6 +189,7 @@ class ProjectModel {
       'checklist': checklist,
       'excelLink': excelLink,
       'folderPath': folderPath,
+      'email': email,
     };
   }
 
@@ -241,6 +259,7 @@ class ProjectModel {
       checklist: parsedChecklist,
       excelLink: json['excelLink']?.toString(),
       folderPath: json['folderPath']?.toString(),
+      email: json['email']?.toString(),
     );
   }
 }

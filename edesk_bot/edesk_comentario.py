@@ -1,4 +1,14 @@
+from config import restore_session_cookies, save_session_cookies
 import sys
+import re
+from comment_percentage import (parse_percentage,
+                                save_work_percentage, save_comment_then_percentage, update_percentage_after_comment)
+from edesk_horas import localizar_solicitacao as localizar_solicitacao_validada
+from edesk_horas import abrir_trabalho as abrir_trabalho_validado
+from edesk_horas import abrir_trabalho_na_solicitacao
+
+from send_progress import observe_log
+from operation_log import emit_log
 import json
 import time
 import html
@@ -7,10 +17,12 @@ from urllib.parse import urlparse, parse_qs
 
 from playwright.sync_api import (
     sync_playwright,
+    Error as PlaywrightError,
     TimeoutError as PlaywrightTimeoutError,
 )
 
 from config import (
+    HEADLESS,
     PROFILE_DIR,
     SCREENSHOTS_DIR,
     LOGS_DIR,
@@ -38,11 +50,8 @@ LOGS_PATH.mkdir(parents=True, exist_ok=True)
 # ================================================================
 
 def log(mensagem):
-
-    print(
-        f"[E-Desk][Python] {mensagem}",
-        flush=True,
-    )
+    observe_log(mensagem)
+    emit_log(mensagem, '[E-Desk][Python]')
 
 
 # ================================================================
@@ -205,9 +214,77 @@ def obter_guid_da_url(url):
 # LOGIN
 # ================================================================
 
+SELETORES_EMAIL_LOGIN = [
+    "input[type='email']",
+    "input[autocomplete='username']",
+    "input[name*='email' i]",
+    "input[id*='email' i]",
+]
+SELETORES_SENHA_LOGIN = [
+    "input[type='password']",
+    "input[autocomplete='current-password']",
+    "input[name*='senha' i]",
+    "input[id*='senha' i]",
+    "input[name*='password' i]",
+    "input[id*='password' i]",
+]
+SELETORES_ENTRAR_LOGIN = [
+    "button:has-text('Entrar')",
+    "input[type='submit']",
+    "button[type='submit']",
+]
+
+
+def obter_credenciais_edesk(dados):
+    credenciais = dados.get("edeskCredenciais")
+    if not isinstance(credenciais, dict):
+        return None
+
+    email = str(credenciais.get("email", "") or "").strip()
+    senha = str(credenciais.get("senha", "") or "")
+    if not email or not senha:
+        return None
+
+    return {"email": email, "senha": senha}
+
+
+def _localizar_campo_login(page, seletores):
+    for frame in page.frames:
+        for seletor in seletores:
+            try:
+                elementos = frame.locator(seletor)
+                for indice in range(elementos.count()):
+                    elemento = elementos.nth(indice)
+                    if elemento.is_visible():
+                        return elemento
+            except Exception:
+                continue
+    return None
+
+
+def _tentar_login_automatico(page, credenciais):
+    campo_email = _localizar_campo_login(page, SELETORES_EMAIL_LOGIN)
+    campo_senha = _localizar_campo_login(page, SELETORES_SENHA_LOGIN)
+    if campo_email is None or campo_senha is None:
+        return False
+
+    campo_email.fill(credenciais["email"])
+    campo_senha.fill(credenciais["senha"])
+
+    botao_entrar = _localizar_campo_login(page, SELETORES_ENTRAR_LOGIN)
+    if botao_entrar is not None:
+        botao_entrar.click()
+    else:
+        campo_senha.press("Enter")
+
+    log("Credenciais E-Desk enviadas para autenticação.")
+    return True
+
+
 def aguardar_login(
     page,
     timeout_segundos=300,
+    credenciais=None,
 ):
 
     log("")
@@ -224,6 +301,7 @@ def aguardar_login(
 
     inicio = time.time()
     ultimo_url = ""
+    tentativa_automatica_realizada = False
 
     while True:
 
@@ -315,6 +393,18 @@ def aguardar_login(
 
             pass
 
+        if credenciais and not tentativa_automatica_realizada:
+            try:
+                tentativa_automatica_realizada = _tentar_login_automatico(
+                    page,
+                    credenciais,
+                )
+                if tentativa_automatica_realizada:
+                    log("Aguardando confirmação do login automático.")
+            except Exception as erro:
+                log(f"Não foi possível preencher o login E-Desk: {erro}")
+                tentativa_automatica_realizada = True
+
         time.sleep(1)
 
 
@@ -364,7 +454,10 @@ def acessar_minha_grid(
             f"Aviso durante acesso à Grid: {erro}"
         )
 
-    page.wait_for_timeout(4000)
+    try:
+        page.locator("#cph1_txtSol").first.wait_for(state="visible", timeout=20000)
+    except Exception as error:
+        raise RuntimeError("EDESK_GRID_SEARCH_NOT_READY") from error
 
     log(
         f"URL atual da Grid: {page.url}"
@@ -1186,11 +1279,47 @@ def abrir_trabalho(
 # ABRIR COMENTÁRIO
 # ================================================================
 
+def abrir_solicitacao_para_comentario(page, context, linha, solicitacao, preaberta=None):
+    """Open the request directly; never enter a work or retroactive hours."""
+    try:
+        return abrir_trabalho_validado(
+            page, context, linha, solicitacao, '',
+            pagina_solicitacao_preaberta=preaberta,
+            abrir_retroativo=False, somente_solicitacao=True)
+    except Exception as error:
+        raise RuntimeError('EDESK_COMMENT_REQUEST_NOT_OPENED') from error
+
+
+def selecionar_aba_comentarios(page):
+    """Select the request's comments tab before opening a new comment."""
+    try:
+        aba = page.get_by_text(re.compile(r'^Comentários\s*(?:\(\d+\))?$'))
+        aba.wait_for(state='visible', timeout=20000)
+        aba.click(timeout=15000)
+    except Exception as error:
+        raise RuntimeError('EDESK_COMMENT_TAB_NOT_OPENED') from error
+
+
+def localizar_botao_comentario(page):
+    """Match the visible action by its label, regardless of generated ASP.NET ID."""
+    nome = re.compile(r'^Coment[aá]rio$', re.IGNORECASE)
+    botao = (page.get_by_role('button', name=nome)
+             .or_(page.get_by_role('link', name=nome))
+             .or_(page.locator('#cph1_BtCom:visible')))
+    try:
+        botao.wait_for(state='visible', timeout=20000)
+        if not botao.is_enabled():
+            raise RuntimeError('Comment action disabled')
+        return botao
+    except Exception as error:
+        raise RuntimeError('EDESK_COMMENT_BUTTON_NOT_FOUND') from error
+
+
 def abrir_comentario(page, context):
     """Abre o popup de comentário e retorna (pagina, frame).
 
     Mantém o contrato já utilizado pelo main(): o botão de comentários
-    é acionado na tela do trabalho e o frame é identificado pelo campo
+    é acionado na tela da solicitação e o frame é identificado pelo campo
     de tipo de comentário (#popC_ddlTipCom).
     """
 
@@ -1200,9 +1329,9 @@ def abrir_comentario(page, context):
     log("============================================")
 
     page.bring_to_front()
+    selecionar_aba_comentarios(page)
 
-    botao = page.locator("#cph1_BtCom")
-    botao.wait_for(state="visible", timeout=15000)
+    botao = localizar_botao_comentario(page)
 
     paginas_antes = set(context.pages)
     botao.click()
@@ -1841,6 +1970,13 @@ def salvar_comentario(frame, pagina):
 
     requisicoes_salvar = set()
     respostas_salvar = []
+    requisicoes_concluidas = set()
+
+    def registrar_conclusao(requisicao):
+        requisicoes_concluidas.add((requisicao.url, requisicao.post_data or ''))
+
+    def quadro_fechado():
+        return pagina.is_closed() or getattr(frame, 'is_detached', lambda: False)()
 
     def registrar_requisicao(requisicao):
         if requisicao.method != "POST":
@@ -1875,14 +2011,35 @@ def salvar_comentario(frame, pagina):
         if chave_requisicao in requisicoes_salvar:
             respostas_salvar.append(resposta)
 
-    pagina.on("request", registrar_requisicao)
-    pagina.on("response", registrar_resposta)
+    # Context listeners survive the comment frame/page being disposed by Save.
+    browser_context = pagina.context
+    def pump_browser(milliseconds):
+        waiting = next((p for p in browser_context.pages if not p.is_closed()), None)
+        if waiting is None:
+            raise RuntimeError('A sessão do navegador fechou antes de concluir o comentário.')
+        try:
+            waiting.wait_for_timeout(milliseconds)
+        except PlaywrightError:
+            if not waiting.is_closed() or not any(not p.is_closed() for p in browser_context.pages):
+                raise
+
+    browser_context.on("request", registrar_requisicao)
+    browser_context.on("response", registrar_resposta)
+    browser_context.on("requestfinished", registrar_conclusao)
     try:
-        botao_salvar.click(timeout=15000)
+        try:
+            botao_salvar.click(timeout=15000)
+        except PlaywrightError:
+            # Closing during click's navigation wait is valid ONLY if the exact
+            # Save response was observed below. Never retry the comment POST.
+            if not requisicoes_salvar:
+                raise
 
         inicio = time.time()
         while not respostas_salvar and time.time() - inicio < 20:
-            pagina.wait_for_timeout(250)
+            # Saving may close the comment popup. Pump browser events through
+            # a surviving page instead of waiting on the disposed popup.
+            pump_browser(250)
 
         if not respostas_salvar:
             raise RuntimeError(
@@ -1898,7 +2055,29 @@ def salvar_comentario(frame, pagina):
                 f"{resposta.status} ao salvar o comentário."
             )
 
-        texto_resposta = resposta.text()
+        # response.text() has no timeout in Playwright's sync API. Reading a
+        # navigation response from a detached iframe can wait indefinitely.
+        # Pump events until the body finishes OR the saved editor closes first.
+        chave = (resposta.request.url, resposta.request.post_data or '')
+        limite = time.monotonic() + 10
+        while not quadro_fechado() and chave not in requisicoes_concluidas and time.monotonic() < limite:
+            pump_browser(100)
+        try:
+            if quadro_fechado():
+                texto_resposta = ''
+                log('Editor fechado após a resposta do Salvar; continuando ao percentual sem reler o quadro removido.')
+            elif chave not in requisicoes_concluidas:
+                raise RuntimeError('A resposta do Salvar não terminou. Confira o comentário antes de reenviar.')
+            else:
+                texto_resposta = resposta.text()
+        except PlaywrightError:
+            # A successful save response can execute window.close(), disposing
+            # its body before Playwright reads it. Keep the observed exact Save
+            # response; never click Save again just to retrieve that body.
+            if not quadro_fechado():
+                raise
+            texto_resposta = ''
+            log('A janela do comentário fechou após a resposta do Salvar. Continuando sem repetir o comentário.')
         if "|error|" in texto_resposta.lower():
             raise RuntimeError(
                 "O E-Desk retornou erro ASP.NET ao salvar o comentário: "
@@ -1914,8 +2093,9 @@ def salvar_comentario(frame, pagina):
             "do comentário."
         )
     finally:
-        pagina.remove_listener("request", registrar_requisicao)
-        pagina.remove_listener("response", registrar_resposta)
+        browser_context.remove_listener("request", registrar_requisicao)
+        browser_context.remove_listener("response", registrar_resposta)
+        browser_context.remove_listener("requestfinished", registrar_conclusao)
 
 
 # ================================================================
@@ -2020,7 +2200,7 @@ def modo_teste(
 # MAIN
 # ================================================================
 
-def main():
+def main(*, percentage_only=False):
 
     log("")
     log("============================================")
@@ -2033,6 +2213,7 @@ def main():
     # ============================================================
 
     dados = carregar_request()
+    credenciais = obter_credenciais_edesk(dados)
 
     solicitacao = extrair_solicitacao(
         dados
@@ -2049,6 +2230,8 @@ def main():
     url = obter_url(
         dados
     )
+
+    percentual = parse_percentage(dados.get('percentualRealizado'))
 
     tipo = obter_tipo_comentario(
         dados
@@ -2070,6 +2253,8 @@ def main():
             False,
         )
     )
+    if percentage_only and (percentual is None or not enviar):
+        raise ValueError('Informe a porcentagem e confirme a atualização do trabalho.')
 
     # ============================================================
     # LOG DOS DADOS
@@ -2133,13 +2318,15 @@ def main():
                 user_data_dir=str(
                     PROFILE_PATH
                 ),
-                headless=False,
+                headless=HEADLESS,
                 args=[
                     "--start-maximized",
                 ],
                 viewport=None,
             )
         )
+
+        restore_session_cookies(context)
 
         log(
             "Chromium iniciado."
@@ -2188,7 +2375,10 @@ def main():
                 f"URL após abertura: {page.url}"
             )
 
-            aguardar_login(page)
+            aguardar_login(
+                page,
+                credenciais=credenciais,
+            )
 
         else:
 
@@ -2201,6 +2391,8 @@ def main():
         # ========================================================
         # GUID DA SESSÃO
         # ========================================================
+
+        save_session_cookies(context)
 
         guid_sessao = obter_guid_da_url(
             page.url
@@ -2232,17 +2424,8 @@ def main():
         )
 
         # ========================================================
-        # AGUARDAR A TABELA PRINCIPAL DA GRID
-        # ========================================================
-
-        page.locator(
-            "#ctl00_cph1_hgrSol_ctl00"
-        ).wait_for(
-            state="visible",
-            timeout=30000,
-        )
-
-        page.wait_for_timeout(1000)
+        # The request search is ready; the result table may be absent until
+        # a search is submitted. The validated search below waits for results.
 
         log("")
         log("============================================")
@@ -2264,42 +2447,26 @@ def main():
         # LOCALIZAR SOLICITAÇÃO
         # ========================================================
 
-        candidatos = localizar_solicitacao(
-            page,
-            solicitacao,
-        )
+        try:
+            pagina_grid, linha, preaberta = localizar_solicitacao_validada(
+                page, context, solicitacao)
+            if pagina_grid is None or (linha is None and preaberta is None):
+                raise RuntimeError("Request search returned no matching result")
+        except Exception as error:
+            raise RuntimeError("EDESK_COMMENT_REQUEST_NOT_FOUND") from error
+        page = abrir_solicitacao_para_comentario(
+            pagina_grid, context, linha, solicitacao, preaberta)
+        url_solicitacao_comentario = page.url
 
-        # ========================================================
-        # ABRIR TRABALHO
-        # ========================================================
-
-        pagina_trabalho = abrir_trabalho(
-            page,
-            context,
-            candidatos,
-            id_trabalho,
-        )
-
-        # ========================================================
-        # TELA DE TRABALHO
-        # ========================================================
-
-        if pagina_trabalho is None:
-
-            raise RuntimeError(
-                "Tela de trabalho não encontrada."
-            )
-
-        page = pagina_trabalho
-
-        log("")
-        log("============================================")
-        log("TELA DE TRABALHO ATIVA")
-        log("============================================")
-
-        log(
-            f"URL: {page.url}"
-        )
+        if percentage_only:
+            update_percentage_after_comment(page, context, url_solicitacao_comentario,
+                                            solicitacao, id_trabalho, percentual)
+            from send_progress import completed
+            completed('percentual')
+            print(json.dumps({'ok': True, 'operation': 'percentual',
+                              'percentual': str(percentual),
+                              'message': f'Percentual {percentual}% confirmado no trabalho. Nenhum comentário foi publicado.'}, ensure_ascii=False), flush=True)
+            return 0
 
         # ========================================================
         # ABRIR COMENTÁRIO
@@ -2329,10 +2496,34 @@ def main():
 
         if enviar:
 
-            salvar_comentario(
-                frame,
-                pagina_comentario,
-            )
+            def salvar_percentual():
+                if percentual is None:
+                    return
+                log('Comentário salvo. Abrindo trabalho apenas para atualizar %Realizado.')
+                update_percentage_after_comment(
+                    page, context, url_solicitacao_comentario,
+                    solicitacao, id_trabalho, percentual)
+                log('Percentual confirmado depois de recarregar o trabalho.')
+
+            try:
+                save_comment_then_percentage(
+                    lambda: salvar_comentario(frame, pagina_comentario),
+                    salvar_percentual,
+                    context=context if percentual is not None else None,
+                )
+            except RuntimeError as error:
+                if 'EDESK_PERCENTAGE_PENDING' in str(error):
+                    print(json.dumps({'ok': False, 'operation': 'comentarios',
+                        'commentSaved': True, 'percentageConfirmed': False,
+                        'message': 'Comentário salvo; porcentagem não confirmada. Envie somente a porcentagem, sem repetir o comentário.'},
+                        ensure_ascii=False), flush=True)
+                raise
+            print(json.dumps({'ok': True, 'operation': 'comentarios',
+                'commentSaved': True, 'percentageConfirmed': percentual is not None,
+                'percentual': str(percentual) if percentual is not None else None},
+                ensure_ascii=False), flush=True)
+            from send_progress import completed
+            completed('comment')
 
             log("")
             log("============================================")

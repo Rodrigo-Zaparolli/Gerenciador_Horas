@@ -1,3 +1,7 @@
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'orientation_content.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -449,9 +453,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   // IMAGENS
   // ============================================================
 
-  Future<void> _adicionarImagens(
-    OrientacaoModel item,
-  ) async {
+  Future<void> _adicionarImagens(OrientacaoModel item,
+      {VoidCallback? onChanged}) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
@@ -465,7 +468,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         ],
       );
 
-      if (result == null) {
+      if (!mounted || result == null) {
         return;
       }
 
@@ -503,6 +506,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         item.imagens.addAll(novasImagens);
         _cardComFoco = item.id;
       });
+      onChanged?.call();
 
       await _salvarBloco(item);
     } catch (e) {
@@ -512,9 +516,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     }
   }
 
-  Future<void> _colarPrint(
-    OrientacaoModel item,
-  ) async {
+  Future<void> _colarPrint(OrientacaoModel item,
+      {VoidCallback? onChanged}) async {
     if (_colandoImagem) {
       return;
     }
@@ -528,18 +531,16 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       final Uint8List? bytes = await Pasteboard.image;
 
       if (bytes == null || bytes.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Nenhuma imagem disponível. Permita o acesso à área de transferência ou selecione uma imagem.'),
+          ));
+        }
         return;
       }
 
-      final String base64Imagem = base64Encode(bytes);
-
-      final String imagemBase64 = 'data:image/png;base64,$base64Imagem';
-
-      setState(() {
-        item.imagens.add(imagemBase64);
-      });
-
-      await _salvarBloco(item);
+      await _incluirPrint(item, bytes, onChanged: onChanged);
     } catch (e) {
       debugPrint(
         'Erro ao colar print: $e',
@@ -553,18 +554,12 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     }
   }
 
-  Future<void> _removerImagem(
-    OrientacaoModel item,
-    int index,
-  ) async {
-    if (index < 0 || index >= item.imagens.length) {
-      return;
-    }
-
-    setState(() {
-      item.imagens.removeAt(index);
-    });
-
+  Future<void> _incluirPrint(OrientacaoModel item, Uint8List bytes,
+      {VoidCallback? onChanged}) async {
+    if (!mounted || bytes.isEmpty) return;
+    setState(
+        () => item.imagens.add('data:image/png;base64,${base64Encode(bytes)}'));
+    onChanged?.call();
     await _salvarBloco(item);
   }
 
@@ -599,6 +594,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.94),
       builder: (context) {
+        AppAppearance.watch(context);
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.all(24),
@@ -618,7 +614,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                           color: CoresApp.superficie,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Column(
+                        child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
@@ -674,12 +670,13 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (context) {
+        AppAppearance.watch(context);
         return AlertDialog(
           backgroundColor: CoresApp.superficie,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: const Row(
+          title: Row(
             children: [
               Icon(
                 Icons.delete_outline_rounded,
@@ -697,7 +694,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           ),
           content: Text(
             'Deseja realmente excluir "${item.titulo}"?\n\nEssa ação não poderá ser desfeita.',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
               height: 1.5,
             ),
@@ -711,7 +708,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               onPressed: () => Navigator.of(context).pop(true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.erro,
-                foregroundColor: Colors.white,
+                foregroundColor: AppPalette.foregroundOn(CoresApp.erro),
               ),
               child: const Text('Excluir'),
             ),
@@ -786,11 +783,14 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       context: context,
       barrierDismissible: true,
       builder: (context) {
+        AppAppearance.watch(context);
         return StatefulBuilder(
           builder: (
             context,
             setStateModal,
           ) {
+            AppAppearance.watch(context);
+
             return Center(
               child: Stack(
                 children: [
@@ -825,8 +825,9 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                           _buildCabecalhoModal(
                             item,
                             context,
+                            setStateModal,
                           ),
-                          const Divider(
+                          Divider(
                             color: CoresApp.borda,
                             height: 1,
                           ),
@@ -842,60 +843,53 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Expanded(
-                                    child: TextField(
-                                      controller: item.controller,
-                                      maxLines: null,
-                                      expands: true,
-                                      textAlignVertical: TextAlignVertical.top,
-                                      style: const TextStyle(
-                                        color: CoresApp.textoPrincipal,
-                                        fontSize: 14,
-                                        height: 1.55,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText:
-                                            'Digite aqui a orientação, procedimento ou regra...',
-                                        hintStyle: const TextStyle(
-                                          color: CoresApp.textoSecundario,
-                                          fontSize: 13,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          borderSide: const BorderSide(
-                                            color: CoresApp.borda,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          borderSide: const BorderSide(
-                                            color: CoresApp.primaria,
-                                            width: 1.4,
-                                          ),
-                                        ),
-                                        filled: true,
-                                        fillColor: CoresApp.fundo
-                                            .withValues(alpha: 0.45),
-                                        contentPadding:
-                                            const EdgeInsets.all(14),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildTituloSecao(
-                                    'ANEXOS',
-                                    Icons.image_outlined,
-                                  ),
+                                      child: OrientationContent(
+                                    searchable: true,
+                                    controller: item.controller,
+                                    images: item.imagens,
+                                    onPasteImage: (bytes) async {
+                                      await _incluirPrint(item, bytes,
+                                          onChanged: () {
+                                        if (context.mounted)
+                                          setStateModal(() {});
+                                      });
+                                      if (context.mounted) setStateModal(() {});
+                                    },
+                                    onRemoveImage: (index) {
+                                      setStateModal(
+                                          () => item.imagens.removeAt(index));
+                                      _salvarBloco(item);
+                                    },
+                                    onOpenImage: _visualizarImagem,
+                                  )),
                                   const SizedBox(height: 8),
-                                  _buildAreaImagens(
-                                    item,
-                                    setStateModal,
-                                  ),
+                                  Wrap(spacing: 8, children: [
+                                    TextButton.icon(
+                                        icon: const Icon(Icons.content_paste),
+                                        label: const Text('Colar print'),
+                                        onPressed: () async {
+                                          await _colarPrint(item,
+                                              onChanged: () {
+                                            if (context.mounted)
+                                              setStateModal(() {});
+                                          });
+                                          if (context.mounted)
+                                            setStateModal(() {});
+                                        }),
+                                    TextButton.icon(
+                                        icon: const Icon(
+                                            Icons.add_photo_alternate_outlined),
+                                        label: const Text('Adicionar imagem'),
+                                        onPressed: () async {
+                                          await _adicionarImagens(item,
+                                              onChanged: () {
+                                            if (context.mounted)
+                                              setStateModal(() {});
+                                          });
+                                          if (context.mounted)
+                                            setStateModal(() {});
+                                        }),
+                                  ]),
                                 ],
                               ),
                             ),
@@ -941,7 +935,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                               bottomRight: Radius.circular(18),
                             ),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.open_in_full_rounded,
                             size: 13,
                             color: CoresApp.destaque,
@@ -962,6 +956,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   Widget _buildCabecalhoModal(
     OrientacaoModel item,
     BuildContext dialogContext,
+    StateSetter setStateModal,
   ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -979,7 +974,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
               color: CoresApp.primaria.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.lightbulb_outline_rounded,
               color: CoresApp.primaria,
               size: 22,
@@ -994,7 +989,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                   item.titulo,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: CoresApp.textoPrincipal,
                     fontWeight: FontWeight.bold,
                     fontSize: 17,
@@ -1002,7 +997,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                const Text(
+                Text(
                   'Editor de orientação',
                   style: TextStyle(
                     color: CoresApp.textoSecundario,
@@ -1014,13 +1009,20 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
             ),
           ),
           _buildIndicadorSalvamento(item),
+          IconButton(
+            tooltip: 'Editar nome da orientação',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => _renomearOrientacao(item, () {
+              if (dialogContext.mounted) setStateModal(() {});
+            }),
+          ),
           const SizedBox(width: 8),
           IconButton(
             tooltip: 'Fechar',
             onPressed: () {
               Navigator.of(dialogContext).pop();
             },
-            icon: const Icon(
+            icon: Icon(
               Icons.close_rounded,
               color: CoresApp.textoSecundario,
             ),
@@ -1028,6 +1030,47 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _renomearOrientacao(
+      OrientacaoModel item, VoidCallback onChanged) async {
+    item.tituloController.text = item.titulo;
+    final form = GlobalKey<FormState>();
+    final nome = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          void salvar() {
+            if (form.currentState!.validate())
+              Navigator.of(context).pop(item.tituloController.text.trim());
+          }
+
+          return AlertDialog(
+            title: const Text('Editar nome da orientação'),
+            content: Form(
+                key: form,
+                child: TextFormField(
+                  controller: item.tituloController,
+                  autofocus: true,
+                  maxLength: 150,
+                  decoration:
+                      const InputDecoration(labelText: 'Nome da orientação'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Informe um nome.'
+                      : null,
+                  onFieldSubmitted: (_) => salvar(),
+                )),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar')),
+              FilledButton(onPressed: salvar, child: const Text('Salvar')),
+            ],
+          );
+        });
+    if (!mounted || nome == null || nome == item.titulo) return;
+    setState(() => item.titulo = nome);
+    onChanged();
+    await _salvarBloco(item);
   }
 
   Widget _buildIndicadorSalvamento(
@@ -1038,7 +1081,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     final salvo = _ultimoSalvoId == item.id;
 
     if (salvando) {
-      return const Row(
+      return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
@@ -1062,7 +1105,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     }
 
     if (salvo) {
-      return const Row(
+      return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
@@ -1099,154 +1142,11 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         const SizedBox(width: 7),
         Text(
           titulo,
-          style: const TextStyle(
+          style: TextStyle(
             color: CoresApp.textoSecundario,
             fontSize: 10,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.1,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAreaImagens(
-    OrientacaoModel item,
-    StateSetter setStateModal,
-  ) {
-    return SizedBox(
-      height: 86,
-      child: Row(
-        children: [
-          _buildBotaoColarPrint(item),
-          const SizedBox(width: 8),
-          _buildBotaoAdicionarImagem(item),
-          if (item.imagens.isNotEmpty) const SizedBox(width: 12),
-          if (item.imagens.isNotEmpty)
-            Expanded(
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: item.imagens.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  return _buildMiniatura(
-                    item,
-                    index,
-                    setStateModal,
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBotaoAdicionarImagem(
-    OrientacaoModel item,
-  ) {
-    return Tooltip(
-      message: 'Adicionar imagens',
-      child: InkWell(
-        onTap: () => _adicionarImagens(item),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 92,
-          height: 76,
-          decoration: BoxDecoration(
-            color: CoresApp.fundo.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: CoresApp.borda,
-            ),
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.add_photo_alternate_outlined,
-                color: CoresApp.primaria,
-                size: 22,
-              ),
-              SizedBox(height: 5),
-              Text(
-                'Adicionar',
-                style: TextStyle(
-                  color: CoresApp.textoSecundario,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniatura(
-    OrientacaoModel item,
-    int index,
-    StateSetter setStateModal,
-  ) {
-    return Stack(
-      children: [
-        GestureDetector(
-          onTap: () => _visualizarImagem(
-            item.imagens[index],
-          ),
-          child: Container(
-            width: 80,
-            height: 76,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: CoresApp.borda,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: Image.memory(
-                _decodeImagem(
-                  item.imagens[index],
-                ),
-                width: 80,
-                height: 76,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) {
-                  return const Icon(
-                    Icons.broken_image_outlined,
-                    color: CoresApp.textoSecundario,
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: Material(
-            color: Colors.black54,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: () async {
-                setStateModal(() {
-                  item.imagens.removeAt(index);
-                });
-
-                await _salvarBloco(item);
-              },
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 11,
-                  color: Colors.white,
-                ),
-              ),
-            ),
           ),
         ),
       ],
@@ -1266,7 +1166,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         20,
         11,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
             color: CoresApp.borda,
@@ -1275,13 +1175,13 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.info_outline_rounded,
             size: 14,
             color: CoresApp.textoSecundario,
           ),
           const SizedBox(width: 7),
-          const Expanded(
+          Expanded(
             child: Text(
               'As alterações são salvas automaticamente.',
               style: TextStyle(
@@ -1299,7 +1199,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
               Navigator.of(dialogContext).pop();
             },
-            child: const Text(
+            child: Text(
               'Salvar e Fechar',
               style: TextStyle(
                 color: CoresApp.primaria,
@@ -1315,52 +1215,6 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   // ============================================================
   // BOTÃO COLAR PRINT
   // ============================================================
-
-  Widget _buildBotaoColarPrint(
-    OrientacaoModel item,
-  ) {
-    final bool selecionado = _cardComFoco == item.id;
-
-    return Tooltip(
-      message: 'Colar print (Ctrl + V)',
-      child: InkWell(
-        onTap: () => _colarPrint(item),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 92,
-          height: 76,
-          decoration: BoxDecoration(
-            color: selecionado
-                ? CoresApp.primaria.withValues(alpha: 0.12)
-                : CoresApp.fundo.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: selecionado ? CoresApp.primaria : CoresApp.borda,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.content_paste_rounded,
-                color: CoresApp.primaria,
-                size: 21,
-              ),
-              const SizedBox(height: 5),
-              Text(
-                _colandoImagem && selecionado ? 'Colando...' : 'Colar print',
-                style: const TextStyle(
-                  color: CoresApp.textoSecundario,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   // ============================================================
   // DISPOSE
@@ -1389,10 +1243,11 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     if (_isLoading) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: const Center(
+        body: Center(
           child: CircularProgressIndicator(
             color: CoresApp.primaria,
           ),
@@ -1414,7 +1269,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
+        preferredSize: const Size.fromHeight(68),
         child: Cabecalho(
           selectedIndex: widget.selectedIndex,
           onSelectTab: widget.onSelectTab,
@@ -1438,6 +1293,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                       context,
                       constraints,
                     ) {
+                      AppAppearance.watch(context);
+
                       final largura = constraints.maxWidth;
 
                       final int colunas = largura >= 1200
@@ -1446,12 +1303,12 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                               ? 2
                               : 1;
 
-                      final double espacamento = largura >= 1200 ? 10 : 9;
+                      final double espacamento = largura >= 1200 ? 14 : 12;
 
                       return GridView.builder(
                         padding: const EdgeInsets.fromLTRB(
                           20,
-                          4,
+                          18,
                           20,
                           25,
                         ),
@@ -1459,7 +1316,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                           crossAxisCount: colunas,
                           crossAxisSpacing: espacamento,
                           mainAxisSpacing: espacamento,
-                          mainAxisExtent: largura >= 1200 ? 76 : 78,
+                          mainAxisExtent: 112,
                         ),
                         itemCount: orientacoesFiltradas.length,
                         itemBuilder: (
@@ -1497,6 +1354,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           context,
           constraints,
         ) {
+          AppAppearance.watch(context);
+
           final largura = constraints.maxWidth;
 
           final bool compacto = largura < 1050;
@@ -1505,22 +1364,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           return AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             padding: EdgeInsets.all(
-              muitoCompacto ? 14 : 18,
+              muitoCompacto ? 14 : 23,
             ),
-            decoration: BoxDecoration(
-              color: CoresApp.superficie.withValues(alpha: 0.95),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: CoresApp.borda.withValues(alpha: 0.9),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.24),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
+            decoration:
+                AppVisuals.panel(prominent: true, radius: 18, waves: true),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1646,8 +1493,8 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
   Widget _buildIconeTitulo() {
     return Container(
-      width: 48,
-      height: 48,
+      width: 76,
+      height: 76,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1669,10 +1516,10 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           ),
         ],
       ),
-      child: const Icon(
+      child: Icon(
         Icons.lightbulb_outline_rounded,
         color: CoresApp.primaria,
-        size: 25,
+        size: 42,
       ),
     );
   }
@@ -1681,13 +1528,13 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Orientações',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: CoresApp.textoPrincipal,
-            fontSize: 21,
+            fontSize: 30,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.3,
             height: 1.1,
@@ -1700,7 +1547,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: CoresApp.textoSecundario.withValues(alpha: 0.9),
-            fontSize: 10.5,
+            fontSize: 14,
             height: 1.2,
           ),
         ),
@@ -1716,7 +1563,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 11,
-        vertical: 9,
+        vertical: 12,
       ),
       decoration: BoxDecoration(
         color: CoresApp.fundo.withValues(alpha: 0.58),
@@ -1729,22 +1576,22 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: CoresApp.primaria.withValues(alpha: 0.11),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
-              size: 14,
+              size: 22,
               color: CoresApp.primaria,
             ),
           ),
           const SizedBox(width: 7),
           Text(
             valor,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontWeight: FontWeight.w800,
               fontSize: 13,
@@ -1753,9 +1600,9 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           const SizedBox(width: 4),
           Text(
             legenda,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoSecundario,
-              fontSize: 9,
+              fontSize: 12,
             ),
           ),
         ],
@@ -1776,7 +1623,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
             onPressed: _adicionarBloco,
             style: ElevatedButton.styleFrom(
               backgroundColor: CoresApp.primaria,
-              foregroundColor: CoresApp.textoPrincipal,
+              foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
               elevation: 3,
               shadowColor: CoresApp.primaria.withValues(alpha: 0.25),
               padding: EdgeInsets.zero,
@@ -1810,7 +1657,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: CoresApp.primaria,
-          foregroundColor: CoresApp.textoPrincipal,
+          foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
           elevation: 3,
           shadowColor: CoresApp.primaria.withValues(alpha: 0.25),
           padding: const EdgeInsets.symmetric(
@@ -1832,21 +1679,21 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
           _filtroPesquisa = value;
         });
       },
-      style: const TextStyle(
+      style: TextStyle(
         color: CoresApp.textoPrincipal,
         fontSize: 12,
         fontWeight: FontWeight.w500,
       ),
       decoration: InputDecoration(
         hintText: 'Pesquisar orientação...',
-        hintStyle: const TextStyle(
+        hintStyle: TextStyle(
           color: CoresApp.textoSecundario,
-          fontSize: 11,
+          fontSize: 13,
         ),
         prefixIcon: Container(
           width: 42,
           alignment: Alignment.center,
-          child: const Icon(
+          child: Icon(
             Icons.search_rounded,
             color: CoresApp.textoSecundario,
             size: 18,
@@ -1855,7 +1702,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         suffixIcon: _pesquisaController.text.isNotEmpty
             ? IconButton(
                 tooltip: 'Limpar pesquisa',
-                icon: const Icon(
+                icon: Icon(
                   Icons.close_rounded,
                   color: CoresApp.textoSecundario,
                   size: 15,
@@ -1875,19 +1722,19 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: CoresApp.borda,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: CoresApp.borda,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: CoresApp.primaria,
             width: 1.3,
           ),
@@ -1931,19 +1778,19 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                 color: CoresApp.erro.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.error_outline_rounded,
                 color: CoresApp.erro,
                 size: 18,
               ),
             ),
             const SizedBox(width: 9),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Não foi possível carregar as orientações do Firebase.',
                 style: TextStyle(
                   color: CoresApp.textoPrincipal,
-                  fontSize: 11,
+                  fontSize: 13,
                 ),
               ),
             ),
@@ -2018,7 +1865,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                   ? 'Nenhuma orientação encontrada'
                   : 'Nenhuma orientação cadastrada',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: CoresApp.textoPrincipal,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -2030,9 +1877,9 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                   ? 'Tente pesquisar usando outro termo.'
                   : 'Crie sua primeira orientação para manter seus procedimentos organizados.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: CoresApp.textoSecundario,
-                fontSize: 11,
+                fontSize: 13,
                 height: 1.55,
               ),
             ),
@@ -2052,7 +1899,7 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: CoresApp.primaria,
-                  foregroundColor: CoresApp.textoPrincipal,
+                  foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
                   elevation: 2,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 17,
@@ -2079,6 +1926,9 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
   ) {
     return _OrientacaoCard(
       item: item,
+      accent: _orientacoes.indexOf(item) % 4 == 1
+          ? AppVisuals.violet
+          : AppPalette.accent,
       onTap: () => _abrirModalOrientacao(item),
       onDelete: () => _removerBloco(item),
     );
@@ -2091,11 +1941,13 @@ class _OrientacaoScreenState extends State<OrientacaoScreen> {
 
 class _OrientacaoCard extends StatefulWidget {
   final OrientacaoModel item;
+  final Color accent;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   const _OrientacaoCard({
     required this.item,
+    required this.accent,
     required this.onTap,
     required this.onDelete,
   });
@@ -2109,259 +1961,90 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     final item = widget.item;
-
-    final bool possuiConteudo = item.controller.text.trim().isNotEmpty;
-
+    final hasContent =
+        item.controller.text.trim().isNotEmpty || item.imagens.isNotEmpty;
     return MouseRegion(
-      onEnter: (_) {
-        setState(() {
-          _hovered = true;
-        });
-      },
-      onExit: (_) {
-        setState(() {
-          _hovered = false;
-        });
-      },
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
       cursor: SystemMouseCursors.click,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-        transform: Matrix4.translationValues(
-          0,
-          _hovered ? -1 : 0,
-          0,
-        ),
-        decoration: BoxDecoration(
-          color: _hovered
-              ? CoresApp.superficie.withValues(alpha: 0.98)
-              : CoresApp.superficie.withValues(alpha: 0.91),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: _hovered
-                ? CoresApp.primaria.withValues(alpha: 0.42)
-                : CoresApp.borda.withValues(alpha: 0.85),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(
-                alpha: _hovered ? 0.16 : 0.06,
-              ),
-              blurRadius: _hovered ? 12 : 6,
-              offset: Offset(
-                0,
-                _hovered ? 4 : 2,
-              ),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Material(
+      child: Container(
+        decoration: AppVisuals.panel(
+            accent: widget.accent, prominent: true, radius: 22, waves: true),
+        child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: widget.onTap,
-              borderRadius: BorderRadius.circular(10),
-              hoverColor: Colors.transparent,
-              splashColor: CoresApp.primaria.withValues(alpha: 0.05),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 3,
-                    height: double.infinity,
-                    decoration: BoxDecoration(
-                      color: _hovered
-                          ? CoresApp.primaria
-                          : CoresApp.primaria.withValues(alpha: 0.50),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        children: [
-                          AnimatedContainer(
-                            duration: const Duration(
-                              milliseconds: 150,
-                            ),
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: _hovered
-                                  ? CoresApp.primaria.withValues(alpha: 0.15)
-                                  : CoresApp.primaria.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(9),
-                              border: Border.all(
-                                color: CoresApp.primaria.withValues(
-                                  alpha: _hovered ? 0.26 : 0.12,
-                                ),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.lightbulb_outline_rounded,
-                              color: CoresApp.primaria,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            flex: 4,
+              borderRadius: BorderRadius.circular(22),
+              child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                            width: 44,
+                            height: 44,
+                            decoration:
+                                AppVisuals.iconTile(accent: widget.accent),
+                            child: Icon(Icons.lightbulb_outline_rounded,
+                                color: CoresApp.destaque, size: 28)),
+                        const SizedBox(width: 12),
+                        Expanded(
                             child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.titulo,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(item.titulo,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: _hovered
-                                        ? CoresApp.textoPrincipal
-                                        : CoresApp.destaque,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 11.5,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      possuiConteudo
-                                          ? Icons.check_circle_outline_rounded
-                                          : Icons.edit_note_rounded,
-                                      size: 10,
-                                      color: possuiConteudo
-                                          ? CoresApp.sucesso
-                                          : CoresApp.textoSecundario,
-                                    ),
-                                    const SizedBox(
-                                      width: 4,
-                                    ),
-                                    Flexible(
-                                      child: Text(
-                                        possuiConteudo
-                                            ? 'Conteúdo disponível'
-                                            : 'Sem conteúdo',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                      color: CoresApp.textoPrincipal,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 4),
+                              Expanded(
+                                  child: Text(
+                                      item.controller.text
+                                          .replaceAll('\n', ' '),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
                                           color: CoresApp.textoSecundario,
-                                          fontSize: 8,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            flex: 5,
-                            child: Container(
-                              height: 38,
-                              padding: const EdgeInsets.only(
-                                left: 10,
-                                right: 7,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(
-                                    color:
-                                        CoresApp.borda.withValues(alpha: 0.8),
-                                  ),
-                                ),
-                              ),
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                possuiConteudo
-                                    ? item.controller.text.replaceAll(
-                                        '\n',
-                                        ' ',
-                                      )
-                                    : 'Clique para adicionar o conteúdo...',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: possuiConteudo
-                                      ? CoresApp.textoSecundario
-                                      : CoresApp.textoSecundario.withValues(
-                                          alpha: 0.55,
-                                        ),
-                                  fontSize: 9.5,
-                                  height: 1.25,
-                                  fontStyle: possuiConteudo
-                                      ? FontStyle.normal
-                                      : FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          if (item.imagens.isNotEmpty)
-                            _buildIndicadorAnexos(
-                              item.imagens.length,
-                            ),
-                          if (item.imagens.isNotEmpty) const SizedBox(width: 5),
-                          AnimatedOpacity(
-                            opacity: _hovered ? 1 : 0,
-                            duration: const Duration(milliseconds: 120),
-                            child: IgnorePointer(
-                              ignoring: !_hovered,
-                              child: Container(
-                                width: 27,
-                                height: 27,
-                                decoration: BoxDecoration(
-                                  color: CoresApp.erro.withValues(alpha: 0.07),
-                                  borderRadius: BorderRadius.circular(7),
-                                ),
-                                child: IconButton(
-                                  tooltip: 'Excluir orientação',
-                                  icon: const Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: CoresApp.erro,
-                                    size: 14,
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: widget.onDelete,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 3),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 130),
-                            width: 25,
-                            height: 27,
-                            decoration: BoxDecoration(
-                              color: _hovered
-                                  ? CoresApp.primaria.withValues(alpha: 0.08)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(7),
-                            ),
-                            child: Icon(
-                              Icons.chevron_right_rounded,
-                              color: _hovered
-                                  ? CoresApp.primaria
-                                  : CoresApp.textoSecundario,
-                              size: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+                                          fontSize: 13,
+                                          height: 1.25))),
+                              Row(children: [
+                                Icon(
+                                    hasContent
+                                        ? Icons.check_circle_outline
+                                        : Icons.edit_note,
+                                    color: CoresApp.sucesso,
+                                    size: 18),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                    child: Text(
+                                        hasContent
+                                            ? 'Conte\u00fado dispon\u00edvel'
+                                            : 'Sem conte\u00fado',
+                                        style: TextStyle(
+                                            color: CoresApp.textoPrincipal,
+                                            fontSize: 13))),
+                                if (item.imagens.isNotEmpty)
+                                  _buildIndicadorAnexos(item.imagens.length),
+                              ]),
+                            ])),
+                        Column(children: [
+                          Icon(Icons.chevron_right,
+                              color: CoresApp.textoPrincipal, size: 26),
+                          const Spacer(),
+                          if (_hovered)
+                            IconButton(
+                                tooltip: 'Excluir orienta\u00e7\u00e3o',
+                                onPressed: widget.onDelete,
+                                icon: Icon(Icons.delete_outline,
+                                    color: CoresApp.erro, size: 18)),
+                        ]),
+                      ])),
+            )),
       ),
     );
   }
@@ -2382,7 +2065,7 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.image_outlined,
             size: 11,
             color: CoresApp.primaria,
@@ -2390,7 +2073,7 @@ class _OrientacaoCardState extends State<_OrientacaoCard> {
           const SizedBox(width: 4),
           Text(
             '$quantidade',
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontSize: 8.5,
               fontWeight: FontWeight.w800,

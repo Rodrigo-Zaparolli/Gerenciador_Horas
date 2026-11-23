@@ -3,11 +3,15 @@ import json
 import os
 import re
 import sys
+from send_progress import observe_log, completed
+from operation_log import emit_log
+from phase_confirmation import read_phase_rows, mismatched_phases, close_new_duplicate_requests, fill_empty_original_dates, validate_phase_targets
 import unicodedata
 from pathlib import Path
 from datetime import datetime
 
 from playwright.async_api import async_playwright
+from config import HEADLESS
 
 
 # ================================================================
@@ -27,7 +31,10 @@ LOCAL_APP_DATA = Path(
     )
 )
 
-EDESK_DATA_DIR = LOCAL_APP_DATA / "Gerenciador de Horas" / "edesk_bot"
+EDESK_DATA_DIR = Path(
+    os.environ.get("EDESK_DATA_DIR")
+    or LOCAL_APP_DATA / "Gerenciador de Horas" / "edesk_bot"
+)
 PROFILE_DIR = EDESK_DATA_DIR / "perfil"
 LOG_DIR = EDESK_DATA_DIR / "logs"
 
@@ -59,21 +66,8 @@ PERMITIR_SALVAMENTO = True
 # ================================================================
 
 def log(msg):
-    texto = str(msg)
-
-    linha = (
-        f"[E-Desk][Python] "
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-        f"{texto}"
-    )
-
-    print(linha, flush=True)
-
-    try:
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(linha + "\n")
-    except Exception:
-        pass
+    observe_log(msg)
+    emit_log(msg, f"[E-Desk][Python] [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]", LOG_FILE)
 
 
 # ================================================================
@@ -123,6 +117,7 @@ def somente_numeros(texto):
 
 def chave_fase(nome):
     valor = normalizar(nome)
+    valor = re.sub(r'\s*\(oh\)\s*$', '', valor).strip()
 
     # ------------------------------------------------------------
     # Remove prefixos usados pelo E-Desk
@@ -1860,6 +1855,7 @@ async def pesquisar_solicitacao(
         f"{pagina_solicitacao.url}"
     )
 
+    await close_new_duplicate_requests(page.context, pagina_solicitacao, paginas_antes)
     return pagina_solicitacao
 
 # ================================================================
@@ -3502,6 +3498,8 @@ async def atualizar_fases(
                     nome_flutter
                 )
 
+                if chave in fases_recebidas:
+                    raise ValueError('A mesma fase foi enviada mais de uma vez. Confira os vinculos antes de enviar.')
                 fases_recebidas[chave] = {
                     "nome": nome_flutter,
                     "dataInicial": formatar_data(
@@ -3619,6 +3617,10 @@ async def atualizar_fases(
             qtd_inicio,
             qtd_fim,
         )
+
+        validate_phase_targets(
+            [item['nome'] for item in fases_recebidas.values()],
+            await nomes.all_text_contents(), chave_fase)
 
         for i in range(
             quantidade
@@ -3848,6 +3850,10 @@ async def atualizar_fases(
             # REGISTRAR RESULTADO
             # ========================================================
 
+            if i < qtd_inicio:
+                await fill_empty_original_dates(
+                    datas_inicio.nth(i), data_inicial_desejada, data_final_desejada)
+
             fases_atualizadas.append({
                 "nome": nome_edesk,
                 "dataInicial": data_inicial_desejada,
@@ -3997,7 +4003,7 @@ async def atualizar_fases(
 #
 # ================================================================
 
-async def salvar_fases(page):
+async def salvar_fases(page, fases_esperadas=None):
 
     log("")
     log("=" * 70)
@@ -4062,12 +4068,8 @@ async def salvar_fases(page):
 
         candidatos = []
 
-        elementos = page.locator(
-            "#cph1_rpvFasePro input, "
-            "#cph1_rpvFasePro button, "
-            "#cph1_rpvFasePro a, "
-            "#cph1_rpvFasePro [role='button']"
-        )
+        elementos = page.get_by_role('button', name=re.compile(r'^salvar$', re.I)).or_(
+            page.get_by_role('link', name=re.compile(r'^salvar$', re.I)))
 
         quantidade = await elementos.count()
 
@@ -4265,10 +4267,16 @@ async def salvar_fases(page):
             "Clicando em SALVAR FASES..."
         )
 
-        await botao_salvar.click(
-            force=True,
-            timeout=15000,
-        )
+        if not fases_esperadas:
+            raise ValueError('Nenhuma fase disponível para confirmar o salvamento.')
+        async with page.expect_response(lambda response:
+                response.request.method == 'POST' and
+                '/Portal/Solicitacao.aspx' in response.url, timeout=20000) as saved_response:
+            await botao_salvar.click(timeout=15000)
+        response = await saved_response.value
+        await response.body()
+        if response.status >= 400:
+            raise ValueError('O E-Desk recusou o salvamento das fases.')
 
         log(
             "Clique em SALVAR executado."
@@ -4278,9 +4286,12 @@ async def salvar_fases(page):
             "Aguardando processamento do E-Desk..."
         )
 
-        await asyncio.sleep(
-            3
-        )
+        await page.reload(wait_until='domcontentloaded', timeout=30000)
+        if not await abrir_fases(page):
+            raise ValueError('Não foi possível reabrir as fases para confirmar o salvamento.')
+        differences = mismatched_phases(fases_esperadas, await read_phase_rows(page))
+        if differences:
+            raise ValueError(' '.join(differences))
 
         return {
             "salvo": True,
@@ -4305,8 +4316,9 @@ async def salvar_fases(page):
 # ================================================================
 
 async def executar():
-
+    global PERMITIR_SALVAMENTO
     request = ler_request()
+    PERMITIR_SALVAMENTO = bool(request and request.get('enviar') is True)
 
     if not request:
 
@@ -4399,7 +4411,7 @@ async def executar():
                     PROFILE_DIR
                 ),
 
-                headless=False,
+                headless=HEADLESS,
 
                 viewport={
                     "width": 1440,
@@ -4570,7 +4582,7 @@ async def executar():
             if fases_atualizadas and not erros:
 
                 resultado_salvamento = await salvar_fases(
-                    page
+                    page, fases_atualizadas
                 )
 
                 if not resultado_salvamento.get(
@@ -4595,6 +4607,11 @@ async def executar():
                     False
                 )
             )
+            if salvo:
+                for index in range(len(fases_atualizadas)):
+                    fases_atualizadas[index]['salva'] = True
+                    fases_atualizadas[index]['somentePreenchida'] = False
+                    completed(f'phase-{index}')
 
             # ====================================================
             # RESULTADO
@@ -4686,16 +4703,15 @@ async def executar():
 
                     log("")
                     log("=" * 70)
-                    log("NAVEGADOR PERMANECERÁ ABERTO")
+                    log("ENCERRANDO A EXECUÇÃO DE FASES")
                     log("=" * 70)
 
                     log(
-                        "O navegador NÃO será fechado automaticamente."
+                        "Devolvendo o resultado ao aplicativo."
                     )
 
                     log(
-                        "A tela permanecerá visível "
-                        "para conferência manual."
+                        "O perfil e a sessão permanecem salvos."
                     )
 
                     log(
@@ -4703,7 +4719,7 @@ async def executar():
                         f"PERMITIR_SALVAMENTO={PERMITIR_SALVAMENTO}"
                     )
 
-                    await asyncio.Event().wait()
+                    await context.close()
 
                 except Exception as e:
 

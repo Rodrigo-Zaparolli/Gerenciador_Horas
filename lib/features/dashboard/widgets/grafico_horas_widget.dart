@@ -1,900 +1,292 @@
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
+import 'dart:math' as math;
+import '../../../domain/models/monthly_hours.dart';
 import 'package:flutter/material.dart';
 
 class DailyHoursPoint {
   final String label;
   final double hours;
-
-  /// Data real representada pela barra.
-  ///
-  /// É opcional para não quebrar pontos antigos.
   final DateTime? date;
-
   final bool isWeekend;
   final bool isHighlighted;
-
-  const DailyHoursPoint({
-    required this.label,
-    required this.hours,
-    this.date,
-    this.isWeekend = false,
-    this.isHighlighted = false,
-  });
+  const DailyHoursPoint(
+      {required this.label,
+      required this.hours,
+      this.date,
+      this.isWeekend = false,
+      this.isHighlighted = false});
 }
 
 class GraficoHorasWidget extends StatelessWidget {
+  final MonthlyHours? monthly;
+  final double monthlyWorked;
   final List<DailyHoursPoint> points;
   final String Function(double) formatHours;
-
-  /// Chamado quando o usuário clica em um dia do gráfico.
-  ///
-  /// Recebe a data correspondente à barra clicada.
   final ValueChanged<DateTime>? onDayTap;
+  const GraficoHorasWidget(
+      {super.key,
+      required this.points,
+      required this.formatHours,
+      this.onDayTap,
+      this.monthly,
+      this.monthlyWorked = 0});
+  static Color get cyan => AppPalette.accent;
+  static Color get green => AppPalette.success;
+  static Color get muted => AppPalette.secondary;
 
-  const GraficoHorasWidget({
-    super.key,
-    required this.points,
-    required this.formatHours,
-    this.onDayTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // ==============================================================
-    // TOTAL DE HORAS EXIBIDAS NO GRÁFICO
-    // ==============================================================
-
-    final double totalHours = points.fold(
-      0,
-      (sum, point) => sum + point.hours,
-    );
-
-    // ==============================================================
-    // TOTAL DA SEMANA ATUAL
-    //
-    // Considera:
-    // segunda-feira 00:00
-    // até
-    // domingo 23:59:59
-    // ==============================================================
-
-    final DateTime now = DateTime.now();
-
-    final DateTime today = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    );
-
-    // DateTime.weekday:
-    // segunda = 1
-    // terça   = 2
-    // ...
-    // domingo = 7
-
-    final DateTime startOfWeek = today.subtract(
-      Duration(days: today.weekday - 1),
-    );
-
-    final DateTime startOfNextWeek = startOfWeek.add(
-      const Duration(days: 7),
-    );
-
-    final double weeklyHours = points.fold(
-      0,
-      (sum, point) {
-        final DateTime? date = point.date;
-
-        if (date == null) {
-          return sum;
-        }
-
-        final DateTime pointDay = DateTime(
-          date.year,
-          date.month,
-          date.day,
-        );
-
-        final bool belongsToCurrentWeek = !pointDay.isBefore(startOfWeek) &&
-            pointDay.isBefore(startOfNextWeek);
-
-        if (!belongsToCurrentWeek) {
-          return sum;
-        }
-
-        return sum + point.hours;
-      },
-    );
-
-    // ==============================================================
-    // MAIOR PONTO
-    // ==============================================================
-
-    final DailyHoursPoint? highestPoint = points.isEmpty
-        ? null
-        : points.reduce(
-            (a, b) => a.hours >= b.hours ? a : b,
-          );
-
-    return SizedBox(
-      width: double.infinity,
-      height: double.infinity,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(
-          14,
-          12,
-          14,
-          9,
-        ),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF15171E),
-              Color(0xFF101116),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.065),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.42),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: const Color(0xFF0099FF).withValues(alpha: 0.035),
-              blurRadius: 30,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // ======================================================
-            // CABEÇALHO
-            // ======================================================
-
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Ícone
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        const Color(0xFF0099FF).withValues(alpha: 0.18),
-                        const Color(0xFF0099FF).withValues(alpha: 0.055),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFF0099FF).withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.bar_chart_rounded,
-                    color: Color(0xFF35B4FF),
-                    size: 18,
-                  ),
-                ),
-
-                const SizedBox(width: 10),
-
-                // ==================================================
-                // TÍTULO
-                // ==================================================
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'Evolução de Horas',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.05,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Acompanhamento diário',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.38),
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // ==================================================
-                // RESUMOS DE HORAS
-                // ==================================================
-
-                if (points.isNotEmpty)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // ------------------------------------------------
-                      // TOTAL
-                      // ------------------------------------------------
-
-                      _HoursSummary(
-                        value: formatHours(totalHours),
-                        label: 'TOTAL',
-                        color: const Color(0xFF55C4FF),
-                      ),
-
-                      const SizedBox(width: 5),
-
-                      // ------------------------------------------------
-                      // SEMANA
-                      // ------------------------------------------------
-
-                      _HoursSummary(
-                        value: formatHours(weeklyHours),
-                        label: 'SEMANA',
-                        color: const Color(0xFF36D6A0),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 9),
-
-            // ======================================================
-            // LINHA INFORMATIVA
-            // ======================================================
-
-            Row(
-              children: [
-                Container(
-                  width: 5,
-                  height: 5,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF21A9FF),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  'Clique em um dia para ver os apontamentos',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.34),
-                    fontSize: 7.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const Spacer(),
-                if (highestPoint != null)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.trending_up_rounded,
-                        color: const Color(0xFF55C4FF).withValues(alpha: 0.75),
-                        size: 11,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        'Pico ${formatHours(highestPoint.hours)}',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.38),
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 6),
-
-            // ======================================================
-            // SEPARADOR
-            // ======================================================
-
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.00),
-                    Colors.white.withValues(alpha: 0.055),
-                    Colors.white.withValues(alpha: 0.00),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 5),
-
-            // ======================================================
-            // GRÁFICO
-            // ======================================================
-
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (points.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'Nenhum registro de horas',
-                        style: TextStyle(
-                          color: Colors.white38,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    );
-                  }
-
-                  return Stack(
-                    children: [
-                      // ==================================================
-                      // LINHAS HORIZONTAIS
-                      // ==================================================
-
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildGridLine(
-                                opacity: 0.035,
-                              ),
-                              _buildGridLine(
-                                opacity: 0.025,
-                              ),
-                              _buildGridLine(
-                                opacity: 0.025,
-                              ),
-                              _buildGridLine(
-                                opacity: 0.035,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // ==================================================
-                      // INDICADOR BASE
-                      // ==================================================
-
-                      Positioned(
-                        left: 2,
-                        right: 2,
-                        bottom: 17,
-                        child: Container(
-                          height: 1,
-                          color: Colors.white.withValues(alpha: 0.055),
-                        ),
-                      ),
-
-                      // ==================================================
-                      // BARRAS
-                      // ==================================================
-
-                      Positioned.fill(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: points
-                              .map(
-                                (point) => Expanded(
-                                  child: _InteractiveBarItem(
-                                    point: point,
-                                    formatHours: formatHours,
-                                    onTap: onDayTap,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGridLine({
-    double opacity = 0.025,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 2,
-      ),
-      child: Container(
-        height: 1,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Colors.white.withValues(alpha: 0.00),
-              Colors.white.withValues(alpha: opacity),
-              Colors.white.withValues(alpha: 0.00),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ==================================================================
-// RESUMO DE HORAS
-// ==================================================================
-
-class _HoursSummary extends StatelessWidget {
-  final String value;
-  final String label;
-  final Color color;
-
-  const _HoursSummary({
-    required this.value,
-    required this.label,
-    required this.color,
-  });
+  Widget _label(String value,
+          {double size = 10, Color? color, bool bold = false}) =>
+      Text(value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+              fontSize: size,
+              height: 1.2,
+              color: color ?? muted,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w400));
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
+    final now = DateTime.now();
+    final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
+    final weekEnd =
+        DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
+    final total = points.fold(0.0, (sum, point) => sum + point.hours);
+    final week = points
+        .where((point) =>
+            point.date != null &&
+            !point.date!.isBefore(weekStart) &&
+            point.date!.isBefore(weekEnd))
+        .fold(0.0, (sum, point) => sum + point.hours);
+    final peak =
+        points.fold(0.0, (value, point) => math.max(value, point.hours));
+    final scale = math.max(1.0, peak.ceilToDouble());
+
+    Widget summary(String name, double value, Color color) => Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _label(name),
+          const SizedBox(height: 2),
+          _label(formatHours(value),
+              size: 18, color: color, bold: true)
+        ]));
+
     return Container(
-      constraints: const BoxConstraints(
-        minWidth: 54,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 6,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.065),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: color.withValues(alpha: 0.14),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            style: TextStyle(
-              color: color,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.35),
-              fontSize: 6.2,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==================================================================
-// ITEM INDIVIDUAL DA BARRA
-// ==================================================================
-
-class _InteractiveBarItem extends StatefulWidget {
-  final DailyHoursPoint point;
-  final String Function(double) formatHours;
-  final ValueChanged<DateTime>? onTap;
-
-  const _InteractiveBarItem({
-    required this.point,
-    required this.formatHours,
-    this.onTap,
-  });
-
-  @override
-  State<_InteractiveBarItem> createState() => _InteractiveBarItemState();
-}
-
-class _InteractiveBarItemState extends State<_InteractiveBarItem> {
-  bool _isHovered = false;
-  bool _isPressed = false;
-
-  void _handleTap() {
-    final date = widget.point.date;
-
-    if (date == null) {
-      return;
-    }
-
-    widget.onTap?.call(date);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final point = widget.point;
-
-    final bool isZero = point.hours <= 0;
-
-    // Mantém o mesmo limite visual de 10 horas.
-    final double heightPct = (point.hours / 10.0).clamp(
-      0.0,
-      1.0,
-    );
-
-    final Color baseColor =
-        point.isHighlighted ? const Color(0xFFFFC400) : const Color(0xFF0099FF);
-
-    final Color hoverColor =
-        point.isHighlighted ? const Color(0xFFFFD95A) : const Color(0xFF38BBFF);
-
-    final Color currentBarColor = _isHovered ? hoverColor : baseColor;
-
-    final double barWidth = _isHovered || _isPressed ? 15.0 : 10.0;
-
-    return MouseRegion(
-      onEnter: (_) {
-        setState(() {
-          _isHovered = true;
-        });
-      },
-      onExit: (_) {
-        setState(() {
-          _isHovered = false;
-          _isPressed = false;
-        });
-      },
-      cursor: point.date != null
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _handleTap,
-        onTapDown: point.date == null
-            ? null
-            : (_) {
-                setState(() {
-                  _isPressed = true;
-                });
-              },
-        onTapUp: point.date == null
-            ? null
-            : (_) {
-                setState(() {
-                  _isPressed = false;
-                });
-              },
-        onTapCancel: point.date == null
-            ? null
-            : () {
-                setState(() {
-                  _isPressed = false;
-                });
-              },
-        child: Tooltip(
-          message: point.date != null
-              ? '${point.label}: '
-                  '${widget.formatHours(point.hours)} hrs\n'
-                  'Clique para ver os apontamentos'
-              : '${point.label}: '
-                  '${widget.formatHours(point.hours)} hrs',
-          waitDuration: const Duration(
-            milliseconds: 180,
-          ),
-          decoration: BoxDecoration(
-            color: const Color(0xFF20232B),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.40),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          textStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 1.5,
-            ),
-            child: Column(
-              children: [
-                // ==================================================
-                // VALOR DAS HORAS
-                // ==================================================
-
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(
-                    milliseconds: 160,
-                  ),
-                  curve: Curves.easeOut,
-                  style: TextStyle(
-                    color: _isHovered
-                        ? Colors.white
-                        : (point.isHighlighted
-                            ? const Color(0xFFFFC400)
-                            : Colors.white.withValues(alpha: 0.62)),
-                    fontSize: _isHovered ? 9.5 : 8.5,
-                    fontWeight: _isHovered ? FontWeight.w800 : FontWeight.w600,
-                    height: 1,
-                  ),
-                  child: Text(
-                    widget.formatHours(point.hours),
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                // ==================================================
-                // ÁREA DA BARRA
-                // ==================================================
-
+        padding: AppVisuals.cardPadding,
+        decoration: AppVisuals.card,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LayoutBuilder(builder: (context, constraints) {
+            AppAppearance.watch(context);
+            final title = Row(children: [
+              Icon(Icons.bar_chart, color: cyan, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: _label('Evolução de horas',
+                      size: 13, color: AppPalette.text, bold: true)),
+            ]);
+            final values = monthly;
+            if (values == null) {
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    title,
+                    _label('Últimos ${points.length} dias'),
+                    const SizedBox(height: 9)
+                  ]);
+            }
+            Widget value(String label, double hours, Color color) => Expanded(
+                child: Tooltip(
+                    message: '$label: ${formatHours(hours)}',
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label(label, size: 8),
+                          const SizedBox(height: 3),
+                          _label(formatHours(hours),
+                              size: 14, color: color, bold: true)
+                        ])));
+            final indicators =
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _label(
+                  '${values.month.month.toString().padLeft(2, '0')}/${values.month.year} • Meta mensal',
+                  size: 8),
+              const SizedBox(height: 4),
+              Row(children: [
+                value('Previstas', values.planned, AppPalette.text),
+                value('Meta cobrada', values.goal, cyan),
+                value('Cobradas', values.charged, green),
+                value('Faltam', values.remaining, AppPalette.warning),
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final double trackHeight = constraints.maxHeight;
-
-                      final double barHeight = isZero
-                          ? 5.0
-                          : (trackHeight * heightPct).clamp(
-                              5.0,
-                              trackHeight,
-                            );
-
-                      return Align(
-                        alignment: Alignment.bottomCenter,
-                        child: Stack(
-                          alignment: Alignment.bottomCenter,
-                          children: [
-                            // ==================================================
-                            // TRILHA DA BARRA
-                            // ==================================================
-
-                            AnimatedContainer(
-                              duration: const Duration(
-                                milliseconds: 180,
-                              ),
-                              curve: Curves.easeOut,
-                              width: _isHovered ? 13 : 9,
-                              height: trackHeight,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(
-                                  alpha: _isHovered ? 0.05 : 0.022,
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: Colors.white.withValues(
-                                    alpha: _isHovered ? 0.055 : 0.018,
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            // ==================================================
-                            // BARRA PRINCIPAL
-                            // ==================================================
-
-                            AnimatedContainer(
-                              duration: const Duration(
-                                milliseconds: 220,
-                              ),
-                              curve: Curves.easeOutCubic,
-                              width: barWidth,
-                              height: barHeight,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                gradient: isZero
-                                    ? null
-                                    : LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: point.isHighlighted
-                                            ? [
-                                                const Color(
-                                                  0xFFFFE97A,
-                                                ),
-                                                const Color(
-                                                  0xFFFFC400,
-                                                ),
-                                                const Color(
-                                                  0xFFE0A500,
-                                                ),
-                                              ]
-                                            : [
-                                                _isHovered
-                                                    ? const Color(
-                                                        0xFF8DDBFF,
-                                                      )
-                                                    : const Color(
-                                                        0xFF42B8FF,
-                                                      ),
-                                                const Color(
-                                                  0xFF0099FF,
-                                                ),
-                                                const Color(
-                                                  0xFF006CB5,
-                                                ),
-                                              ],
-                                      ),
-                                color: isZero
-                                    ? Colors.white.withValues(
-                                        alpha: 0.10,
-                                      )
-                                    : null,
-                                border: Border.all(
-                                  color: isZero
-                                      ? Colors.white.withValues(
-                                          alpha: 0.055,
-                                        )
-                                      : Colors.white.withValues(
-                                          alpha: _isHovered ? 0.32 : 0.11,
-                                        ),
-                                  width: 0.7,
-                                ),
-                                boxShadow: _isHovered || point.isHighlighted
-                                    ? [
-                                        BoxShadow(
-                                          color: currentBarColor.withValues(
-                                            alpha: _isHovered ? 0.65 : 0.42,
-                                          ),
-                                          blurRadius: _isHovered ? 15 : 9,
-                                          spreadRadius: _isHovered ? 2 : 1,
-                                        ),
-                                      ]
-                                    : [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.18,
-                                          ),
-                                          blurRadius: 3,
-                                          offset: const Offset(
-                                            0,
-                                            1,
-                                          ),
-                                        ),
-                                      ],
-                              ),
-                            ),
-
-                            // ==================================================
-                            // BRILHO NO TOPO
-                            // ==================================================
-
-                            if (!isZero)
-                              AnimatedContainer(
-                                duration: const Duration(
-                                  milliseconds: 180,
-                                ),
-                                width: barWidth * 0.62,
-                                height: 2,
-                                margin: const EdgeInsets.only(
-                                  bottom: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(
-                                    alpha: _isHovered ? 0.78 : 0.36,
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-
-                            // ==================================================
-                            // MARCADOR DO DIA DESTACADO
-                            // ==================================================
-
-                            if (point.isHighlighted)
-                              Positioned(
-                                bottom: barHeight + 5,
-                                child: AnimatedContainer(
-                                  duration: const Duration(
-                                    milliseconds: 180,
-                                  ),
-                                  width: _isHovered ? 6 : 5,
-                                  height: _isHovered ? 6 : 5,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFC400),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.70),
-                                      width: 0.7,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(
-                                          0xFFFFC400,
-                                        ).withValues(alpha: 0.60),
-                                        blurRadius: 7,
-                                        spreadRadius: 1,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                // ==================================================
-                // LABEL DO DIA
-                // ==================================================
-
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(
-                    milliseconds: 160,
-                  ),
-                  curve: Curves.easeOut,
-                  style: TextStyle(
-                    color: _isHovered
-                        ? Colors.white
-                        : (point.isHighlighted
-                            ? Colors.white
-                            : point.isWeekend
-                                ? Colors.white38
-                                : Colors.white54),
-                    fontSize: _isHovered ? 8.5 : 8,
-                    fontWeight: _isHovered || point.isHighlighted
-                        ? FontWeight.w700
-                        : FontWeight.normal,
-                    height: 1,
-                  ),
-                  child: Text(
-                    point.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+                    child: Tooltip(
+                        message: values.goal > 0
+                            ? '${values.remainingPercentage.toStringAsFixed(1).replaceAll('.', ',')}% para atingir a meta mensal de horas cobradas'
+                            : 'Defina a meta mensal de horas cobradas',
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('Falta (%)', size: 8),
+                              const SizedBox(height: 3),
+                              _label(
+                                  values.goal > 0
+                                      ? '${values.remainingPercentage.toStringAsFixed(1).replaceAll('.', ',')}%'
+                                      : '—',
+                                  size: 14,
+                                  color:
+                                      values.goal > 0 && values.remaining == 0
+                                          ? green
+                                          : AppPalette.warning,
+                                  bold: true),
+                            ]))),
+              ]),
+            ]);
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (constraints.maxWidth >= 490)
+                    Row(children: [
+                      SizedBox(
+                          width: 150,
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                title,
+                                _label('Últimos ${points.length} dias', size: 8)
+                              ])),
+                      const SizedBox(width: 10),
+                      Expanded(child: indicators)
+                    ])
+                  else ...[title, const SizedBox(height: 5), indicators],
+                  const SizedBox(height: 6),
+                  Tooltip(
+                      message:
+                          '${(values.goal > 0 ? values.charged / values.goal * 100 : 0).round()}% da meta cobrada • somente Hs Cobradas',
+                      child: LinearProgressIndicator(
+                          value: values.progress,
+                          minHeight: 3,
+                          color: green,
+                          backgroundColor: AppPalette.surface)),
+                  const SizedBox(height: 6),
+                ]);
+          }),
+          Row(children: [
+            summary('Trabalhadas no m\u00eas', monthlyWorked, cyan),
+            summary('Semana', week, green)
+          ]),
+          const SizedBox(height: 9),
+          Expanded(
+              child: points.isEmpty
+                  ? Center(child: _label('Nenhum apontamento no período'))
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                          SizedBox(
+                              width: 31,
+                              child: Padding(
+                                  padding: const EdgeInsets.only(
+                                      top: 16, bottom: 19),
+                                  child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        _label(formatHours(scale), size: 8),
+                                        _label(formatHours(scale / 2), size: 8),
+                                        _label('00:00', size: 8)
+                                      ]))),
+                          Expanded(
+                              child: Stack(children: [
+                            Positioned.fill(
+                                top: 16,
+                                bottom: 19,
+                                child: Column(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: List.generate(
+                                        3,
+                                        (index) => Divider(
+                                            height: 1,
+                                            thickness: 1,
+                                            color: AppPalette.surface)))),
+                            Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: points
+                                    .map((point) => Expanded(
+                                        child: Tooltip(
+                                            message:
+                                                '${point.label}: ${formatHours(point.hours)}\nClique para ver os apontamentos',
+                                            child: InkWell(
+                                                onTap: point.date == null ||
+                                                        onDayTap == null
+                                                    ? null
+                                                    : () =>
+                                                        onDayTap!(point.date!),
+                                                borderRadius:
+                                                    BorderRadius.circular(5),
+                                                child: Padding(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 2),
+                                                    child: Column(children: [
+                                                      SizedBox(
+                                                          height: 16,
+                                                          child: _label(
+                                                              formatHours(
+                                                                  point.hours),
+                                                              size: 9,
+                                                              color: point
+                                                                      .isHighlighted
+                                                                  ? green
+                                                                  : cyan)),
+                                                      Expanded(child:
+                                                          LayoutBuilder(builder:
+                                                              (context,
+                                                                  constraints) {
+                                                        AppAppearance.watch(
+                                                            context);
+                                                        return Align(
+                                                            alignment: Alignment
+                                                                .bottomCenter,
+                                                            child: Container(
+                                                                width: math.min(
+                                                                    25.0,
+                                                                    constraints
+                                                                            .maxWidth *
+                                                                        0.65),
+                                                                height: point
+                                                                            .hours <=
+                                                                        0
+                                                                    ? 4
+                                                                    : math.max(
+                                                                        4.0,
+                                                                        constraints.maxHeight *
+                                                                            (point.hours / scale).clamp(0.0,
+                                                                                1.0)),
+                                                                decoration: BoxDecoration(
+                                                                    color: point.hours <= 0
+                                                                        ? muted
+                                                                        : point.isHighlighted
+                                                                            ? green
+                                                                            : cyan,
+                                                                    borderRadius: BorderRadius.circular(3))));
+                                                      })),
+                                                      const SizedBox(height: 5),
+                                                      SizedBox(
+                                                          height: 14,
+                                                          child: _label(
+                                                              point.label,
+                                                              size: 9)),
+                                                    ]))))))
+                                    .toList()),
+                          ])),
+                        ])),
+          const SizedBox(height: 7),
+          _label(
+              total == 0
+                  ? 'Sem horas registradas no período · clique em um dia'
+                  : 'Clique em um dia para ver os apontamentos',
+              size: 9),
+        ]));
   }
 }

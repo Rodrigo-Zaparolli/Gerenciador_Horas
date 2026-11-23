@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import 'package:gerenciador_horas/data/services/edesk_python.dart';
 import 'package:flutter/foundation.dart';
@@ -107,6 +108,16 @@ class EdeskSendResult {
   final int statusCode;
   final String message;
   final String responseBody;
+
+  bool get commentPublished {
+    try {
+      final receipt = jsonDecode(responseBody);
+      return receipt is Map && receipt['operation'] == 'comentarios' &&
+          receipt['commentSaved'] == true;
+    } on FormatException {
+      return false;
+    }
+  }
 
   const EdeskSendResult({
     required this.confirmed,
@@ -1230,6 +1241,11 @@ class EdeskService {
       String mensagem,
     )? onConcluido,
   }) async {
+    final phaseOwner = FirebaseAuth.instance.currentUser?.uid;
+    if (phaseOwner == null) {
+      return const EdeskSendResult(confirmed: false, statusCode: 401,
+          message: 'Entre novamente na conta.', responseBody: '');
+    }
     final idValue = id.trim();
     final clienteValue = cliente.trim();
 
@@ -1344,6 +1360,10 @@ class EdeskService {
     // =============================================================
 
     try {
+      if (FirebaseAuth.instance.currentUser?.uid != phaseOwner) {
+        return const EdeskSendResult(confirmed: false, statusCode: 401,
+            message: 'A conta mudou. Abra o projeto novamente.', responseBody: '');
+      }
       final resultado = await executarPythonEdeskBackground(
         requestJson: requestJson,
         enviar: true,
@@ -1373,13 +1393,42 @@ class EdeskService {
   /// ==============================================================
   /// EXECUTAR COMENTÁRIO VIA PYTHON
   /// ==============================================================
+  Future<EdeskSendResult> executarPercentualViaPython({required Uri pageUri,
+      required String solicitacao, required String idTrabalho,
+      required double percentualRealizado, String? trabalhoNome}) async {
+    if (solicitacao.trim().isEmpty || idTrabalho.trim().isEmpty ||
+        !percentualRealizado.isFinite || percentualRealizado < 0 || percentualRealizado > 100) {
+      return const EdeskSendResult(confirmed: false, statusCode: 400,
+          message: 'Informe a solicitação, o trabalho e a porcentagem entre 0 e 100.', responseBody: '');
+    }
+    final owner = FirebaseAuth.instance.currentUser?.uid;
+    if (owner == null) {
+      return const EdeskSendResult(confirmed: false, statusCode: 401, message: 'Entre novamente na conta.', responseBody: '');
+    }
+    final credentials = await EdeskCredentialsService().ler();
+    if (FirebaseAuth.instance.currentUser?.uid != owner) {
+      return const EdeskSendResult(confirmed: false, statusCode: 401, message: 'A conta mudou. Abra o projeto novamente.', responseBody: '');
+    }
+    final result = await executarPythonEdesk(requestJson: jsonEncode({
+      'url': pageUri.toString(), 'solicitacao': solicitacao.trim(),
+      'idTrabalho': idTrabalho.trim(), 'trabalhoNome': trabalhoNome,
+      'percentualRealizado': percentualRealizado, 'enviar': true,
+      'edeskCredenciais': credentials,
+    }), enviar: true, script: 'edesk_percentual.py');
+    return EdeskSendResult(confirmed: result.confirmed, statusCode: result.statusCode,
+        message: result.message, responseBody: result.responseBody);
+  }
+
   Future<EdeskSendResult> executarComentarioViaPython({
     required Uri pageUri,
     required String solicitacao,
     required String idTrabalho,
     required String tipoComentario,
     required String texto,
+    List<dynamic>? editorDeltaPreview,
+    bool commentBatchConfirmed = false,
     String? imagemBase64,
+    double? percentualRealizado,
     required bool enviar,
   }) async {
     final solicitacaoValue = solicitacao.trim();
@@ -1464,8 +1513,11 @@ class EdeskService {
       'tipo': tipoComentario,
 
       'texto': texto,
+      if (kIsWeb && editorDeltaPreview != null) '_editorDeltaPreview': editorDeltaPreview,
 
       'imagemBase64': imagemBase64,
+      if (percentualRealizado != null)
+        'percentualRealizado': percentualRealizado,
 
       'enviar': enviar,
 
@@ -1494,6 +1546,7 @@ class EdeskService {
         requestJson: requestJson,
         enviar: enviar,
         script: 'edesk_comentario.py',
+        commentBatchConfirmed: commentBatchConfirmed,
       );
 
       debugPrint(

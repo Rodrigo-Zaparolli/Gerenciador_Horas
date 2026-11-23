@@ -1,3 +1,6 @@
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -21,8 +24,10 @@ class ControleProjetosWidget extends StatefulWidget {
   final Set<String>? expandedProjectIds;
 
   final VoidCallback onNewProject;
+  final VoidCallback? onImportById;
   final VoidCallback onSynchronize;
   final VoidCallback onFilter;
+  final VoidCallback? onReset;
   final VoidCallback onManual;
   final VoidCallback onStart;
   final VoidCallback onPause;
@@ -50,8 +55,10 @@ class ControleProjetosWidget extends StatefulWidget {
     this.dataFim,
     this.expandedProjectIds,
     required this.onNewProject,
+    this.onImportById,
     required this.onSynchronize,
     required this.onFilter,
+    this.onReset,
     required this.onManual,
     required this.onStart,
     required this.onPause,
@@ -80,13 +87,12 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
 // Mantém a resposta visual imediata do dropdown.
   late String _tipoServicoLocal;
 
-  static const Color _background = Color(0xFF1B1B2A);
-  static const Color _fieldBackground = Color(0xFF101019);
-  static const Color _buttonBackground = Color(0xFF3B3B4D);
-  static const Color _green = Color(0xFF35D27F);
-  static const Color _yellow = Color(0xFFFFC400);
-  static const Color _textPrimary = Color(0xFFE5E5EA);
-  static const Color _textSecondary = Color(0xFFBDBDC7);
+  static Color get _background => AppPalette.surface;
+  static Color get _fieldBackground => AppPalette.field;
+  static Color get _accent => AppPalette.accent;
+  static Color get _green => AppPalette.primary;
+  static Color get _textPrimary => AppPalette.text;
+  static Color get _textSecondary => AppPalette.secondary;
 
   @override
   void initState() {
@@ -156,15 +162,18 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
     final DateTime? picked = await showDialog<DateTime>(
       context: context,
       builder: (BuildContext dialogContext) {
+        AppAppearance.watch(dialogContext);
+
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            AppAppearance.watch(context);
             return AlertDialog(
               backgroundColor: _background,
               elevation: 18,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.12),
+                  color: AppPalette.text.withValues(alpha: 0.12),
                 ),
               ),
               titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
@@ -179,7 +188,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       color: _green.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(9),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.calendar_today_outlined,
                       color: _green,
                       size: 17,
@@ -191,8 +200,8 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       isInicio
                           ? 'Selecionar Data Inicial'
                           : 'Selecionar Data Final',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppPalette.text,
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                       ),
@@ -225,12 +234,12 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       ),
                     ),
 
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 18),
                       child: Text(
                         '/',
                         style: TextStyle(
-                          color: Colors.white54,
+                          color: AppPalette.secondary,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
@@ -256,12 +265,12 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                       ),
                     ),
 
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 18),
                       child: Text(
                         '/',
                         style: TextStyle(
-                          color: Colors.white54,
+                          color: AppPalette.secondary,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
@@ -309,7 +318,7 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _green,
-                    foregroundColor: Colors.black,
+                    foregroundColor: AppPalette.foregroundOn(_green),
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -374,8 +383,8 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white54,
+          style: TextStyle(
+            color: AppPalette.secondary,
             fontSize: 11,
             fontWeight: FontWeight.w500,
           ),
@@ -385,13 +394,13 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
           value: value,
           dropdownColor: _background,
           underline: const SizedBox.shrink(),
-          icon: const Icon(
+          icon: Icon(
             Icons.keyboard_arrow_down,
             color: _textSecondary,
             size: 16,
           ),
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppPalette.text,
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
@@ -413,419 +422,236 @@ class _ControleProjetosWidgetState extends State<ControleProjetosWidget> {
 // BUILD
 // ==============================================================
 
+  void _limparFiltros() {
+    setState(() => _tipoServicoLocal = 'Todos os Serviços');
+    if (widget.onReset != null) {
+      widget.onReset!();
+      return;
+    }
+    widget.onTipoServicoChanged(null);
+    widget.onDataInicioChanged(null);
+    widget.onDataFimChanged(null);
+    widget.onFilter();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<String> listaServicos = [
+    AppAppearance.watch(context);
+    final listaServicos = <String>{
       'Todos os Serviços',
-      ...widget.tiposServicoOpcoes.where(
-        (item) => item != 'Todos os Serviços',
-      ),
-    ];
-
+      ...widget.tiposServicoOpcoes.where((item) => item.trim().isNotEmpty),
+    }.toList();
     if (!listaServicos.contains(_tipoServicoLocal)) {
-      _tipoServicoLocal =
-          listaServicos.isNotEmpty ? listaServicos.first : 'Todos os Serviços';
+      _tipoServicoLocal = listaServicos.first;
     }
-
     return Container(
       width: double.infinity,
       height: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-      decoration: BoxDecoration(
-        color: _background,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ========================================================
-          // DATA + RELÓGIO
-          // ========================================================
-
-          Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: BoxDecoration(
-              color: _fieldBackground,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Flexible(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 23,
-                        height: 23,
-                        decoration: BoxDecoration(
-                          color: _green.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.calendar_today_outlined,
-                          color: _green,
-                          size: 13,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          _formatDate(_now),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Container(
-                        width: 23,
-                        height: 23,
-                        decoration: BoxDecoration(
-                          color: _yellow.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.access_time,
-                          color: _yellow,
-                          size: 13,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          _formatClock(_now),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 6),
-
-          // ========================================================
-          // TÍTULO + LIMPAR
-          // ========================================================
-
-          Row(
-            children: [
-              const Icon(
-                Icons.tune,
-                color: _textSecondary,
-                size: 13,
-              ),
-              const SizedBox(width: 5),
-              const Expanded(
-                child: Text(
-                  'Filtrar Projetos',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                  ),
-                ),
-              ),
-              if (widget.filtroAtivo)
-                InkWell(
-                  borderRadius: BorderRadius.circular(5),
-                  onTap: () {
-                    setState(() {
-                      _tipoServicoLocal = 'Todos os Serviços';
-                    });
-
-                    widget.onTipoServicoChanged(
-                      'Todos os Serviços',
-                    );
-
-                    widget.onDataInicioChanged(null);
-                    widget.onDataFimChanged(null);
-
-                    widget.onFilter();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _green.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: const Text(
-                      'Limpar',
-                      style: TextStyle(
-                        color: _green,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-
-          const SizedBox(height: 4),
-
-          // ========================================================
-          // FILTRO: TIPO DE SERVIÇO
-          // ========================================================
-
-          _dropdown<String>(
-            value: _tipoServicoLocal,
-            items: listaServicos.map((tipo) {
-              return DropdownMenuItem<String>(
-                value: tipo,
-                child: Text(
-                  tipo,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value == null) return;
-
-              setState(() {
-                _tipoServicoLocal = value;
-              });
-
-              widget.onTipoServicoChanged(value);
-              widget.onFilter();
-            },
-          ),
-
-          const SizedBox(height: 4),
-
-          // ========================================================
-          // FILTRO POR PERÍODO
-          // ========================================================
-
-          Row(
-            children: [
+      padding: AppVisuals.cardPadding,
+      decoration: AppVisuals.card,
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(height: 1.2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.calendar_today_outlined, color: _green, size: 16),
+              const SizedBox(width: 7),
               Expanded(
-                child: _dataField(
-                  label: widget.dataInicio != null
-                      ? _formatDate(widget.dataInicio!)
-                      : 'Data Inicial',
-                  onTap: () => _selecionarData(
-                    context,
-                    true,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _dataField(
-                  label: widget.dataFim != null
-                      ? _formatDate(widget.dataFim!)
-                      : 'Data Final',
-                  onTap: () => _selecionarData(
-                    context,
-                    false,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 6),
-
-          // ========================================================
-          // BOTÕES
-          // ========================================================
-
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 30,
-                  child: ElevatedButton.icon(
-                    onPressed: widget.onNewProject,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _buttonBackground,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: const Icon(
-                      Icons.add,
-                      size: 15,
-                    ),
-                    label: const Text(
-                      'Novo Trabalho',
+                  child: Text(_formatDate(_now),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              SizedBox(
-                width: 30,
-                height: 30,
-                child: IconButton(
-                  onPressed: () {
-                    widget.expandedProjectIds?.clear();
-                    widget.onSynchronize();
-                  },
-                  style: IconButton.styleFrom(
-                    backgroundColor: _buttonBackground,
-                    foregroundColor: _textSecondary,
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.sync,
-                    size: 15,
-                  ),
-                  tooltip: 'Sincronizar',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-// ==============================================================
-// DROPDOWN PRINCIPAL
-// ==============================================================
-
-  Widget _dropdown<T>({
-    required T value,
-    required List<DropdownMenuItem<T>> items,
-    required ValueChanged<T?> onChanged,
-  }) {
-    return Container(
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 7),
-      decoration: BoxDecoration(
-        color: _fieldBackground,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          isExpanded: true,
-          isDense: true,
-          dropdownColor: _background,
-          icon: const Icon(
-            Icons.keyboard_arrow_down,
-            color: _textSecondary,
-            size: 17,
-          ),
-          style: const TextStyle(
-            color: _textPrimary,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w400,
-          ),
-          items: items,
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-
-// ==============================================================
-// CAMPO DE DATA
-// ==============================================================
-
-  Widget _dataField({
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 7),
-        decoration: BoxDecoration(
-          color: _fieldBackground,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
+                          color: _textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600))),
+              Icon(Icons.access_time, color: _textSecondary, size: 14),
+              const SizedBox(width: 5),
+              Text(_formatClock(_now).substring(0, 5),
+                  style: TextStyle(color: _textSecondary, fontSize: 12)),
+            ]),
+            const SizedBox(height: 6),
+            Text('Filtrar projetos',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textPrimary,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
+                style: TextStyle(
+                    color: AppPalette.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text('Tipo de serviço',
+                style: TextStyle(color: _textSecondary, fontSize: 11)),
+            const SizedBox(height: 4),
+            Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: _fieldDecoration(),
+              child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                value: _tipoServicoLocal,
+                isExpanded: true,
+                isDense: true,
+                dropdownColor: _background,
+                icon: Icon(Icons.keyboard_arrow_down,
+                    color: _textSecondary, size: 20),
+                style: TextStyle(color: _textPrimary, fontSize: 12),
+                items: listaServicos
+                    .map((tipo) => DropdownMenuItem<String>(
+                          value: tipo,
+                          child: Text(
+                              tipo == 'Todos os Serviços'
+                                  ? 'Todos os serviços'
+                                  : tipo,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ))
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _tipoServicoLocal = value);
+                  widget.onTipoServicoChanged(
+                      value == 'Todos os Serviços' ? null : value);
+                  widget.onFilter();
+                },
+              )),
             ),
-            const SizedBox(width: 4),
-            const Icon(
-              Icons.calendar_today_outlined,
-              color: _textSecondary,
-              size: 14,
-            ),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(
+                  child: _dataField(context,
+                      label: 'Data inicial',
+                      date: widget.dataInicio,
+                      isInicio: true)),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: _dataField(context,
+                      label: 'Data final',
+                      date: widget.dataFim,
+                      isInicio: false)),
+            ]),
+            SizedBox(
+                height: 24,
+                child: TextButton(
+                  onPressed: _limparFiltros,
+                  style: TextButton.styleFrom(
+                      foregroundColor: _textSecondary,
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  child: const Text('Limpar filtros',
+                      style: TextStyle(
+                          fontSize: 11, decoration: TextDecoration.underline)),
+                )),
+            const SizedBox(height: 4),
+            Row(children: [
+              Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                      height: AppVisuals.buttonHeight,
+                      child: ElevatedButton.icon(
+                        onPressed: widget.onNewProject,
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: _accent,
+                            foregroundColor: AppPalette.foregroundOn(_accent),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8))),
+                        icon: widget.onImportById == null
+                            ? const Icon(Icons.add, size: 19)
+                            : null,
+                        label: const Text('Novo trabalho',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700)),
+                      ))),
+              if (widget.onImportById != null) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                    flex: 3,
+                    child: SizedBox(
+                        height: AppVisuals.buttonHeight,
+                        child: OutlinedButton(
+                            onPressed: widget.onImportById,
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: _accent,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                minimumSize: Size.zero),
+                            child: const Text('Importar do E-Desk pelo ID',
+                                textAlign: TextAlign.center,
+                                maxLines: 3,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    height: 1.05,
+                                    fontWeight: FontWeight.w600))))),
+              ],
+              const SizedBox(width: 8),
+              SizedBox(
+                  width: 32,
+                  height: AppVisuals.buttonHeight,
+                  child: IconButton(
+                    onPressed: () {
+                      widget.expandedProjectIds?.clear();
+                      widget.onSynchronize();
+                    },
+                    style: IconButton.styleFrom(
+                        foregroundColor: _textSecondary,
+                        padding: EdgeInsets.zero,
+                        side: BorderSide(color: AppPalette.border),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8))),
+                    tooltip: 'Sincronizar',
+                    icon: const Icon(Icons.sync, size: 20),
+                  )),
+            ]),
           ],
         ),
       ),
     );
+  }
+
+  BoxDecoration _fieldDecoration() => BoxDecoration(
+        color: _fieldBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppPalette.border),
+      );
+
+  Widget _dataField(
+    BuildContext context, {
+    required String label,
+    required DateTime? date,
+    required bool isInicio,
+  }) {
+    final value = date == null ? 'dd/mm/aaaa' : _formatDate(date);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: TextStyle(color: _textSecondary, fontSize: 11)),
+      const SizedBox(height: 4),
+      Tooltip(
+          message: '$label: $value',
+          child: InkWell(
+            onTap: () => _selecionarData(context, isInicio),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                decoration: _fieldDecoration(),
+                child: Row(children: [
+                  Icon(Icons.calendar_today_outlined,
+                      color: _textSecondary, size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(
+                      child: Text(value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color:
+                                  date == null ? _textSecondary : _textPrimary,
+                              fontSize: 11))),
+                ])),
+          )),
+    ]);
   }
 }

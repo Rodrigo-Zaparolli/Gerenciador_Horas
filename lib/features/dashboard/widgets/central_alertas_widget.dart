@@ -1,3 +1,7 @@
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/domain/models/deadline_alert.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 
@@ -13,87 +17,11 @@ class CentralAlertasWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    final List<_AlertItem> alertItems = [];
-
-    for (var project in projects) {
-      if (project.subTasks != null && project.subTasks!.isNotEmpty) {
-        for (var task in project.subTasks!) {
-          // Se o status for TRAB_FIM, ignora este item.
-          if (task.status == 'TRAB_FIM') {
-            continue;
-          }
-
-          final planEnd = task.planEnd ?? task.startDate;
-
-          final normalizedEnd =
-              DateTime(planEnd.year, planEnd.month, planEnd.day);
-
-          final differenceDays = normalizedEnd.difference(today).inDays;
-
-          // Exibe atrasados ou os que vencem nos próximos 5 dias.
-          if (differenceDays <= 5) {
-            alertItems.add(
-              _AlertItem(
-                id: project.id,
-                id2: task.subId,
-                client: project.client,
-                serviceType: project.serviceType,
-                stage: task.stage,
-                planStart: task.planStart ?? task.startDate,
-                planEnd: planEnd,
-                status: task.status,
-                differenceDays: differenceDays,
-              ),
-            );
-          }
-        }
-      } else {
-        // Se o projeto principal estiver concluído, ignora.
-        if (project.status == 'TRAB_FIM') {
-          continue;
-        }
-
-        final planEnd = project.startDate;
-
-        final normalizedEnd =
-            DateTime(planEnd.year, planEnd.month, planEnd.day);
-
-        final differenceDays = normalizedEnd.difference(today).inDays;
-
-        if (differenceDays <= 5) {
-          alertItems.add(
-            _AlertItem(
-              id: project.id,
-              id2: project.id2,
-              client: project.client,
-              serviceType: project.serviceType,
-              stage: project.stage,
-              planStart: project.startDate,
-              planEnd: planEnd,
-              status: project.status,
-              differenceDays: differenceDays,
-            ),
-          );
-        }
-      }
-    }
-
-    // Mais atrasados primeiro.
-    alertItems.sort(
-      (a, b) => a.differenceDays.compareTo(b.differenceDays),
-    );
+    AppAppearance.watch(context);
+    final alertItems = DeadlineAlert.collect(projects, DateTime.now());
 
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF161622),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-        ),
-      ),
+      decoration: AppVisuals.panel(prominent: true),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -106,32 +34,32 @@ class CentralAlertasWidget extends StatelessWidget {
               vertical: 8,
             ),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A2E),
+              color: AppPalette.surface,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(12),
                 topRight: Radius.circular(12),
               ),
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: AppPalette.text.withValues(alpha: 0.08),
                 ),
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Projetos com datas a vencer nos próximos dias',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppPalette.text,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
                 ),
                 Text(
                   '(${alertItems.length} alertas)',
-                  style: const TextStyle(
-                    color: Colors.white54,
+                  style: TextStyle(
+                    color: AppPalette.secondary,
                     fontSize: 11,
                   ),
                 ),
@@ -143,13 +71,13 @@ class CentralAlertasWidget extends StatelessWidget {
           // LISTA DE ALERTAS
           // ============================================================
           alertItems.isEmpty
-              ? const Padding(
+              ? Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
                   child: Center(
                     child: Text(
                       'Nenhum projeto ou etapa com prazo crítico no momento. Tudo em ordem!',
                       style: TextStyle(
-                        color: Colors.white54,
+                        color: AppPalette.secondary,
                         fontSize: 12,
                       ),
                     ),
@@ -167,9 +95,8 @@ class CentralAlertasWidget extends StatelessWidget {
                     // Laranja se ainda está dentro do prazo crítico.
                     final bool isAtrasado = item.differenceDays < 0;
 
-                    final Color rowBgColor = index % 2 == 0
-                        ? const Color(0xFF12121B)
-                        : const Color(0xFF161622);
+                    final Color rowBgColor =
+                        index % 2 == 0 ? AppPalette.field : AppPalette.surface;
 
                     return Container(
                       padding: const EdgeInsets.symmetric(
@@ -180,7 +107,7 @@ class CentralAlertasWidget extends StatelessWidget {
                         color: rowBgColor,
                         border: Border(
                           bottom: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.04),
+                            color: AppPalette.text.withValues(alpha: 0.04),
                           ),
                         ),
                       ),
@@ -193,8 +120,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             width: 70,
                             child: Text(
                               item.id,
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: AppPalette.secondary,
                                 fontSize: 11,
                               ),
                             ),
@@ -207,8 +134,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             width: 40,
                             child: Text(
                               item.id2,
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: AppPalette.secondary,
                                 fontSize: 11,
                               ),
                             ),
@@ -221,8 +148,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             flex: 3,
                             child: Text(
                               item.client,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: AppPalette.text,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -237,8 +164,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             flex: 2,
                             child: Text(
                               item.serviceType,
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: AppPalette.secondary,
                                 fontSize: 11,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -252,8 +179,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             flex: 2,
                             child: Text(
                               item.stage,
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: AppPalette.secondary,
                                 fontSize: 11,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -267,8 +194,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             width: 90,
                             child: Text(
                               formatDateShort(item.planStart),
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: AppPalette.secondary,
                                 fontSize: 11,
                               ),
                             ),
@@ -291,8 +218,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             ),
                             child: Text(
                               formatDateShort(item.planEnd),
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: AppPalette.text,
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -319,8 +246,8 @@ class CentralAlertasWidget extends StatelessWidget {
                             ),
                             child: Text(
                               isAtrasado ? 'Atrasado' : 'Ativo',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: AppPalette.text,
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -336,32 +263,4 @@ class CentralAlertasWidget extends StatelessWidget {
       ),
     );
   }
-}
-
-// ============================================================
-// MODELO INTERNO DOS ALERTAS
-// ============================================================
-
-class _AlertItem {
-  final String id;
-  final String id2;
-  final String client;
-  final String serviceType;
-  final String stage;
-  final DateTime planStart;
-  final DateTime planEnd;
-  final String status;
-  final int differenceDays;
-
-  _AlertItem({
-    required this.id,
-    required this.id2,
-    required this.client,
-    required this.serviceType,
-    required this.stage,
-    required this.planStart,
-    required this.planEnd,
-    required this.status,
-    required this.differenceDays,
-  });
 }

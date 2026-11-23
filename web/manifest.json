@@ -1,12 +1,11 @@
 {
-    "name": "gerenciador_horas",
-    "short_name": "gerenciador_horas",
+    "name": "Gestão de Horas e Projetos",
+    "short_name": "Gestão de Horas",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0B0F19",
+    "theme_color": "#0B0F19",
+    "description": "Gerencie projetos, acompanhe tarefas e registre suas horas de trabalho.",
     "prefer_related_applications": false,
     "icons": [
         {

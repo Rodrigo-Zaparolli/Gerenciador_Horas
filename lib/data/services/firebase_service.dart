@@ -7,11 +7,185 @@ import 'package:flutter/foundation.dart';
 import 'package:gerenciador_horas/domain/models/checklist_format_model.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
+import '../../features/edesk/phase_date_sync.dart';
+import 'project_reference_upgrade.dart';
+import 'project_move_patch.dart';
+import 'project_reference_save.dart';
+import '../../features/projects/dialogs/spreadsheet_phase_dates.dart';
 
 class FirebaseService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  FirebaseService({FirebaseFirestore? database, FirebaseAuth? auth})
+      : _db = database ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
+  final FirebaseFirestore _db;
+  final FirebaseAuth _auth;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  Future<List<DocumentReference<Map<String, dynamic>>>> _projectReferences(
+      String uid, String projectId) async {
+    final owner = _db.collection('users').doc(uid);
+    final refs = <String, DocumentReference<Map<String, dynamic>>>{};
+    for (final name in ['projects', 'completed_projects']) {
+      final collection = owner.collection(name);
+      final canonical = collection.doc(projectId);
+      refs[canonical.path] = canonical;
+      final matches = await collection
+          .where('id', isEqualTo: projectId)
+          .get(const GetOptions(source: Source.server));
+      if (_auth.currentUser?.uid != uid) throw StateError('A conta mudou.');
+      if (matches.docs.length > 1) {
+        throw StateError(
+            'Há mais de um cadastro com essa solicitação. Os vínculos foram preservados; confira os cadastros antes de alterá-los.');
+      }
+      for (final document in matches.docs) {
+        refs[document.reference.path] = document.reference;
+      }
+    }
+    return refs.values.toList();
+  }
+
+  Future<void> applyAuditedPhaseDates({required String ownerUid,
+      required String projectId, required String request, required String work,
+      required String phase, required String expectedStart, required String expectedEnd,
+      required DateTime start, required DateTime end}) async {
+    if (_auth.currentUser?.uid != ownerUid) throw StateError('A conta mudou.');
+    final refs = await _projectReferences(ownerUid, projectId);
+    await _db.runTransaction((transaction) async {
+      final snapshots = [for (final ref in refs) await transaction.get(ref)];
+      if (_auth.currentUser?.uid != ownerUid) throw StateError('A conta mudou.');
+      final existing = snapshots.where((s) => s.exists).toList();
+      if (existing.length != 1) throw StateError('Cadastro ausente ou duplicado. Confira o projeto.');
+      final snapshot = existing.single;
+      final data = snapshot.data()!;
+      if ((data['id']?.toString() ?? snapshot.id) != projectId) throw StateError('Projeto diferente do consultado.');
+      final tasks = phaseDatePatch(data['subTasks'] as List? ?? [],
+          request: request, work: work, phase: phase,
+          expectedStart: expectedStart, expectedEnd: expectedEnd, start: start, end: end);
+      transaction.update(snapshot.reference, {'subTasks': tasks});
+    });
+  }
+
+  Future<void> applySpreadsheetPhaseDates({required String ownerUid,
+      required String projectId, required String reference,
+      required List<Map<String,dynamic>> jobs}) async {
+    if (_auth.currentUser?.uid != ownerUid) throw StateError('A conta mudou.');
+    final refs = await _projectReferences(ownerUid, projectId);
+    await _db.runTransaction((transaction) async {
+      final snapshots = [for (final ref in refs) await transaction.get(ref)];
+      if (_auth.currentUser?.uid != ownerUid) throw StateError('A conta mudou.');
+      final existing = snapshots.where((s) => s.exists).toList();
+      if (existing.length != 1) throw StateError('Cadastro ausente ou duplicado.');
+      final snapshot = existing.single;
+      final data = snapshot.data()!;
+      if ((data['id']?.toString() ?? snapshot.id) != projectId || data['excelLink'] != reference) {
+        throw StateError('O projeto ou a planilha vinculada mudou.');
+      }
+      final tasks = spreadsheetPhasePatch(data['subTasks'] as List? ?? [], jobs, projectId);
+      transaction.update(snapshot.reference, {'subTasks': tasks});
+    });
+  }
+
+  Future<void> applyProjectFolderMove(
+      String projectId, Map<String, dynamic> move) async {
+    final uid = _userId;
+    final owner = _db.collection('users').doc(uid);
+    final refs = await _projectReferences(uid, projectId);
+    final cache = refs.first.collection('spreadsheet').doc('snapshot');
+    final history =
+        owner.collection('folder_moves').doc(move['operation'] as String);
+    await _db.runTransaction((transaction) async {
+      final projects = [
+        for (final reference in refs) await transaction.get(reference)
+      ];
+      final saved = await transaction.get(cache);
+      if (_auth.currentUser?.uid != uid) throw StateError('A conta mudou.');
+      if (projects.any((p) =>
+          p.data()?['id'] != null && p.data()?['id'].toString() != projectId)) {
+        throw StateError(
+            'Há um cadastro com identificador conflitante. Os vínculos foram preservados.');
+      }
+      if (!projects.any((p) =>
+          p.exists &&
+          (p.data()?['id'] == null ||
+              p.data()?['id'].toString() == projectId))) {
+        throw StateError(
+            'O projeto não foi encontrado para atualizar os vínculos.');
+      }
+      for (var i = 0; i < projects.length; i++) {
+        if (projects[i].exists &&
+            (projects[i].data()?['id'] == null ||
+                projects[i].data()?['id'].toString() == projectId)) {
+          transaction.update(
+              refs[i], projectMovePatch(projects[i].data()!, move));
+        }
+      }
+      if (saved.data()?['reference'] == move['oldExcelReference']) {
+        transaction.update(cache, {'reference': move['excelReference']});
+      }
+      transaction.set(history, {
+        'projectId': projectId,
+        'source': move['source'],
+        'target': move['target'],
+        'folderReference': move['folderReference'],
+        'excelReference': move['excelReference'],
+        'completedAt': FieldValue.serverTimestamp()
+      });
+    });
+  }
+
+  Future<void> upgradeProjectLocalReference(String projectId,
+      {required String field,
+      required String previous,
+      required String resolved}) async {
+    if (!{'folderPath', 'excelLink'}.contains(field)) {
+      throw ArgumentError('Campo de vínculo inválido.');
+    }
+    final uid = _userId;
+    final owner = _db.collection('users').doc(uid);
+    final refs = await _projectReferences(uid, projectId);
+    final cache = owner
+        .collection('projects')
+        .doc(projectId)
+        .collection('spreadsheet')
+        .doc('snapshot');
+    await _db.runTransaction((transaction) async {
+      final snapshots = [
+        for (final reference in refs) await transaction.get(reference)
+      ];
+      final savedCache =
+          field == 'excelLink' ? await transaction.get(cache) : null;
+      if (_auth.currentUser?.uid != uid) {
+        throw StateError('A conta mudou. Abra o trabalho novamente.');
+      }
+      if (snapshots.any((p) =>
+          p.data()?['id'] != null && p.data()?['id'].toString() != projectId)) {
+        throw StateError(
+            'Há um cadastro com identificador conflitante. Os vínculos foram preservados.');
+      }
+      var confirmed = false;
+      for (var i = 0; i < refs.length; i++) {
+        final data = snapshots[i].data();
+        if (data == null ||
+            data['id'] != null && data['id'].toString() != projectId) {
+          continue;
+        }
+        final patch = projectReferenceUpgrade(data,
+            uid: uid, field: field, previous: previous, resolved: resolved);
+        if (patch != null) {
+          transaction.update(refs[i], patch);
+          confirmed = true;
+        } else if (data[field] == resolved) {
+          confirmed = true;
+        }
+      }
+      if (!confirmed) {
+        throw StateError(
+            'O vínculo não foi confirmado no projeto. O cadastro pode ter sido alterado em outra tela; reabra o editor.');
+      }
+      if (savedCache?.data()?['reference'] == previous) {
+        transaction.update(cache, {'reference': resolved});
+      }
+    });
+  }
 
   // ============================================================
   // USUÁRIO ATUAL
@@ -274,6 +448,7 @@ URL: ${task.edeskUrl}
       observacao: data['observacao']?.toString(),
       excelLink: data['excelLink']?.toString(),
       folderPath: data['folderPath']?.toString(),
+      email: data['email']?.toString(),
     );
   }
 
@@ -324,6 +499,7 @@ URL: ${task.edeskUrl}
   Future<void> saveProject(
     ProjectModel project, [
     String? docId,
+    ProjectReferenceChanges? referenceChanges,
   ]) async {
     final String targetDocId = (docId != null && docId.trim().isNotEmpty)
         ? docId.trim()
@@ -408,6 +584,7 @@ URL: ${task.edeskUrl}
       await finalizarProjeto(
         project,
         docId: targetDocId,
+        referenceChanges: referenceChanges,
       );
 
       return;
@@ -454,10 +631,18 @@ URL: ${task.edeskUrl}
     // SALVAR
     // ============================================================
 
-    await _projectsRef.doc(targetDocId).set(
-          data,
-          SetOptions(merge: true),
-        );
+    final uid = _userId;
+    final reference = _projectsRef.doc(targetDocId);
+    final saved = await _db.runTransaction((transaction) async {
+      final current = await transaction.get(reference);
+      if (_auth.currentUser?.uid != uid) throw StateError('A conta mudou.');
+      final merged =
+          projectReferenceSave(data, current.data(), changes: referenceChanges);
+      transaction.set(reference, merged, SetOptions(merge: true));
+      return merged;
+    });
+    project.folderPath = saved['folderPath'] as String?;
+    project.excelLink = saved['excelLink'] as String?;
 
     debugPrint(
       'Projeto $targetDocId salvo com sucesso no Firestore.',
@@ -708,6 +893,7 @@ URL: ${task.edeskUrl}
   Future<void> finalizarProjeto(
     ProjectModel project, {
     String? docId,
+    ProjectReferenceChanges? referenceChanges,
   }) async {
     final String projectId = (docId != null && docId.trim().isNotEmpty)
         ? docId.trim()
@@ -743,25 +929,20 @@ URL: ${task.edeskUrl}
       projectId,
     );
 
-    final WriteBatch batch = _db.batch();
-
-    batch.set(
-      completedProjectRef,
-      completedData,
-      SetOptions(merge: true),
-    );
-
-    batch.delete(
-      activeProjectRef,
-    );
-
-    await batch.commit();
-
-    final activeCheck = await activeProjectRef.get();
-
-    if (activeCheck.exists) {
-      await activeProjectRef.delete();
-    }
+    final uid = _userId;
+    final saved = await _db.runTransaction((transaction) async {
+      final active = await transaction.get(activeProjectRef);
+      final completed = await transaction.get(completedProjectRef);
+      if (_auth.currentUser?.uid != uid) throw StateError('A conta mudou.');
+      final merged = projectReferenceSave(
+          completedData, active.data() ?? completed.data(),
+          changes: referenceChanges);
+      transaction.set(completedProjectRef, merged, SetOptions(merge: true));
+      transaction.delete(activeProjectRef);
+      return merged;
+    });
+    project.folderPath = saved['folderPath'] as String?;
+    project.excelLink = saved['excelLink'] as String?;
   }
 
   // ============================================================
@@ -1121,6 +1302,11 @@ URL: ${task.edeskUrl}
         ).toList();
       },
     );
+  }
+
+  Future<int> getCompletedProjectCount() async {
+    final snapshot = await _completedProjectsRef.count().get();
+    return snapshot.count ?? 0;
   }
 
   Future<List<Map<String, dynamic>>> getCompletedProjects() async {

@@ -1,3 +1,7 @@
+import 'package:gerenciador_horas/domain/models/work_duration.dart';
+import 'package:gerenciador_horas/core/theme/app_visuals.dart';
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:gerenciador_horas/domain/models/project_model.dart';
 import 'package:gerenciador_horas/domain/models/dashboard_models.dart';
@@ -8,612 +12,415 @@ class ProgressoProjetoWidget extends StatelessWidget {
   final double Function(String) parseTimeToHours;
   final String Function(double) formatHours;
   final String Function(DateTime) formatDateShort;
+  const ProgressoProjetoWidget(
+      {super.key,
+      required this.activeProject,
+      required this.timeLogs,
+      required this.parseTimeToHours,
+      required this.formatHours,
+      required this.formatDateShort});
+  static Color get cyan => AppPalette.accent;
+  static Color get green => AppPalette.success;
+  static Color get muted => AppPalette.secondary;
 
-  const ProgressoProjetoWidget({
-    super.key,
-    required this.activeProject,
-    required this.timeLogs,
-    required this.parseTimeToHours,
-    required this.formatHours,
-    required this.formatDateShort,
-  });
+  double _executed(String target) => timeLogs
+      .where((log) => log.targetId == target)
+      .fold(0.0, (sum, log) => sum + WorkDuration.minutes(log) / 60);
+
+  double get _projectExecuted {
+    final targets = (activeProject.subTasks ?? [])
+        .map((task) => '${activeProject.id}_${task.subId}')
+        .toSet();
+    return timeLogs
+        .where((log) =>
+            targets.contains(log.targetId) ||
+            log.targetId == activeProject.id ||
+            log.projectId == activeProject.id)
+        .fold(0.0, (sum, log) => sum + WorkDuration.minutes(log) / 60);
+  }
+
+  Widget _text(String value,
+          {Color? color,
+          double size = 11,
+          bool bold = false,
+          TextAlign align = TextAlign.left}) =>
+      Text(value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: align,
+          style: TextStyle(
+              color: color ?? AppPalette.text,
+              fontSize: size + 1,
+              height: 1.2,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w400));
+
+  Widget _progress(double planned, double actual) {
+    final ratio = planned > 0 ? (actual / planned).clamp(0.0, 1.0) : 0.0;
+    return Row(children: [
+      Expanded(
+          child: ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: LinearProgressIndicator(
+                  value: ratio,
+                  minHeight: 6,
+                  color: cyan,
+                  backgroundColor: AppPalette.surface))),
+      const SizedBox(width: 5),
+      SizedBox(
+          width: 31,
+          child: _text('${(ratio * 100).round()}%',
+              size: 9, color: muted, align: TextAlign.right)),
+    ]);
+  }
+
+  Widget _metric(String label, double hours, Color color) => Expanded(
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+            _text(label, color: muted, size: 10),
+            const SizedBox(height: 3),
+            _text(formatHours(hours), color: color, size: 16, bold: true),
+          ]));
+
+  Widget _tableRow(
+          {required Widget name,
+          required Widget progress,
+          required Widget planned,
+          required Widget actual,
+          required Widget remaining}) =>
+      Row(children: [
+        Expanded(flex: 34, child: name),
+        const SizedBox(width: 7),
+        Expanded(flex: 24, child: progress),
+        const SizedBox(width: 7),
+        Expanded(flex: 14, child: planned),
+        const SizedBox(width: 5),
+        Expanded(flex: 14, child: actual),
+        const SizedBox(width: 5),
+        Expanded(flex: 14, child: remaining),
+      ]);
 
   @override
   Widget build(BuildContext context) {
-    final totalProjectHours = parseTimeToHours(activeProject.estimatedHours);
-
-    final workedHours =
-        _getExecutedHoursForProject(activeProject.id.toString());
-
-    final remainingHours =
-        (totalProjectHours - workedHours).clamp(0.0, double.infinity);
-
-    final percentRealized = totalProjectHours > 0
-        ? ((workedHours / totalProjectHours) * 100).clamp(0.0, 100.0).round()
-        : 0;
-
-    final subTasks = activeProject.subTasks ?? [];
-
-    double maxSubEstimated = 1.0;
-
-    for (final sub in subTasks) {
-      final est = parseTimeToHours(sub.estimatedHours);
-
-      if (est > maxSubEstimated) {
-        maxSubEstimated = est;
-      }
-    }
-
+    AppAppearance.watch(context);
+    final planned = parseTimeToHours(activeProject.estimatedHours);
+    final actual = _projectExecuted;
+    final tasks = activeProject.subTasks ?? [];
     return Container(
-      width: double.infinity,
-      height: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 9,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFF13131A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.06),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.28),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // ============================================================
-          // ESQUERDA
-          // ============================================================
-          Expanded(
-            flex: 4,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 23,
-                      height: 23,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0099FF).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.work_outline_rounded,
-                        color: Color(0xFF0099FF),
-                        size: 13,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '${activeProject.id} ${activeProject.client}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF0099FF),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+        padding: AppVisuals.cardPadding,
+        decoration: AppVisuals.card,
+        child: LayoutBuilder(builder: (context, constraints) {
+          AppAppearance.watch(context);
+          if (constraints.maxWidth >= 560) {
+            return _wideProject(planned, actual);
+          }
+          return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                  width:
+                      constraints.maxWidth < 480 ? 480 : constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Icon(Icons.work_outline, size: 18, color: cyan),
+                          const SizedBox(width: 6),
+                          Expanded(
+                              child: _text('Projeto selecionado',
+                                  size: 13, bold: true))
+                        ]),
+                        const SizedBox(height: 3),
+                        Tooltip(
+                            message:
+                                '${activeProject.id} · ${activeProject.client}',
+                            child: _text(
+                                '${activeProject.id} · ${activeProject.client}',
+                                bold: true,
+                                size: 12)),
+                        const SizedBox(height: 1),
+                        _text(
+                            '${activeProject.serviceType} · ${formatDateShort(activeProject.startDate)}',
+                            size: 10,
+                            color: muted),
+                        const SizedBox(height: 5),
+                        Container(
+                            height: 39,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                                color: AppPalette.field,
+                                borderRadius: BorderRadius.circular(8)),
+                            child: Row(children: [
+                              Expanded(
+                                  flex: 2,
+                                  child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        _text('Total do projeto',
+                                            size: 10, color: muted),
+                                        const SizedBox(height: 5),
+                                        _progress(planned, actual)
+                                      ])),
+                              const SizedBox(width: 12),
+                              _metric('Previsto', planned, AppPalette.text),
+                              _metric('Realizado', actual, cyan),
+                              _metric(
+                                  'Restante',
+                                  (planned - actual)
+                                      .clamp(0.0, double.infinity),
+                                  green)
+                            ])),
+                        const SizedBox(height: 5),
+                        _text('Etapas do projeto (${tasks.length})',
+                            size: 11, bold: true),
+                        const SizedBox(height: 1),
+                        SizedBox(
+                            height: 16,
+                            child: _tableRow(
+                                name: _text('Etapa', color: muted, size: 10),
+                                progress:
+                                    _text('Progresso', color: muted, size: 10),
+                                planned: _text('Previsto',
+                                    color: muted,
+                                    size: 10,
+                                    align: TextAlign.right),
+                                actual: _text('Realizado',
+                                    color: muted,
+                                    size: 10,
+                                    align: TextAlign.right),
+                                remaining: _text('Restante',
+                                    color: muted,
+                                    size: 10,
+                                    align: TextAlign.right))),
+                        Expanded(
+                            child: tasks.isEmpty
+                                ? Center(
+                                    child: _text('Nenhuma etapa cadastrada',
+                                        color: muted))
+                                : _ProjectStagesViewport(
+                                    key: ValueKey(activeProject.id),
+                                    itemCount: tasks.length,
+                                    itemBuilder: (context, index) {
+                                      final task = tasks[index];
+                                      final estimate =
+                                          parseTimeToHours(task.estimatedHours);
+                                      final done = _executed(
+                                          '${activeProject.id}_${task.subId}');
+                                      final left = (estimate - done)
+                                          .clamp(0.0, double.infinity);
+                                      return Container(
+                                          decoration: const BoxDecoration(
+                                              border: Border(
+                                                  top: BorderSide(
+                                                      color:
+                                                          Color(0xFF233245)))),
+                                          child: Tooltip(
+                                              message:
+                                                  '${task.stage}\nPrevisto: ${formatHours(estimate)} · '
+                                                  'Realizado: ${formatHours(done)} · Restante: ${formatHours(left)}',
+                                              child: _tableRow(
+                                                  name: _text(task.stage,
+                                                      size: 10),
+                                                  progress:
+                                                      _progress(estimate, done),
+                                                  planned: _text(
+                                                      formatHours(estimate),
+                                                      size: 10,
+                                                      align: TextAlign.right),
+                                                  actual: _text(
+                                                      formatHours(done),
+                                                      size: 10,
+                                                      color: cyan,
+                                                      align: TextAlign.right),
+                                                  remaining: _text(
+                                                      formatHours(left),
+                                                      size: 10,
+                                                      color: left == 0
+                                                          ? muted
+                                                          : green,
+                                                      align:
+                                                          TextAlign.right))));
+                                    }))
+                      ])));
+        }));
+  }
 
-                const SizedBox(height: 2),
+  /// On wide cards the overview occupies a slim side rail, leaving the stages
+  /// in view. The calculations and virtualized list are the existing ones.
+  Widget _wideProject(double planned, double actual) {
+    final tasks = activeProject.subTasks ?? [];
+    final ratio = planned > 0 ? actual / planned : 0.0;
+    final exceeded = actual > planned;
+    final progressColor = exceeded ? AppPalette.danger : cyan;
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.work_outline, size: 19, color: cyan),
+          const SizedBox(width: 7),
+          _text('Projeto selecionado', size: 14, bold: true)
+        ]),
+        const SizedBox(height: 7),
+        Tooltip(
+            message: '${activeProject.id} · ${activeProject.client}',
+            child: _text('${activeProject.id} · ${activeProject.client}',
+                size: 13, bold: true)),
+        const SizedBox(height: 2),
+        _text(
+            '${activeProject.serviceType} · ${formatDateShort(activeProject.startDate)}',
+            size: 10,
+            color: muted),
+        const SizedBox(height: 10),
+        _text('Etapas do projeto (${tasks.length})', size: 12, bold: true),
+        const SizedBox(height: 5),
+        Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            color: AppPalette.field,
+            child: _tableRow(
+                name: _text('Etapa', color: muted, size: 10),
+                progress: _text('Progresso', color: muted, size: 10),
+                planned: _text('Previsto',
+                    color: muted, size: 10, align: TextAlign.right),
+                actual: _text('Realizado',
+                    color: muted, size: 10, align: TextAlign.right),
+                remaining: _text('Restante',
+                    color: muted, size: 10, align: TextAlign.right))),
+        Expanded(
+            child: tasks.isEmpty
+                ? Center(child: _text('Nenhuma etapa cadastrada', color: muted))
+                : _ProjectStagesViewport(
+                    key: ValueKey(activeProject.id),
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      final task = tasks[index];
+                      final estimate = parseTimeToHours(task.estimatedHours);
+                      final done =
+                          _executed('${activeProject.id}_${task.subId}');
+                      final left =
+                          (estimate - done).clamp(0.0, double.infinity);
+                      return Container(
+                          decoration: BoxDecoration(
+                              border: Border(
+                                  top: BorderSide(color: AppVisuals.divider))),
+                          child: Tooltip(
+                              message:
+                                  '${task.stage}\nPrevisto: ${formatHours(estimate)} · Realizado: ${formatHours(done)} · Restante: ${formatHours(left)}',
+                              child: _tableRow(
+                                  name: _text(task.stage, size: 10),
+                                  progress: _progress(estimate, done),
+                                  planned: _text(formatHours(estimate),
+                                      size: 10, align: TextAlign.right),
+                                  actual: _text(formatHours(done),
+                                      size: 10,
+                                      color: cyan,
+                                      align: TextAlign.right),
+                                  remaining: _text(formatHours(left),
+                                      size: 10,
+                                      color: left == 0 ? muted : green,
+                                      align: TextAlign.right))));
+                    })),
+      ])),
+      const SizedBox(width: 10),
+      Container(
+          width: 105,
+          padding: const EdgeInsets.only(left: 10),
+          decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: AppVisuals.edge))),
+          child: LayoutBuilder(
+              builder: (context, box) => SingleChildScrollView(
+                      child: Column(children: [
+                    SizedBox(
+                        width: 88,
+                        height: 88,
+                        child: Stack(alignment: Alignment.center, children: [
+                          SizedBox.expand(
+                              child: CircularProgressIndicator(
+                                  value: ratio.clamp(0.0, 1.0),
+                                  strokeWidth: 7,
+                                  color: progressColor,
+                                  backgroundColor: AppPalette.raised)),
+                          Column(mainAxisSize: MainAxisSize.min, children: [
+                            _text('${(ratio * 100).round()}%',
+                                size: 22,
+                                bold: true,
+                                color: exceeded ? progressColor : null),
+                            _text('Progresso', size: 9, color: muted),
+                          ]),
+                        ])),
+                    const SizedBox(height: 8),
+                    _sideMetric(
+                        'Previsto', planned, AppPalette.text, Icons.schedule),
+                    _sideMetric(
+                        'Realizado', actual, cyan, Icons.play_arrow_outlined),
+                    _sideMetric(
+                        'Restante',
+                        (planned - actual).clamp(0.0, double.infinity),
+                        green,
+                        Icons.hourglass_empty),
+                  ])))),
+    ]);
+  }
 
-                Padding(
-                  padding: const EdgeInsets.only(left: 29),
-                  child: Text(
-                    activeProject.serviceType,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.52),
-                      fontSize: 9,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 6),
-
-                Row(
-                  children: [
-                    Icon(
-                      Icons.date_range_outlined,
-                      size: 10,
-                      color: Colors.white.withValues(alpha: 0.35),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        'Início - Fim: 09/04/26 - 11/08/26',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.40),
-                          fontSize: 8,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const Spacer(),
-
-                // ======================================================
-                // TOTAL / TRAB / REST
-                // ======================================================
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.025),
-                    borderRadius: BorderRadius.circular(7),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.045),
-                    ),
-                  ),
-                  child: Row(
+  Widget _sideMetric(String label, double hours, Color color, IconData icon) =>
+      Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+          decoration: AppVisuals.panel(radius: 9),
+          child: Row(children: [
+            Icon(icon, size: 19, color: color),
+            const SizedBox(width: 5),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _buildMiniInfo(
-                          'Total',
-                          formatHours(totalProjectHours),
-                          Colors.white,
-                        ),
-                      ),
-                      _buildDivider(),
-                      Expanded(
-                        child: _buildMiniInfo(
-                          'Trab.',
-                          formatHours(workedHours),
-                          Colors.greenAccent,
-                        ),
-                      ),
-                      _buildDivider(),
-                      Expanded(
-                        child: _buildMiniInfo(
-                          'Rest.',
-                          formatHours(remainingHours),
-                          Colors.orangeAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                  _text(label, size: 9, color: muted),
+                  _text(formatHours(hours), size: 15, bold: true, color: color),
+                ])),
+          ]));
+}
 
-                const SizedBox(height: 4),
+class _ProjectStagesViewport extends StatefulWidget {
+  const _ProjectStagesViewport(
+      {super.key, required this.itemCount, required this.itemBuilder});
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+  @override
+  State<_ProjectStagesViewport> createState() => _ProjectStagesViewportState();
+}
 
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.trending_up_rounded,
-                      size: 11,
-                      color: Colors.greenAccent,
-                    ),
-                    const SizedBox(width: 3),
-                    Expanded(
-                      child: Text(
-                        'Realizado',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.40),
-                          fontSize: 8,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '$percentRealized%',
-                      style: const TextStyle(
-                        color: Colors.greenAccent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          // ============================================================
-          // DIVISOR
-          // ============================================================
-          Container(
-            width: 1,
-            margin: const EdgeInsets.symmetric(vertical: 2),
-            color: Colors.white.withValues(alpha: 0.06),
-          ),
-
-          const SizedBox(width: 8),
-
-          // ============================================================
-          // DIREITA
-          // ============================================================
-          Expanded(
-            flex: 8,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ------------------------------------------------------
-                // CABEÇALHO
-                // ------------------------------------------------------
-                SizedBox(
-                  height: 20,
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.account_tree_outlined,
-                        size: 13,
-                        color: Color(0xFF0099FF),
-                      ),
-                      const SizedBox(width: 4),
-                      const Flexible(
-                        child: Text(
-                          'Etapas do Projeto',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      if (subTasks.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        Text(
-                          '${subTasks.length}',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.30),
-                            fontSize: 8,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                // ------------------------------------------------------
-                // LISTA
-                // ------------------------------------------------------
-                Expanded(
-                  child: subTasks.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'Nenhuma etapa cadastrada',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white38,
-                              fontSize: 9,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: EdgeInsets.zero,
-                          physics: const ClampingScrollPhysics(),
-                          itemCount: subTasks.length,
-                          itemBuilder: (context, index) {
-                            final sub = subTasks[index];
-
-                            final targetId = '${activeProject.id}_${sub.subId}';
-
-                            final executed =
-                                _getExecutedHoursForTarget(targetId);
-
-                            final estimated =
-                                parseTimeToHours(sub.estimatedHours);
-
-                            final percent = estimated > 0
-                                ? ((executed / estimated) * 100)
-                                    .clamp(0.0, 100.0)
-                                    .round()
-                                : 0;
-
-                            final ratio = maxSubEstimated > 0
-                                ? (estimated / maxSubEstimated)
-                                : 0.0;
-
-                            final widthFactor =
-                                (0.35 + (0.65 * ratio)).clamp(0.35, 1.0);
-
-                            final fillFactor = estimated > 0
-                                ? (executed / estimated).clamp(0.0, 1.0)
-                                : 0.0;
-
-                            const dateRangeStr = '13/04 - 14/04';
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: SizedBox(
-                                height: 29,
-                                child: Row(
-                                  children: [
-                                    // ==========================================
-                                    // INFORMAÇÕES DA ETAPA
-                                    // ==========================================
-                                    Expanded(
-                                      flex: 5,
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 3,
-                                            height: 16,
-                                            decoration: BoxDecoration(
-                                              color: percent >= 100
-                                                  ? Colors.greenAccent
-                                                  : const Color(0xFF0099FF),
-                                              borderRadius:
-                                                  BorderRadius.circular(3),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                // Nome da etapa
-                                                SizedBox(
-                                                  height: 11,
-                                                  child: Text(
-                                                    sub.stage,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 8.5,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ),
-
-                                                const SizedBox(height: 1),
-
-                                                // Percentual + data
-                                                Row(
-                                                  children: [
-                                                    Text(
-                                                      '$percent%',
-                                                      style: TextStyle(
-                                                        color: percent >= 100
-                                                            ? Colors.greenAccent
-                                                            : const Color(
-                                                                0xFF35B5FF,
-                                                              ),
-                                                        fontSize: 7,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Flexible(
-                                                      child: Text(
-                                                        dateRangeStr,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          color: Colors.white
-                                                              .withValues(
-                                                            alpha: 0.28,
-                                                          ),
-                                                          fontSize: 6.5,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    const SizedBox(width: 5),
-
-                                    // ==========================================
-                                    // BARRA
-                                    // ==========================================
-                                    Expanded(
-                                      flex: 5,
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: FractionallySizedBox(
-                                          widthFactor: widthFactor,
-                                          child: SizedBox(
-                                            height: 16,
-                                            child: Stack(
-                                              fit: StackFit.expand,
-                                              children: [
-                                                // Fundo
-                                                Container(
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white
-                                                        .withValues(
-                                                            alpha: 0.035),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      4,
-                                                    ),
-                                                    border: Border.all(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                              alpha: 0.055),
-                                                    ),
-                                                  ),
-                                                ),
-
-                                                // Progresso
-                                                FractionallySizedBox(
-                                                  widthFactor: fillFactor,
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  child: Container(
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(
-                                                        0xFF0099FF,
-                                                      ).withValues(alpha: 0.48),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                        3,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-
-                                                // Horas
-                                                Center(
-                                                  child: FittedBox(
-                                                    fit: BoxFit.scaleDown,
-                                                    child: Text(
-                                                      formatHours(executed),
-                                                      maxLines: 1,
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 7,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+class _ProjectStagesViewportState extends State<_ProjectStagesViewport> {
+  final controller = ScrollController();
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
   }
 
-  // ============================================================
-  // MINI INFORMAÇÃO
-  // ============================================================
-  Widget _buildMiniInfo(
-    String label,
-    String value,
-    Color color,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.36),
-            fontSize: 7,
-          ),
-        ),
-        const SizedBox(height: 1),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            maxLines: 1,
-            style: TextStyle(
-              color: color,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ============================================================
-  // DIVISOR
-  // ============================================================
-  Widget _buildDivider() {
-    return Container(
-      width: 1,
-      height: 17,
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      color: Colors.white.withValues(alpha: 0.06),
-    );
-  }
-
-  // ============================================================
-  // HORAS EXECUTADAS DO PROJETO
-  // ============================================================
-  double _getExecutedHoursForProject(String projectId) {
-    double total = 0;
-
-    final subTasks = activeProject.subTasks ?? [];
-
-    // Soma as horas de cada sub-etapa baseada no targetId correspondente
-    for (final sub in subTasks) {
-      final targetId = '${projectId}_${sub.subId}';
-
-      total += _getExecutedHoursForTarget(targetId);
-    }
-
-    // Também valida logs diretos caso existam salvos com o projectId
-    for (final log in timeLogs) {
-      if (log.projectId.toString() == projectId) {
-        final alreadyCounted = subTasks.any(
-          (sub) => log.targetId.toString() == '${projectId}_${sub.subId}',
-        );
-
-        if (!alreadyCounted) {
-          total += parseTimeToHours(log.durationFormatted);
-        }
-      }
-    }
-
-    return total;
-  }
-
-  // ============================================================
-  // HORAS EXECUTADAS DA ETAPA
-  // ============================================================
-  double _getExecutedHoursForTarget(String targetId) {
-    double total = 0;
-
-    for (final log
-        in timeLogs.where((l) => l.targetId.toString() == targetId)) {
-      total += parseTimeToHours(log.durationFormatted);
-    }
-
-    return total;
-  }
+  @override
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final rows = widget.itemCount.clamp(1, 6);
+        final extent = (constraints.maxHeight / rows).clamp(17.0, 23.0);
+        final overflow = widget.itemCount * extent > constraints.maxHeight + .1;
+        return Scrollbar(
+            controller: controller,
+            thumbVisibility: overflow,
+            interactive: true,
+            thickness: 5,
+            child: ListView.builder(
+                controller: controller,
+                padding: EdgeInsets.only(right: overflow ? 9 : 0),
+                primary: false,
+                physics: overflow
+                    ? const ClampingScrollPhysics()
+                    : const NeverScrollableScrollPhysics(),
+                itemCount: widget.itemCount,
+                itemExtent: extent,
+                itemBuilder: widget.itemBuilder));
+      });
 }

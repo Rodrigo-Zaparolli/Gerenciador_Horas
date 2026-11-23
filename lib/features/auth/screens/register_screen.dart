@@ -1,4 +1,7 @@
+import 'package:gerenciador_horas/core/theme/app_appearance.dart';
+import 'package:gerenciador_horas/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
+import 'package:gerenciador_horas/features/auth/widgets/auth_viewport.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -248,7 +251,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(
+      labelStyle: TextStyle(
         color: CoresApp.textoSecundario,
         fontSize: 13,
       ),
@@ -266,19 +269,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderSide: BorderSide(
           color: CoresApp.borda,
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderSide: BorderSide(
           color: CoresApp.borda,
         ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderSide: BorderSide(
           color: CoresApp.primaria,
           width: 1.5,
         ),
@@ -296,35 +299,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // LOGO
   // ============================================================
 
-  Widget _buildLogo({
-    required bool compact,
-  }) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxWidth: compact ? 280 : 330,
-      ),
-      child: Image.asset(
-        _logoPath,
-        height: compact ? 70 : 82,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            height: 70,
-            alignment: Alignment.center,
-            child: const Text(
-              'Gestão de Horas e Projetos',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: CoresApp.textoPrincipal,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+
 
   // ============================================================
   // CARD DE CADASTRO
@@ -360,7 +335,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           // TÍTULO
           // ====================================================
 
-          const Text(
+          Text(
             'Criar nova conta',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -372,7 +347,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
           const SizedBox(height: 7),
 
-          const Text(
+          Text(
             'Crie sua conta para começar a gerenciar '
             'suas horas e projetos.',
             textAlign: TextAlign.center,
@@ -395,7 +370,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             enabled: !_isLoading,
             textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.next,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontSize: 14,
             ),
@@ -420,7 +395,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             enabled: !_isLoading,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontSize: 14,
             ),
@@ -445,7 +420,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             enabled: !_isLoading,
             obscureText: _obscurePassword,
             textInputAction: TextInputAction.done,
-            style: const TextStyle(
+            style: TextStyle(
               color: CoresApp.textoPrincipal,
               fontSize: 14,
             ),
@@ -517,9 +492,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               onPressed: _isLoading ? null : _handleRegister,
               style: ElevatedButton.styleFrom(
                 backgroundColor: CoresApp.primaria,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    CoresApp.primaria.withValues(alpha: 0.45),
+                foregroundColor: AppPalette.foregroundOn(CoresApp.primaria),
+                disabledBackgroundColor: CoresApp.primaria.withValues(alpha: 0.45),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -534,23 +508,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.person_add_alt_1_rounded,
-                          size: 19,
-                        ),
-                        SizedBox(width: 9),
-                        Text(
-                          'CRIAR CONTA',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
+                  : const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.person_add_alt_1_rounded,
+                            size: 19,
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 9),
+                          Text(
+                            'CRIAR CONTA',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
             ),
           ),
@@ -603,13 +581,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 color: CoresApp.sucesso,
               ),
               const SizedBox(width: 7),
-              Text(
+              Flexible(
+                  child: Text(
                 'Seus dados são armazenados com segurança.',
-                style: TextStyle(
-                  color: CoresApp.textoFraco,
-                  fontSize: 10.5,
-                ),
-              ),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: CoresApp.textoFraco, fontSize: 10.5),
+              )),
             ],
           ),
         ],
@@ -623,13 +600,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    AppAppearance.watch(context);
     return Scaffold(
       backgroundColor: CoresApp.fundo,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         toolbarHeight: 48,
-        iconTheme: const IconThemeData(
+        actions: const [ThemeToggleButton(), SizedBox(width: 8)],
+        iconTheme: IconThemeData(
           color: CoresApp.primaria,
         ),
         leading: IconButton(
@@ -646,6 +625,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          AppAppearance.watch(context);
           final double width = constraints.maxWidth;
           final double height = constraints.maxHeight;
 
@@ -703,88 +683,86 @@ class _RegisterScreenState extends State<RegisterScreen> {
               // ==================================================
 
               Positioned.fill(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: compact ? 20 : 40,
-                    vertical: smallHeight ? 8 : 16,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // ==========================================
-                      // LOGO
-                      // ==========================================
+                child: AuthViewport(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 20 : 40,
+                      vertical: smallHeight ? 8 : 16,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // ==========================================
+                        // LOGO
+                        // ==========================================
 
-                      SizedBox(
-                        height: logoHeight,
-                        child: Image.asset(
-                          _logoPath,
-                          fit: BoxFit.contain,
-                          errorBuilder: (
-                            context,
-                            error,
-                            stackTrace,
-                          ) {
-                            return const Text(
-                              'Gestão de Horas e Projetos',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: CoresApp.textoPrincipal,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            );
-                          },
+                        SizedBox(
+                          height: logoHeight,
+                          child: Image.asset(
+                            _logoPath,
+                            fit: BoxFit.contain,
+                            errorBuilder: (
+                              context,
+                              error,
+                              stackTrace,
+                            ) {
+                              return Text(
+                                'Gestão de Horas e Projetos',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: CoresApp.textoPrincipal,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              );
+                            },
+                          ),
                         ),
-                      ),
 
-                      SizedBox(
-                        height: logoBottomSpace,
-                      ),
-
-                      // ==========================================
-                      // LINHA DECORATIVA
-                      // ==========================================
-
-                      Container(
-                        width: 42,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: CoresApp.primaria,
-                          borderRadius: BorderRadius.circular(10),
+                        SizedBox(
+                          height: logoBottomSpace,
                         ),
-                      ),
 
-                      SizedBox(
-                        height: smallHeight ? 10 : 16,
-                      ),
+                        // ==========================================
+                        // LINHA DECORATIVA
+                        // ==========================================
 
-                      // ==========================================
-                      // CARD
-                      // ==========================================
-
-                      Flexible(
-                        child: _buildRegisterCard(
-                          compact: compact,
+                        Container(
+                          width: 42,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: CoresApp.primaria,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                      ),
 
-                      SizedBox(
-                        height: smallHeight ? 6 : 10,
-                      ),
-
-                      // ==========================================
-                      // RODAPÉ
-                      // ==========================================
-
-                      Text(
-                        'Gestão de Horas e Projetos',
-                        style: TextStyle(
-                          color: CoresApp.textoFraco,
-                          fontSize: smallHeight ? 9 : 10,
+                        SizedBox(
+                          height: smallHeight ? 10 : 16,
                         ),
-                      ),
-                    ],
+
+                        // ==========================================
+                        // CARD
+                        // ==========================================
+
+                        _buildRegisterCard(compact: compact),
+
+                        SizedBox(
+                          height: smallHeight ? 6 : 10,
+                        ),
+
+                        // ==========================================
+                        // RODAPÉ
+                        // ==========================================
+
+                        Text(
+                          'Gestão de Horas e Projetos',
+                          style: TextStyle(
+                            color: CoresApp.textoFraco,
+                            fontSize: smallHeight ? 9 : 10,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

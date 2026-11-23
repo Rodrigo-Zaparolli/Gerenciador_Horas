@@ -1,7 +1,13 @@
+import '../features/reminders/personal_reminders.dart';
+import '../core/theme/app_background.dart';
+import 'dart:async';
+import '../core/platform/pilot_route.dart';
+import '../features/assistant/beta_access.dart';
+import '../features/assistant/beta_assistant.dart';
+import '../features/edesk/adv_work_dialog.dart';
+import '../features/edesk/adv_project_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-import 'package:gerenciador_horas/core/theme/app_theme.dart';
 
 import 'package:gerenciador_horas/domain/models/work_format_model.dart';
 import 'package:gerenciador_horas/data/services/time_log_store.dart';
@@ -32,8 +38,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final FirebaseService _firebaseService = FirebaseService();
 
   int _selectedIndex = 0;
+  int _dashboardEntryVersion = 0;
+  final Set<int> _visitedTabs = {0};
 
   final TimeLogStore _timeLogStore = TimeLogStore();
+  final _betaTasksKey = GlobalKey<TarefasScreenState>();
 
   List<WorkFormat> _workFormats = [];
 
@@ -45,14 +54,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
 
+    final account = FirebaseAuth.instance.currentUser;
+    if (redirectPilotAccount(uid: account?.uid, email: account?.email)) return;
+
     _loadUserData();
     _loadWorkFormats();
-  }
-
-  @override
-  void dispose() {
-    _timeLogStore.dispose();
-    super.dispose();
   }
 
   // ============================================================
@@ -103,6 +109,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return;
     }
 
+    if (index != 5) unawaited(_timeLogStore.setHistoryPeriod(null, null));
+
     // Sempre que voltar para o Dashboard,
     // atualizamos os modelos de trabalho.
     if (index == 0) {
@@ -111,6 +119,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     setState(() {
       _selectedIndex = index;
+      if (index == 0) _dashboardEntryVersion++;
+      _visitedTabs.add(index);
     });
   }
 
@@ -121,52 +131,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget _buildGlobalBackground({
     required Widget child,
   }) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // --------------------------------------------------------
-        // IMAGEM DE FUNDO ÚNICA
-        // --------------------------------------------------------
-
-        Positioned.fill(
-          child: Image.asset(
-            AppTheme.caminhoFundo,
-            fit: BoxFit.cover,
-          ),
-        ),
-
-        // --------------------------------------------------------
-        // CAMADA ESCURA SOBRE A IMAGEM
-        //
-        // Mantém a leitura dos textos e componentes.
-        // --------------------------------------------------------
-
-        Positioned.fill(
-          child: Container(
-            color: Colors.black.withValues(
-              alpha: AppTheme.opacidadeFundo,
-            ),
-          ),
-        ),
-
-        // --------------------------------------------------------
-        // TELA ATUAL
-        //
-        // O Theme abaixo torna os Scaffold das telas
-        // transparentes, permitindo que o mesmo fundo continue
-        // aparecendo também atrás do cabeçalho.
-        // --------------------------------------------------------
-
-        Positioned.fill(
-          child: Theme(
-            data: Theme.of(context).copyWith(
-              scaffoldBackgroundColor: Colors.transparent,
-              canvasColor: Colors.transparent,
-            ),
-            child: child,
-          ),
-        ),
-      ],
+    return AppBackground(
+      child: Theme(
+        data: Theme.of(context)
+            .copyWith(scaffoldBackgroundColor: Colors.transparent),
+        child: child,
+      ),
     );
   }
 
@@ -197,6 +167,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       // --------------------------------------------------------
 
       DashboardScreen(
+        entryVersion: _dashboardEntryVersion,
         selectedIndex: _selectedIndex,
         onSelectTab: _onSelectTab,
         workFormats: _workFormats,
@@ -250,6 +221,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       // --------------------------------------------------------
 
       TarefasScreen(
+        key: _betaTasksKey,
         selectedIndex: _selectedIndex,
         onSelectTab: _onSelectTab,
         timeLogStore: _timeLogStore,
@@ -291,14 +263,59 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     // PÁGINA ATUAL COM FUNDO GLOBAL ÚNICO
     // ==========================================================
 
-    return _buildGlobalBackground(
+    final dashboardContent = _buildGlobalBackground(
       child: IndexedStack(
-        index: safeIndex == 0 ? 0 : 1,
+        index: safeIndex,
         children: [
-          screens[0],
-          safeIndex == 0 ? const SizedBox.shrink() : screens[safeIndex],
+          for (var index = 0; index < screens.length; index++)
+            _visitedTabs.contains(index)
+                ? screens[index]
+                : const SizedBox.shrink(),
         ],
       ),
     );
+    final user = FirebaseAuth.instance.currentUser;
+    final content = user == null
+        ? dashboardContent
+        : PersonalReminderHost(
+            key: ValueKey('reminders/${user.uid}'),
+            owner: user.uid,
+            child: dashboardContent);
+    if (!BetaAccess.allows(uid: user?.uid, email: user?.email)) return content;
+    return BetaAssistant(
+        key: ValueKey('beta/${user!.uid}'),
+        owner: user.uid,
+        openAdv: () async {
+          bool authorized() =>
+              mounted && FirebaseAuth.instance.currentUser?.uid == user.uid;
+          if (!authorized() || ModalRoute.of(context)?.isCurrent == false)
+            return;
+          final project =
+              await showAdvProjectPicker(context, authorized: authorized);
+          if (!authorized() || !context.mounted || project == null) return;
+          await AdvWorkDialog.show(context, project);
+        },
+        loadDay: _timeLogStore.loadRegisteredDay,
+        canNavigate: () => ModalRoute.of(context)?.isCurrent != false,
+        openTasks: () {
+          if (ModalRoute.of(context)?.isCurrent != false) _onSelectTab(5);
+        },
+        send: (logs) async {
+          if (ModalRoute.of(context)?.isCurrent == false)
+            throw StateError('Feche a edição aberta antes de enviar horas.');
+          _onSelectTab(5);
+          await WidgetsBinding.instance.endOfFrame;
+          final tasks = _betaTasksKey.currentState;
+          if (tasks == null)
+            throw StateError('Não foi possível abrir Tarefas.');
+          return tasks.sendForBeta(logs);
+        },
+        child: content);
+  }
+
+  @override
+  void dispose() {
+    _timeLogStore.dispose();
+    super.dispose();
   }
 }
